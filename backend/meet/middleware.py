@@ -78,22 +78,20 @@ class RateLimitMiddleware(MiddlewareMixin):
         return f'ratelimit:general:{ip}'
 
     def is_rate_limited(self, key, max_requests, window_seconds):
-        """Check rate limit using Redis INCR + EXPIRE (atomic, distributed)"""
+        """Check rate limit using atomic Redis INCR + EXPIRE (distributed-safe)"""
         try:
-            current = cache.get(key)
-            if current is not None and int(current) >= max_requests:
-                return True
-            # Increment and set expiry atomically
-            new_count = cache.incr(key)
+            try:
+                new_count = cache.incr(key)
+            except ValueError:
+                # Key doesn't exist yet — set it with TTL
+                cache.set(key, 1, window_seconds)
+                return False
+            # Set expiry on first increment (new_count == 1 handled above via ValueError)
             if new_count == 1:
                 cache.expire(key, window_seconds)
             return new_count > max_requests
-        except (ValueError, Exception):
+        except Exception:
             # If Redis is down, allow the request (fail open)
-            try:
-                cache.set(key, 1, window_seconds)
-            except Exception:
-                pass
             return False
 
     def process_request(self, request):

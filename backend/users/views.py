@@ -159,6 +159,9 @@ def organization_switch_view(request, org_id):
     except Profile.DoesNotExist:
         Profile.objects.create(user=request.user, current_organization=org)
 
+    # Invalidate cached org data for this user
+    Profile.invalidate_org_cache(request.user.id, str(org.id))
+
     messages.success(request, f'Switched to {org.name}')
     return redirect('home')
 
@@ -336,6 +339,9 @@ def deactivate_member_view(request, org_id, user_id):
     target_membership.is_active = not target_membership.is_active
     target_membership.save()
 
+    # Invalidate cached membership/role data for the affected user
+    Profile.invalidate_org_cache(user_id, str(org.id))
+
     status = 'activated' if target_membership.is_active else 'deactivated'
     return JsonResponse({'status': status, 'username': target_membership.user.username})
 
@@ -359,6 +365,10 @@ def delete_member_view(request, org_id, user_id):
 
     target_user = target_membership.user
     username = target_user.username
+
+    # Invalidate cached data before deletion
+    Profile.invalidate_org_cache(user_id, str(org.id))
+
     target_user.delete()
 
     return JsonResponse({'status': 'deleted', 'username': username})

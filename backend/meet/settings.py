@@ -138,7 +138,7 @@ if PRODUCTION:
                 'SOCKET_CONNECT_TIMEOUT': 5,
                 'SOCKET_TIMEOUT': 5,
                 'RETRY_ON_TIMEOUT': True,
-                'CONNECTION_POOL_KWARGS': {'max_connections': 50},
+                'CONNECTION_POOL_KWARGS': {'max_connections': 200},
             },
             'KEY_PREFIX': 'pytalk',
         }
@@ -293,8 +293,10 @@ LOGGING = {
         },
         'security_file': {
             'level': 'WARNING',
-            'class': 'logging.FileHandler',
+            'class': 'logging.handlers.RotatingFileHandler',
             'filename': BASE_DIR / 'logs' / 'security.log',
+            'maxBytes': 10 * 1024 * 1024,  # 10 MB per file
+            'backupCount': 5,  # Keep 5 rotated files
             'formatter': 'security',
         },
         'mail_admins': {

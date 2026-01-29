@@ -92,7 +92,9 @@ function connectRoomSocket() {
         console.log('Room WebSocket closed:', e.code, e.reason);
         roomHeartbeat.stop();
         if (e.code !== 4029 && roomReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
-            var delay = WS_BASE_RECONNECT_DELAY * Math.pow(2, roomReconnectAttempts);
+            var baseDelay = WS_BASE_RECONNECT_DELAY * Math.pow(2, roomReconnectAttempts);
+            var jitter = Math.random() * baseDelay * 0.5;
+            var delay = Math.floor(baseDelay + jitter);
             console.log('Room reconnecting in ' + delay + 'ms (attempt ' + (roomReconnectAttempts + 1) + ')');
             roomReconnectTimer = setTimeout(function() {
                 roomReconnectAttempts++;
@@ -143,7 +145,9 @@ function connectUserSocket() {
         console.log('User WebSocket closed:', e.code, e.reason);
         userHeartbeat.stop();
         if (e.code !== 4029 && userReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
-            var delay = WS_BASE_RECONNECT_DELAY * Math.pow(2, userReconnectAttempts);
+            var baseDelay = WS_BASE_RECONNECT_DELAY * Math.pow(2, userReconnectAttempts);
+            var jitter = Math.random() * baseDelay * 0.5;
+            var delay = Math.floor(baseDelay + jitter);
             console.log('User socket reconnecting in ' + delay + 'ms (attempt ' + (userReconnectAttempts + 1) + ')');
             userReconnectTimer = setTimeout(function() {
                 userReconnectAttempts++;

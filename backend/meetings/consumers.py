@@ -21,6 +21,25 @@ class RoomConsumer(AsyncWebsocketConsumer):
             'user_id',
             str(self.scope['user'].id) if self.scope['user'].is_authenticated else None
         )
+
+        # Enforce per-room connection limit via Redis cache
+        room_count_key = f'ws:room:count:{self.room_id}'
+        try:
+            from django.core.cache import cache
+            try:
+                count = cache.incr(room_count_key)
+            except ValueError:
+                cache.set(room_count_key, 1, 7200)  # 2h TTL
+                count = 1
+
+            if count > MAX_ROOM_CONNECTIONS:
+                cache.decr(room_count_key)
+                logger.warning(f"Room {self.room_id} at capacity ({MAX_ROOM_CONNECTIONS})")
+                await self.close(code=4029)
+                return
+        except Exception:
+            pass  # Fail open if Redis is down
+
         # Join room group
         await self.channel_layer.group_add(
             self.room_group_name,
@@ -30,6 +49,16 @@ class RoomConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
     async def disconnect(self, close_code):
+        # Decrement room connection count
+        room_count_key = f'ws:room:count:{self.room_id}'
+        try:
+            from django.core.cache import cache
+            new_val = cache.decr(room_count_key)
+            if new_val <= 0:
+                cache.delete(room_count_key)
+        except (ValueError, Exception):
+            pass
+
         if hasattr(self, 'user_id') and self.user_id:
             # Notify others of disconnect
             await self.channel_layer.group_send(
