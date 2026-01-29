@@ -1,21 +1,157 @@
-// WebSocket connection (replacing Socket.io)
+// ================== WEBSOCKET CONNECTION WITH HEARTBEAT & RECONNECT ==================
+
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const socket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/room/${ROOM_ID}/`);
+const WS_HEARTBEAT_INTERVAL = 30000;  // Send ping every 30s
+const WS_HEARTBEAT_TIMEOUT = 10000;   // Expect pong within 10s
+const WS_MAX_RECONNECT_ATTEMPTS = 10;
+const WS_BASE_RECONNECT_DELAY = 1000; // 1s, doubles each attempt
 
-// User WebSocket for receiving approval alerts (as host)
-const userSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/user/`);
+// Heartbeat manager for a WebSocket connection
+function createHeartbeat(ws, label) {
+    let pingTimer = null;
+    let pongTimer = null;
 
-userSocket.onopen = function() {
-    console.log('User WebSocket connected for alerts');
-};
+    function start() {
+        stop();
+        pingTimer = setInterval(function() {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+                pongTimer = setTimeout(function() {
+                    console.warn(label + ': no pong received, closing connection');
+                    ws.close(4000, 'Heartbeat timeout');
+                }, WS_HEARTBEAT_TIMEOUT);
+            }
+        }, WS_HEARTBEAT_INTERVAL);
+    }
 
-userSocket.onerror = function(e) {
-    console.error('User WebSocket error:', e);
-};
+    function onPong() {
+        if (pongTimer) {
+            clearTimeout(pongTimer);
+            pongTimer = null;
+        }
+    }
 
-userSocket.onclose = function(e) {
-    console.log('User WebSocket closed:', e);
-};
+    function stop() {
+        if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+        if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
+    }
+
+    return { start: start, onPong: onPong, stop: stop };
+}
+
+// --- Room Socket ---
+let socket = null;
+let roomHeartbeat = null;
+let roomReconnectAttempts = 0;
+let roomReconnectTimer = null;
+
+function connectRoomSocket() {
+    if (roomReconnectTimer) { clearTimeout(roomReconnectTimer); roomReconnectTimer = null; }
+
+    socket = new WebSocket(wsProtocol + '//' + window.location.host + '/ws/room/' + ROOM_ID + '/');
+    roomHeartbeat = createHeartbeat(socket, 'RoomSocket');
+
+    socket.onopen = function() {
+        console.log('Room WebSocket connected');
+        roomReconnectAttempts = 0;
+        roomHeartbeat.start();
+        socketWrapper.emit('join-room', {
+            room_id: ROOM_ID,
+            user_id: USER_ID,
+            username: username,
+            is_moderator: IS_MODERATOR
+        });
+        // Share participant info after join
+        setTimeout(function() {
+            socketWrapper.emit('share-info', {
+                user_id: USER_ID,
+                username: username,
+                is_moderator: IS_MODERATOR
+            });
+        }, 1000);
+    };
+
+    socket.onmessage = function(e) {
+        var data = JSON.parse(e.data);
+        if (data.type === 'pong') {
+            roomHeartbeat.onPong();
+            return;
+        }
+        if (data.type === 'newuserjoined' || data.type === 'share-info') {
+            socketWrapper.trigger(data.type, data);
+        } else {
+            socketWrapper.trigger(data.type, data.user_id || data.message || data.data || data);
+        }
+    };
+
+    socket.onerror = function(e) {
+        console.error('Room WebSocket error:', e);
+    };
+
+    socket.onclose = function(e) {
+        console.log('Room WebSocket closed:', e.code, e.reason);
+        roomHeartbeat.stop();
+        if (e.code !== 4029 && roomReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
+            var delay = WS_BASE_RECONNECT_DELAY * Math.pow(2, roomReconnectAttempts);
+            console.log('Room reconnecting in ' + delay + 'ms (attempt ' + (roomReconnectAttempts + 1) + ')');
+            roomReconnectTimer = setTimeout(function() {
+                roomReconnectAttempts++;
+                connectRoomSocket();
+            }, delay);
+        }
+    };
+
+    // Update global reference for moderator controls
+    window.socket = socket;
+}
+
+// --- User Socket ---
+let userSocket = null;
+let userHeartbeat = null;
+let userReconnectAttempts = 0;
+let userReconnectTimer = null;
+
+function connectUserSocket() {
+    if (userReconnectTimer) { clearTimeout(userReconnectTimer); userReconnectTimer = null; }
+
+    userSocket = new WebSocket(wsProtocol + '//' + window.location.host + '/ws/user/');
+    userHeartbeat = createHeartbeat(userSocket, 'UserSocket');
+
+    userSocket.onopen = function() {
+        console.log('User WebSocket connected for alerts');
+        userReconnectAttempts = 0;
+        userHeartbeat.start();
+    };
+
+    userSocket.onmessage = function(e) {
+        var data = JSON.parse(e.data);
+        if (data.type === 'pong') {
+            userHeartbeat.onPong();
+            return;
+        }
+        if (data.type === 'alert') {
+            console.log('Join request received from:', data.username, data.user_id);
+            showJoinRequestModal(data.user_id, data.username, data.room_id);
+        }
+    };
+
+    userSocket.onerror = function(e) {
+        console.error('User WebSocket error:', e);
+    };
+
+    userSocket.onclose = function(e) {
+        console.log('User WebSocket closed:', e.code, e.reason);
+        userHeartbeat.stop();
+        if (e.code !== 4029 && userReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
+            var delay = WS_BASE_RECONNECT_DELAY * Math.pow(2, userReconnectAttempts);
+            console.log('User socket reconnecting in ' + delay + 'ms (attempt ' + (userReconnectAttempts + 1) + ')');
+            userReconnectTimer = setTimeout(function() {
+                userReconnectAttempts++;
+                connectUserSocket();
+            }, delay);
+        }
+    };
+}
 
 // Socket wrapper to mimic Socket.io API
 const socketWrapper = {
@@ -27,7 +163,7 @@ const socketWrapper = {
         this.callbacks[event].push(callback);
     },
     emit: function(event, data, extraData) {
-        if (socket.readyState === WebSocket.OPEN) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
                 type: event,
                 data: typeof data === 'object' ? data : { value: data, extra: extraData }
@@ -41,33 +177,9 @@ const socketWrapper = {
     }
 };
 
-socket.onmessage = function(e) {
-    const data = JSON.parse(e.data);
-    // For events with user info, pass the full object
-    if (data.type === 'newuserjoined' || data.type === 'share-info') {
-        socketWrapper.trigger(data.type, data);
-    } else {
-        socketWrapper.trigger(data.type, data.user_id || data.message || data.data || data);
-    }
-};
-
-socket.onopen = function() {
-    console.log('WebSocket connected');
-    socketWrapper.emit('join-room', {
-        room_id: ROOM_ID,
-        user_id: USER_ID,
-        username: username,
-        is_moderator: IS_MODERATOR
-    });
-};
-
-socket.onerror = function(e) {
-    console.error('WebSocket error:', e);
-};
-
-socket.onclose = function(e) {
-    console.log('WebSocket closed:', e);
-};
+// Initialize both connections
+connectRoomSocket();
+connectUserSocket();
 
 // Video Elements
 const videoElement = document.getElementById('video-area');
@@ -841,21 +953,7 @@ socketWrapper.on('recording-stopped', (userId) => {
     }
 });
 
-// Host approval alert - listen on userSocket for pending user requests
-userSocket.onmessage = function(e) {
-    console.log('UserSocket message received:', e.data);
-    const data = JSON.parse(e.data);
-
-    if (data.type === 'alert') {
-        console.log('Join request received from:', data.username, data.user_id);
-        // Someone is requesting to join the meeting
-        showJoinRequestModal(data.user_id, data.username, data.room_id);
-    }
-};
-
-userSocket.onerror = function(e) {
-    console.error('User WebSocket error:', e);
-};
+// Host approval alerts are now handled inside connectUserSocket()
 
 // Show a nice modal for join requests instead of confirm()
 function showJoinRequestModal(userId, username, roomId) {
@@ -1034,16 +1132,7 @@ function showKickedOverlay() {
     document.body.appendChild(overlay);
 }
 
-// Share participant info when joining
-socket.addEventListener('open', () => {
-    setTimeout(() => {
-        socketWrapper.emit('share-info', {
-            user_id: USER_ID,
-            username: username,
-            is_moderator: IS_MODERATOR
-        });
-    }, 1000);
-});
+// Share participant info is handled inside connectRoomSocket() onopen
 
 // Listen for info requests
 socketWrapper.on('request-info', () => {
@@ -1555,6 +1644,14 @@ function cleanupAndLeave() {
     // Close peer connections
     if (myPeer) myPeer.destroy();
     if (myPeer2) myPeer2.destroy();
+
+    // Prevent reconnection attempts after intentional leave
+    roomReconnectAttempts = WS_MAX_RECONNECT_ATTEMPTS;
+    userReconnectAttempts = WS_MAX_RECONNECT_ATTEMPTS;
+    if (roomReconnectTimer) { clearTimeout(roomReconnectTimer); roomReconnectTimer = null; }
+    if (userReconnectTimer) { clearTimeout(userReconnectTimer); userReconnectTimer = null; }
+    if (roomHeartbeat) roomHeartbeat.stop();
+    if (userHeartbeat) userHeartbeat.stop();
 
     // Close WebSocket connections
     if (socket) socket.close();

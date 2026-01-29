@@ -57,6 +57,11 @@ class RoomConsumer(AsyncWebsocketConsumer):
             event_type = data.get('type')
             payload = data.get('data', {})
 
+            # Heartbeat: respond to ping immediately
+            if event_type == 'ping':
+                await self.send(text_data=json.dumps({'type': 'pong'}))
+                return
+
             if event_type == 'join-room':
                 await self.handle_join_room(payload)
             elif event_type == 'video-off':
@@ -432,6 +437,12 @@ class UserConsumer(AsyncWebsocketConsumer):
 
         try:
             data = json.loads(text_data)
+
+            # Heartbeat: respond to ping immediately
+            if data.get('type') == 'ping':
+                await self.send(text_data=json.dumps({'type': 'pong'}))
+                return
+
             # Allow guests to register their ID
             if data.get('type') == 'register':
                 guest_id = data.get('user_id')
