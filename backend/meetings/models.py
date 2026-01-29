@@ -47,6 +47,9 @@ class PersonalRoom(models.Model):
     class Meta:
         unique_together = ['user', 'organization']
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'is_active']),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.room_id:
@@ -114,6 +117,12 @@ class Meeting(models.Model):
 
     class Meta:
         ordering = ['-start_time']
+        indexes = [
+            models.Index(fields=['organization', 'start_time']),
+            models.Index(fields=['organization', 'is_private']),
+            models.Index(fields=['start_time']),
+            models.Index(fields=['created_at']),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.room_id:
@@ -150,6 +159,10 @@ class UserMeetingPacket(models.Model):
 
     class Meta:
         unique_together = ['user', 'room_id']
+        indexes = [
+            models.Index(fields=['room_id']),
+            models.Index(fields=['room_id', 'user']),
+        ]
 
     def __str__(self):
         return f"{self.user.username} - {self.room_id}"

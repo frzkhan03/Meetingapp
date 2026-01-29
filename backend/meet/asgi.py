@@ -23,13 +23,11 @@ security_logger = logging.getLogger('security')
 
 class WebSocketRateLimiter:
     """
-    Rate limiting for WebSocket connections.
-    Prevents DoS attacks via excessive connections.
+    Rate limiting for WebSocket connections using Redis cache.
+    Works correctly across multiple server instances.
     """
 
-    # Track connections per IP
-    _connections = {}
-    MAX_CONNECTIONS_PER_IP = 10
+    MAX_CONNECTIONS_PER_IP = 50  # Increased from 10 for corporate NAT support
 
     def __init__(self, inner):
         self.inner = inner
@@ -38,28 +36,42 @@ class WebSocketRateLimiter:
         if scope['type'] == 'websocket':
             client = scope.get('client', ['unknown', 0])
             ip = client[0]
-
-            # Count current connections from this IP
-            current_count = self._connections.get(ip, 0)
-
-            if current_count >= self.MAX_CONNECTIONS_PER_IP:
-                security_logger.warning(
-                    f'WebSocket rate limit exceeded for IP: {ip}'
-                )
-                await send({
-                    'type': 'websocket.close',
-                    'code': 4029  # Too many requests
-                })
-                return
-
-            # Increment connection count
-            self._connections[ip] = current_count + 1
+            cache_key = f'ws:conn:{ip}'
 
             try:
+                from django.core.cache import cache
+                current_count = cache.get(cache_key, 0)
+
+                if current_count >= self.MAX_CONNECTIONS_PER_IP:
+                    security_logger.warning(
+                        f'WebSocket rate limit exceeded for IP: {ip}'
+                    )
+                    await send({
+                        'type': 'websocket.close',
+                        'code': 4029  # Too many requests
+                    })
+                    return
+
+                # Increment with TTL (auto-cleanup after 1 hour)
+                try:
+                    cache.incr(cache_key)
+                except ValueError:
+                    cache.set(cache_key, 1, 3600)
+
+                try:
+                    return await self.inner(scope, receive, send)
+                finally:
+                    # Decrement on disconnect
+                    try:
+                        new_val = cache.decr(cache_key)
+                        if new_val <= 0:
+                            cache.delete(cache_key)
+                    except (ValueError, Exception):
+                        pass
+
+            except Exception:
+                # If Redis is down, allow the connection (fail open)
                 return await self.inner(scope, receive, send)
-            finally:
-                # Decrement on disconnect
-                self._connections[ip] = max(0, self._connections.get(ip, 1) - 1)
 
         return await self.inner(scope, receive, send)
 

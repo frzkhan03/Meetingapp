@@ -83,7 +83,7 @@ def meetings_list_view(request):
     meetings = Meeting.objects.filter(
         organization=request.organization,
         users=request.user
-    ).distinct().order_by('start_time')
+    ).select_related('author', 'organization').distinct().order_by('start_time')
 
     paginator = Paginator(meetings, 10)
     page_obj = paginator.get_page(request.GET.get('page', 1))
@@ -97,7 +97,7 @@ def meetings_list_view(request):
 
 @login_required
 def meeting_details_view(request, room_id):
-    meeting = get_object_or_404(Meeting, room_id=room_id)
+    meeting = get_object_or_404(Meeting.objects.select_related('organization', 'author'), room_id=room_id)
 
     # Check if user has access to this meeting's organization
     if request.user.is_authenticated:
@@ -115,7 +115,7 @@ def meeting_details_view(request, room_id):
 
 @login_required
 def start_meeting_view(request, room_id):
-    meeting = get_object_or_404(Meeting, room_id=room_id)
+    meeting = get_object_or_404(Meeting.objects.select_related('organization', 'author'), room_id=room_id)
 
     # Check if user has access to this meeting's organization
     org = meeting.organization
@@ -215,10 +215,14 @@ def organization_meetings_view(request):
 
     meetings = Meeting.objects.filter(
         organization=org
-    ).order_by('-start_time')
+    ).select_related('author').order_by('-start_time')
+
+    paginator = Paginator(meetings, 25)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
 
     return render(request, 'organization_meetings.html', {
-        'meetings': meetings,
+        'meetings': page_obj,
+        'page_obj': page_obj,
         'organization': org
     })
 

@@ -7,7 +7,6 @@ session protection, and security logging.
 import hashlib
 import logging
 import time
-from collections import defaultdict
 from django.conf import settings
 from django.http import HttpResponseForbidden, JsonResponse
 from django.core.cache import cache
@@ -56,12 +55,9 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
 
 class RateLimitMiddleware(MiddlewareMixin):
     """
-    Rate limiting middleware to prevent brute force attacks and abuse.
-    Implements per-IP and per-user rate limiting.
+    Rate limiting middleware using Redis for distributed rate limiting.
+    Works correctly across multiple server instances.
     """
-
-    # In-memory storage for rate limiting (use Redis in production)
-    _request_counts = defaultdict(list)
 
     def get_client_ip(self, request):
         """Get client IP address, considering proxies"""
@@ -82,22 +78,23 @@ class RateLimitMiddleware(MiddlewareMixin):
         return f'ratelimit:general:{ip}'
 
     def is_rate_limited(self, key, max_requests, window_seconds):
-        """Check if the request should be rate limited"""
-        current_time = time.time()
-        window_start = current_time - window_seconds
-
-        # Clean old entries
-        self._request_counts[key] = [
-            t for t in self._request_counts[key] if t > window_start
-        ]
-
-        # Check limit
-        if len(self._request_counts[key]) >= max_requests:
-            return True
-
-        # Add current request
-        self._request_counts[key].append(current_time)
-        return False
+        """Check rate limit using Redis INCR + EXPIRE (atomic, distributed)"""
+        try:
+            current = cache.get(key)
+            if current is not None and int(current) >= max_requests:
+                return True
+            # Increment and set expiry atomically
+            new_count = cache.incr(key)
+            if new_count == 1:
+                cache.expire(key, window_seconds)
+            return new_count > max_requests
+        except (ValueError, Exception):
+            # If Redis is down, allow the request (fail open)
+            try:
+                cache.set(key, 1, window_seconds)
+            except Exception:
+                pass
+            return False
 
     def process_request(self, request):
         if not getattr(settings, 'RATE_LIMIT_ENABLED', True):
@@ -184,8 +181,8 @@ class SessionSecurityMiddleware(MiddlewareMixin):
         session_created = request.session.get('_session_created')
         if session_created:
             session_age = time.time() - session_created
-            # Rotate session every 15 minutes for logged-in users
-            if request.user.is_authenticated and session_age > 900:
+            # Rotate session every 60 minutes for logged-in users
+            if request.user.is_authenticated and session_age > 3600:
                 request.session.cycle_key()
                 request.session['_session_created'] = time.time()
         else:

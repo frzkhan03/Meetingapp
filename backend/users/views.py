@@ -3,6 +3,7 @@ from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.db import IntegrityError
 from django.http import JsonResponse
 from django.utils.text import slugify
 from django.utils.crypto import get_random_string
@@ -11,6 +12,20 @@ from django.views.decorators.http import require_POST
 from .forms import RegisterForm, LoginForm, OrganizationForm
 from .models import Organization, OrganizationMembership, Profile
 from meetings.models import PersonalRoom
+
+
+def _create_unique_slug(base_name):
+    """Generate a unique organization slug, retrying on collision."""
+    base_slug = slugify(base_name)
+    slug = base_slug
+    counter = 1
+    while Organization.objects.filter(slug=slug).exists():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+        if counter > 20:
+            slug = f"{base_slug}-{get_random_string(6)}"
+            break
+    return slug
 
 
 def register_view(request):
@@ -30,13 +45,7 @@ def register_view(request):
             # Create or join organization
             if org_name:
                 # Create new organization
-                base_slug = slugify(org_name)
-                slug = base_slug
-                counter = 1
-                while Organization.objects.filter(slug=slug).exists():
-                    slug = f"{base_slug}-{counter}"
-                    counter += 1
-
+                slug = _create_unique_slug(org_name)
                 org = Organization.objects.create(
                     name=org_name,
                     slug=slug
@@ -55,13 +64,7 @@ def register_view(request):
                 profile.save()
             else:
                 # Create a personal organization
-                base_slug = slugify(f"{user.username}-org")
-                slug = base_slug
-                counter = 1
-                while Organization.objects.filter(slug=slug).exists():
-                    slug = f"{base_slug}-{counter}"
-                    counter += 1
-
+                slug = _create_unique_slug(f"{user.username}-org")
                 org = Organization.objects.create(
                     name=f"{user.username}'s Organization",
                     slug=slug
@@ -134,14 +137,7 @@ def organization_create_view(request):
         form = OrganizationForm(request.POST)
         if form.is_valid():
             org = form.save(commit=False)
-            # Generate unique slug
-            base_slug = slugify(org.name)
-            slug = base_slug
-            counter = 1
-            while Organization.objects.filter(slug=slug).exists():
-                slug = f"{base_slug}-{counter}"
-                counter += 1
-            org.slug = slug
+            org.slug = _create_unique_slug(org.name)
             org.save()
 
             # Add creator as owner
@@ -210,10 +206,13 @@ def organization_settings_view(request, org_id):
     paginator = Paginator(members_qs, 10)
     page_obj = paginator.get_page(request.GET.get('page', 1))
 
-    # Attach room links to each membership object for template access
+    # Attach room links — only load rooms for the current page of members
     base_url = request.build_absolute_uri('/')[:-1]
+    page_user_ids = [m.user_id for m in page_obj]
     rooms_by_user = {}
-    rooms = PersonalRoom.objects.filter(organization=org).select_related('user')
+    rooms = PersonalRoom.objects.filter(
+        organization=org, user_id__in=page_user_ids
+    ).select_related('user')
     for room in rooms:
         rooms_by_user[room.user_id] = room
 
@@ -259,8 +258,8 @@ def organization_add_member_view(request, org_id):
             return redirect('organization_settings', org_id=org.id)
 
         # Check if username already exists
-        if User.objects.filter(username__iexact=username).exists():
-            existing_user = User.objects.get(username__iexact=username)
+        existing_user = User.objects.filter(username__iexact=username).first()
+        if existing_user:
             if org.memberships.filter(user=existing_user).exists():
                 messages.warning(request, f'{username} is already a member of this organization.')
             else:

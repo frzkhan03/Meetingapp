@@ -51,7 +51,7 @@ SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access to session cookie
 SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
 SESSION_COOKIE_AGE = 3600  # 1 hour session timeout
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
-SESSION_SAVE_EVERY_REQUEST = True  # Refresh session on each request
+SESSION_SAVE_EVERY_REQUEST = False  # Only save when modified (was True — caused DB write on every request)
 
 CSRF_COOKIE_SECURE = PRODUCTION  # Only send CSRF cookie over HTTPS in production
 CSRF_COOKIE_HTTPONLY = False  # Must be False for JavaScript AJAX to read the token
@@ -126,6 +126,27 @@ TEMPLATES = [
 WSGI_APPLICATION = 'meet.wsgi.application'
 ASGI_APPLICATION = 'meet.asgi.application'
 
+# ==================== CACHING ====================
+# Redis cache for sessions, rate limiting, and application caching
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/1",
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'RETRY_ON_TIMEOUT': True,
+            'CONNECTION_POOL_KWARGS': {'max_connections': 50},
+        },
+        'KEY_PREFIX': 'pytalk',
+    }
+}
+
+# Use Redis-backed sessions instead of database sessions
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_CACHE_ALIAS = 'default'
+
 # Channel Layers - Redis for production, in-memory for development
 if PRODUCTION:
     CHANNEL_LAYERS = {
@@ -152,6 +173,10 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD', 'admin'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
+        'CONN_MAX_AGE': 600,  # Reuse connections for 10 minutes
+        'OPTIONS': {
+            'connect_timeout': 10,
+        },
     }
 }
 
