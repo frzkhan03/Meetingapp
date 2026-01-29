@@ -601,36 +601,6 @@ body {
     51%, 100% { opacity: 0.3; }
 }
 
-/* ===== WHITEBOARD / CANVAS ===== */
-#canvas-area {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 180;
-    display: none;
-}
-
-#canvas-area canvas {
-    border-radius: 16px;
-    box-shadow: 0 0 60px rgba(99, 102, 241, 0.3);
-    border: 2px solid var(--accent);
-}
-
-#colorPicker {
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 185;
-    width: 48px;
-    height: 48px;
-    border: 3px solid var(--border-light);
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
 /* ===== EMPTY STATE ===== */
 .empty-state {
     position: absolute;

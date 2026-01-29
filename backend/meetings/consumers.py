@@ -1,6 +1,5 @@
 import json
 import logging
-import time
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import User
@@ -12,8 +11,6 @@ logger = logging.getLogger(__name__)
 MAX_MESSAGE_SIZE = 65536
 # Maximum connections per room
 MAX_ROOM_CONNECTIONS = 500
-# Mouse event throttle: minimum interval in seconds between forwarded events
-MOUSE_THROTTLE_INTERVAL = 0.1  # 10 events/sec max per user
 
 
 class RoomConsumer(AsyncWebsocketConsumer):
@@ -27,8 +24,6 @@ class RoomConsumer(AsyncWebsocketConsumer):
             'user_id',
             str(self.scope['user'].id) if self.scope['user'].is_authenticated else None
         )
-        self._last_mouse_event = 0  # Throttle timestamp
-
         # Join room group
         await self.channel_layer.group_add(
             self.room_group_name,
@@ -75,14 +70,6 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 await self.handle_screen_share_off(payload)
             elif event_type == 'new-chat':
                 await self.handle_new_chat(payload)
-            elif event_type == 'whiteboardshared':
-                await self.handle_whiteboard_shared(payload)
-            elif event_type == 'whiteboardclosed':
-                await self.handle_whiteboard_closed(payload)
-            elif event_type in ('mouseup', 'mousedown', 'mousemove'):
-                await self.handle_mouse_event(event_type, payload)
-            elif event_type == 'colorchange':
-                await self.handle_color_change(payload)
             elif event_type == 'recording-started':
                 await self.handle_recording_started(payload)
             elif event_type == 'recording-stopped':
@@ -163,51 +150,6 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 'type': 'new_message',
                 'message': payload.get('message'),
                 'user_id': payload.get('user_id', self.user_id),
-                'sender_channel': self.channel_name
-            }
-        )
-
-    async def handle_whiteboard_shared(self, payload):
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                'type': 'whiteboard_shared',
-                'sender_channel': self.channel_name
-            }
-        )
-
-    async def handle_whiteboard_closed(self, payload):
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                'type': 'whiteboard_closed',
-                'sender_channel': self.channel_name
-            }
-        )
-
-    async def handle_mouse_event(self, event_type, payload):
-        # Throttle high-frequency mouse events (max 10/sec per user)
-        now = time.monotonic()
-        if event_type == 'mousemove' and (now - self._last_mouse_event) < MOUSE_THROTTLE_INTERVAL:
-            return  # Drop this event — too frequent
-        self._last_mouse_event = now
-
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                'type': 'mouse_event',
-                'event_type': event_type,
-                'event_data': payload,
-                'sender_channel': self.channel_name
-            }
-        )
-
-    async def handle_color_change(self, payload):
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                'type': 'color_change',
-                'color': payload.get('color'),
                 'sender_channel': self.channel_name
             }
         )
@@ -427,32 +369,6 @@ class RoomConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({
                 'type': 'newmessage',
                 'message': event['message']
-            }))
-
-    async def whiteboard_shared(self, event):
-        if self.channel_name != event['sender_channel']:
-            await self.send(text_data=json.dumps({
-                'type': 'whiteboardshared'
-            }))
-
-    async def whiteboard_closed(self, event):
-        if self.channel_name != event['sender_channel']:
-            await self.send(text_data=json.dumps({
-                'type': 'whiteboardclosed'
-            }))
-
-    async def mouse_event(self, event):
-        if self.channel_name != event['sender_channel']:
-            await self.send(text_data=json.dumps({
-                'type': event['event_type'],
-                'data': event['event_data']
-            }))
-
-    async def color_change(self, event):
-        if self.channel_name != event['sender_channel']:
-            await self.send(text_data=json.dumps({
-                'type': 'colorchange',
-                'color': event['color']
             }))
 
     async def recording_started(self, event):
