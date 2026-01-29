@@ -2,6 +2,7 @@ django>=4.2
 channels>=4.0
 channels-redis>=4.1  # Redis channel layer for production
 daphne>=4.0
+celery>=5.3  # Async task queue for background DB operations
 psycopg2-binary>=2.9
 python-dotenv>=1.0
 whitenoise>=6.6  # Static file serving in production

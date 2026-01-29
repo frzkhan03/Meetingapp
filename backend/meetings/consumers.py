@@ -1,9 +1,6 @@
 import json
 import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
-from channels.db import database_sync_to_async
-from django.contrib.auth.models import User
-from .models import UserMeetingPacket, Meeting
 
 logger = logging.getLogger(__name__)
 
@@ -199,8 +196,9 @@ class RoomConsumer(AsyncWebsocketConsumer):
         logger.info(f"Alert response: approved={approved}, user_id={requesting_user_id}")
 
         if approved:
-            # Create meeting packet to allow user access
-            await self.create_meeting_packet(requesting_user_id)
+            # Create meeting packet asynchronously via Celery task
+            from .tasks import create_meeting_packet
+            create_meeting_packet.delay(requesting_user_id, self.room_id)
 
         # Send response to the requesting user
         await self.channel_layer.group_send(
@@ -290,42 +288,6 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 'sender_channel': self.channel_name
             }
         )
-
-    @database_sync_to_async
-    def create_meeting_packet(self, user_id):
-        try:
-            # Check if it's a guest user (id starts with "guest_")
-            if str(user_id).startswith('guest_'):
-                return True
-
-            user = User.objects.get(id=user_id)
-
-            # Try to get meeting first, if not found, try personal room
-            try:
-                meeting = Meeting.objects.get(room_id=self.room_id)
-                UserMeetingPacket.objects.get_or_create(
-                    user=user,
-                    room_id=self.room_id,
-                    defaults={
-                        'author': meeting.author,
-                        'meeting': meeting,
-                        'meeting_name': meeting.name
-                    }
-                )
-            except Meeting.DoesNotExist:
-                from .models import PersonalRoom
-                personal_room = PersonalRoom.objects.get(room_id=self.room_id)
-                UserMeetingPacket.objects.get_or_create(
-                    user=user,
-                    room_id=self.room_id,
-                    defaults={
-                        'author': personal_room.user,
-                        'meeting': None,
-                        'meeting_name': personal_room.room_name
-                    }
-                )
-        except Exception as e:
-            logger.exception(f"Error creating meeting packet: {e}")
 
     # Message senders (called by channel_layer.group_send)
     async def new_user_joined(self, event):

@@ -127,25 +127,34 @@ WSGI_APPLICATION = 'meet.wsgi.application'
 ASGI_APPLICATION = 'meet.asgi.application'
 
 # ==================== CACHING ====================
-# Redis cache for sessions, rate limiting, and application caching
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/1",
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'SOCKET_CONNECT_TIMEOUT': 5,
-            'SOCKET_TIMEOUT': 5,
-            'RETRY_ON_TIMEOUT': True,
-            'CONNECTION_POOL_KWARGS': {'max_connections': 50},
-        },
-        'KEY_PREFIX': 'pytalk',
+if PRODUCTION:
+    # Redis cache for sessions, rate limiting, and application caching
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/1",
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'SOCKET_CONNECT_TIMEOUT': 5,
+                'SOCKET_TIMEOUT': 5,
+                'RETRY_ON_TIMEOUT': True,
+                'CONNECTION_POOL_KWARGS': {'max_connections': 50},
+            },
+            'KEY_PREFIX': 'pytalk',
+        }
     }
-}
-
-# Use Redis-backed sessions instead of database sessions
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
-SESSION_CACHE_ALIAS = 'default'
+    # Use Redis-backed sessions instead of database sessions
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+    SESSION_CACHE_ALIAS = 'default'
+else:
+    # Local development: use in-memory cache and database sessions
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'pytalk-dev',
+        }
+    }
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 
 # Channel Layers - Redis for production, in-memory for development
 if PRODUCTION:
@@ -323,6 +332,23 @@ ADMIN_URL = os.getenv('ADMIN_URL', 'secure-admin/')  # Custom admin URL
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024  # 5 MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024  # 5 MB
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
+
+# ==================== CELERY TASK QUEUE ====================
+if PRODUCTION:
+    CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/2"
+    CELERY_RESULT_BACKEND = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/3"
+else:
+    # In development without Redis, execute tasks synchronously in-process
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
+
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30  # Hard limit: 30 seconds per task
+CELERY_TASK_SOFT_TIME_LIMIT = 25  # Soft limit: raise SoftTimeLimitExceeded
 
 # ==================== WEBSOCKET SECURITY ====================
 WEBSOCKET_ALLOWED_ORIGINS = os.getenv(
