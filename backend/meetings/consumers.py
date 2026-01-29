@@ -181,6 +181,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 'type': 'new_message',
                 'message': payload.get('message'),
                 'user_id': payload.get('user_id', self.user_id),
+                'username': payload.get('username', ''),
                 'sender_channel': self.channel_name
             }
         )
@@ -364,7 +365,9 @@ class RoomConsumer(AsyncWebsocketConsumer):
         if self.channel_name != event['sender_channel']:
             await self.send(text_data=json.dumps({
                 'type': 'newmessage',
-                'message': event['message']
+                'message': event['message'],
+                'user_id': event.get('user_id', ''),
+                'username': event.get('username', '')
             }))
 
     async def recording_started(self, event):

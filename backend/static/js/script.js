@@ -77,7 +77,7 @@ function connectRoomSocket() {
             roomHeartbeat.onPong();
             return;
         }
-        if (data.type === 'newuserjoined' || data.type === 'share-info') {
+        if (data.type === 'newuserjoined' || data.type === 'share-info' || data.type === 'newmessage') {
             socketWrapper.trigger(data.type, data);
         } else {
             socketWrapper.trigger(data.type, data.user_id || data.message || data.data || data);
@@ -348,15 +348,19 @@ socketWrapper.on('user-disconnected', async (userId) => {
     }
 });
 
-socketWrapper.on('newmessage', (message) => displaychat(message, 0));
+socketWrapper.on('newmessage', (data) => {
+    const msg = typeof data === 'object' ? data.message : data;
+    const senderName = (typeof data === 'object' && data.username) ? data.username : '';
+    displaychat(msg, 0, senderName);
+});
 
 // Chat functionality
 const submit = document.getElementById('submit');
 submit.addEventListener('click', async () => {
     const text = document.getElementById('chatbox');
     if (text.value.trim()) {
-        displaychat(text.value, 1);
-        socketWrapper.emit('new-chat', { message: text.value, room_id: ROOM_ID });
+        displaychat(text.value, 1, username);
+        socketWrapper.emit('new-chat', { message: text.value, room_id: ROOM_ID, user_id: USER_ID, username: username });
         text.value = '';
     }
 });
@@ -378,10 +382,22 @@ function displayNewUser(userId) {
     updateParticipantCount();
 }
 
-function displaychat(chat, sender) {
+function displaychat(chat, sender, senderName) {
     const message = document.createElement('div');
     message.setAttribute('class', sender ? 'chat-display-sender' : 'chat-display');
-    message.textContent = chat;
+
+    if (senderName) {
+        const nameEl = document.createElement('span');
+        nameEl.className = 'chat-sender-name';
+        nameEl.textContent = sender ? 'You' : senderName;
+        message.appendChild(nameEl);
+    }
+
+    const textEl = document.createElement('span');
+    textEl.className = 'chat-text';
+    textEl.textContent = chat;
+    message.appendChild(textEl);
+
     const messageArea = document.getElementById('message-area');
     messageArea.appendChild(message);
     messageArea.scrollTop = messageArea.scrollHeight;
