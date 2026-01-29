@@ -1,0 +1,878 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ organization.name }} Settings - PyTalk{% endblock %}
+
+{% block extra_css %}
+<style>
+    .nav-tabs-custom {
+        border-bottom: 1px solid var(--border-color);
+        gap: 0.5rem;
+    }
+
+    .nav-tabs-custom .nav-link {
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        padding: 1rem 1.5rem;
+        color: var(--text-secondary);
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .nav-tabs-custom .nav-link:hover {
+        color: var(--text-primary);
+        border-bottom-color: var(--border-color);
+        background: transparent;
+    }
+
+    .nav-tabs-custom .nav-link.active {
+        color: var(--accent-primary);
+        border-bottom-color: var(--accent-primary);
+        background: transparent;
+    }
+
+    .tab-content {
+        padding-top: 1.5rem;
+    }
+
+    /* Modal Styling */
+    .modal-content {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+    }
+
+    .modal-header {
+        border-bottom: 1px solid var(--border-color);
+        padding: 1.25rem 1.5rem;
+    }
+
+    .modal-header .modal-title {
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+
+    .modal-header .btn-close {
+        filter: var(--toggler-filter);
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+    }
+
+    .modal-footer {
+        border-top: 1px solid var(--border-color);
+        padding: 1rem 1.5rem;
+    }
+
+    .members-list.list-group {
+        overflow: visible;
+    }
+
+    .member-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem;
+        border-radius: var(--radius-md);
+        transition: background 0.2s ease;
+    }
+
+    .member-row:hover {
+        background: var(--bg-hover);
+    }
+
+    .member-info {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .member-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--accent-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        color: white;
+    }
+
+    .member-details h6 {
+        margin: 0;
+        color: var(--text-primary);
+    }
+
+    .member-details small {
+        color: var(--text-muted);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+    }
+
+    .empty-state svg {
+        color: var(--text-muted);
+        margin-bottom: 1rem;
+    }
+
+    .member-actions-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .member-actions .dropdown-toggle {
+        background: none;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 6px 8px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        line-height: 1;
+    }
+
+    .member-actions .dropdown-toggle:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+
+    .member-actions .dropdown-toggle::after {
+        display: none;
+    }
+
+    .member-actions .dropdown-menu {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        padding: 0.5rem;
+        min-width: 220px;
+    }
+
+    .member-actions .dropdown-item {
+        color: var(--text-primary);
+        border-radius: var(--radius-sm, 8px);
+        padding: 0.5rem 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .member-actions .dropdown-item:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+
+    .member-actions .dropdown-item-warning {
+        color: #f59e0b;
+    }
+
+    .member-actions .dropdown-item-warning:hover {
+        background: rgba(245, 158, 11, 0.1);
+        color: #f59e0b;
+    }
+
+    .member-actions .dropdown-item-danger {
+        color: #ef4444;
+    }
+
+    .member-actions .dropdown-item-danger:hover {
+        background: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+    }
+
+    .member-actions .dropdown-item svg {
+        flex-shrink: 0;
+    }
+
+    .member-actions .dropdown-divider {
+        border-color: var(--border-color);
+        margin: 0.25rem 0;
+    }
+
+    .member-search-bar {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .member-search-bar .form-control {
+        background: var(--bg-primary);
+        border-color: var(--border-color);
+        color: var(--text-primary);
+    }
+
+    .member-search-bar .form-control::placeholder {
+        color: var(--text-muted);
+    }
+
+    .member-deactivated {
+        opacity: 0.55;
+    }
+
+    .avatar-deactivated {
+        background: var(--text-muted) !important;
+    }
+
+    .password-display {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--bg-secondary, #1a1a24);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 0.75rem 1rem;
+        font-family: monospace;
+        font-size: 1.1rem;
+        letter-spacing: 1px;
+    }
+
+    .password-display code {
+        flex: 1;
+        color: var(--accent-primary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-lg-10 mx-auto">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="mb-1">{{ organization.name }}</h2>
+                    <p class="text-secondary mb-0">Organization Settings</p>
+                </div>
+                <a href="{% url 'organization_list' %}" class="btn btn-outline-secondary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                        <line x1="19" y1="12" x2="5" y2="12"/>
+                        <polyline points="12 19 5 12 12 5"/>
+                    </svg>
+                    Back
+                </a>
+            </div>
+
+            <!-- Tabs Navigation -->
+            <ul class="nav nav-tabs-custom" id="orgTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="details-tab" data-bs-toggle="tab" data-bs-target="#details" type="button" role="tab">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                        Organization Details
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="members-tab" data-bs-toggle="tab" data-bs-target="#members" type="button" role="tab">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        Members
+                        <span class="badge bg-secondary ms-2">{{ total_members }}</span>
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="orgTabsContent">
+                <!-- Organization Details Tab -->
+                <div class="tab-pane fade show active" id="details" role="tabpanel">
+                    <div class="card">
+                        <div class="card-body">
+                            <form method="post">
+                                {% csrf_token %}
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="name" class="form-label">Organization Name</label>
+                                        <input type="text" class="form-control" id="name" name="name"
+                                               value="{{ organization.name }}" {% if not is_owner %}disabled{% endif %}>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Organization ID</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" value="{{ organization.id }}" id="orgId" disabled>
+                                            <button type="button" class="btn btn-outline-secondary" onclick="copyOrgId(this)">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Created</label>
+                                        <input type="text" class="form-control" value="{{ organization.created_at|date:'M d, Y' }}" disabled>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Total Members</label>
+                                        <input type="text" class="form-control" value="{{ members|length }}" disabled>
+                                    </div>
+                                </div>
+                                {% if is_owner %}
+                                <div class="mt-3">
+                                    <button type="submit" class="btn btn-primary">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                            <polyline points="17 21 17 13 7 13 7 21"/>
+                                            <polyline points="7 3 7 8 15 8"/>
+                                        </svg>
+                                        Save Changes
+                                    </button>
+                                </div>
+                                {% endif %}
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Members Tab -->
+                <div class="tab-pane fade" id="members" role="tabpanel">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Team Members</h5>
+                            {% if is_owner or is_admin %}
+                            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addMemberModal">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                    <circle cx="8.5" cy="7" r="4"/>
+                                    <line x1="20" y1="8" x2="20" y2="14"/>
+                                    <line x1="23" y1="11" x2="17" y2="11"/>
+                                </svg>
+                                Add Member
+                            </button>
+                            {% endif %}
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="member-search-bar">
+                                <form method="get" action="" id="memberSearchForm" class="d-flex gap-2">
+                                    <div class="input-group">
+                                        <span class="input-group-text" style="background: var(--bg-card); border-color: var(--border-color);">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-muted);">
+                                                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                            </svg>
+                                        </span>
+                                        <input type="text" class="form-control" id="memberSearchInput" name="q" placeholder="Search members..." value="{{ search_query }}" autocomplete="off">
+                                    </div>
+                                    {% if search_query %}
+                                    <a href="?" class="btn btn-outline-secondary" title="Clear search">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                        </svg>
+                                    </a>
+                                    {% endif %}
+                                </form>
+                            </div>
+                            {% if members %}
+                            <div class="list-group list-group-flush members-list">
+                                {% for membership in members %}
+                                <div class="member-row{% if not membership.is_active %} member-deactivated{% endif %}" data-username="{{ membership.user.username|lower }}">
+                                    <div class="member-info">
+                                        <div class="member-avatar{% if not membership.is_active %} avatar-deactivated{% endif %}">
+                                            {{ membership.user.username|make_list|first|upper }}
+                                        </div>
+                                        <div class="member-details">
+                                            <h6>
+                                                {{ membership.user.username }}
+                                                {% if membership.user == request.user %}
+                                                    <span class="badge bg-secondary ms-1">You</span>
+                                                {% endif %}
+                                                {% if not membership.is_active %}
+                                                    <span class="badge bg-warning text-dark ms-1">Deactivated</span>
+                                                {% endif %}
+                                            </h6>
+                                            <small>Joined {{ membership.joined_at|date:"M d, Y" }}</small>
+                                        </div>
+                                    </div>
+                                    <div class="member-actions-wrapper">
+                                        {% if membership.role == 'owner' %}
+                                            <span class="badge bg-primary">Owner</span>
+                                        {% elif membership.role == 'admin' %}
+                                            <span class="badge bg-info">Admin</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Member</span>
+                                        {% endif %}
+                                        {% if is_admin and membership.user != request.user %}
+                                        <div class="member-actions dropdown">
+                                            <button class="dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+                                                </svg>
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end">
+                                                {% if membership.moderator_link %}
+                                                <li>
+                                                    <a class="dropdown-item" href="#" onclick="copyMemberLink('{{ membership.moderator_link }}', this); return false;">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                                                            <polyline points="10 17 15 12 10 7"/>
+                                                            <line x1="15" y1="12" x2="3" y2="12"/>
+                                                        </svg>
+                                                        Copy Moderator Link
+                                                    </a>
+                                                </li>
+                                                <li>
+                                                    <a class="dropdown-item" href="#" onclick="copyMemberLink('{{ membership.attendee_link }}', this); return false;">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                                                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                                                        </svg>
+                                                        Copy Participant Link
+                                                    </a>
+                                                </li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                {% endif %}
+                                                <li>
+                                                    <a class="dropdown-item" href="#" onclick="resetPassword('{{ organization.id }}', {{ membership.user.id }}, '{{ membership.user.username }}'); return false;">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                                        </svg>
+                                                        Reset Password
+                                                    </a>
+                                                </li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
+                                                    {% if membership.is_active %}
+                                                    <a class="dropdown-item dropdown-item-warning" href="#" onclick="deactivateMember('{{ organization.id }}', {{ membership.user.id }}, '{{ membership.user.username }}'); return false;">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                                            <circle cx="8.5" cy="7" r="4"/>
+                                                            <line x1="18" y1="8" x2="23" y2="13"/>
+                                                            <line x1="23" y1="8" x2="18" y2="13"/>
+                                                        </svg>
+                                                        Deactivate Member
+                                                    </a>
+                                                    {% else %}
+                                                    <a class="dropdown-item" href="#" onclick="activateMember('{{ organization.id }}', {{ membership.user.id }}, '{{ membership.user.username }}'); return false;" style="color: #22c55e;">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                                            <circle cx="8.5" cy="7" r="4"/>
+                                                            <polyline points="17 11 19 13 23 9"/>
+                                                        </svg>
+                                                        Activate Member
+                                                    </a>
+                                                    {% endif %}
+                                                </li>
+                                                <li>
+                                                    <a class="dropdown-item dropdown-item-danger" href="#" onclick="deleteMember('{{ organization.id }}', {{ membership.user.id }}, '{{ membership.user.username }}'); return false;">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                            <polyline points="3 6 5 6 21 6"/>
+                                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                            <line x1="10" y1="11" x2="10" y2="17"/>
+                                                            <line x1="14" y1="11" x2="14" y2="17"/>
+                                                        </svg>
+                                                        Delete Member
+                                                    </a>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <div class="empty-state">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                    <circle cx="9" cy="7" r="4"/>
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                </svg>
+                                <p class="text-muted mb-0">No members yet</p>
+                            </div>
+                            {% endif %}
+                            {% include 'includes/pagination.html' with page_obj=page_obj %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Member Modal -->
+<div class="modal fade" id="addMemberModal" tabindex="-1" aria-labelledby="addMemberModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addMemberModalLabel">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="8.5" cy="7" r="4"/>
+                        <line x1="20" y1="8" x2="20" y2="14"/>
+                        <line x1="23" y1="11" x2="17" y2="11"/>
+                    </svg>
+                    Add New Member
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="{% url 'organization_add_member' organization.id %}" id="addMemberForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" name="username"
+                               placeholder="Enter username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email Address</label>
+                        <input type="email" class="form-control" id="email" name="email"
+                               placeholder="Enter email address" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="role" class="form-label">Role</label>
+                        <select class="form-select" id="role" name="role">
+                            <option value="member">Member - Can join meetings</option>
+                            <option value="admin">Admin - Can manage members</option>
+                        </select>
+                    </div>
+                    <div class="alert alert-info mb-0">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="16" x2="12" y2="12"/>
+                            <line x1="12" y1="8" x2="12.01" y2="8"/>
+                        </svg>
+                        A new account will be created with a temporary password. A personal meeting room will also be created.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        Add Member
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Reset Password Confirm Modal -->
+<div class="modal fade" id="resetConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    Reset Password
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to reset the password for <strong id="confirmUsername"></strong>?</p>
+                <p class="text-muted mb-0" style="font-size: 0.85rem;">This will generate a new temporary password. The user's current password will stop working.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmResetBtn">Reset Password</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reset Password Result Modal -->
+<div class="modal fade" id="resetPasswordModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    Password Reset
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="resetResultSuccess">
+                    <p class="mb-2">New password for <strong id="resetUsername"></strong>:</p>
+                    <div class="password-display">
+                        <code id="newPasswordText"></code>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyPassword(this)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="alert alert-warning mt-3 mb-0" style="font-size: 0.85rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        Share this password securely. The user should change it after first login.
+                    </div>
+                </div>
+                <div id="resetResultError" style="display: none;">
+                    <div class="alert alert-danger mb-0">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                            <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                        </svg>
+                        <span id="resetErrorText"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Confirm Modal (reusable for deactivate/delete) -->
+<div class="modal fade" id="actionConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="actionConfirmTitle"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="actionConfirmMessage"></p>
+                <p id="actionConfirmWarning" class="text-muted mb-0" style="font-size: 0.85rem;"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn" id="actionConfirmBtn"></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showCopyFeedback(btn, size) {
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+    setTimeout(() => { btn.innerHTML = originalHTML; }, 1500);
+}
+
+function copyOrgId(btn) {
+    const orgId = document.getElementById('orgId').value;
+    navigator.clipboard.writeText(orgId).then(() => showCopyFeedback(btn, 16));
+}
+
+function copyMemberLink(link, el) {
+    navigator.clipboard.writeText(link).then(function() {
+        const originalText = el.textContent.trim();
+        const svgHTML = el.querySelector('svg').outerHTML;
+        el.innerHTML = svgHTML + ' Copied!';
+        setTimeout(() => {
+            el.innerHTML = svgHTML + ' ' + originalText;
+        }, 1500);
+    });
+}
+
+function resetPassword(orgId, userId, username) {
+    document.getElementById('confirmUsername').textContent = username;
+
+    const confirmModal = new bootstrap.Modal(document.getElementById('resetConfirmModal'));
+    const confirmBtn = document.getElementById('confirmResetBtn');
+
+    // Remove any previous listener by replacing the button
+    const newBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
+
+    newBtn.addEventListener('click', function() {
+        confirmModal.hide();
+        performReset(orgId, userId);
+    });
+
+    confirmModal.show();
+}
+
+function performReset(orgId, userId) {
+    fetch('/user/organizations/' + orgId + '/reset-password/' + userId + '/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const successEl = document.getElementById('resetResultSuccess');
+        const errorEl = document.getElementById('resetResultError');
+
+        if (data.error) {
+            successEl.style.display = 'none';
+            errorEl.style.display = 'block';
+            document.getElementById('resetErrorText').textContent = data.error;
+        } else {
+            successEl.style.display = 'block';
+            errorEl.style.display = 'none';
+            document.getElementById('resetUsername').textContent = data.username;
+            document.getElementById('newPasswordText').textContent = data.password;
+        }
+        new bootstrap.Modal(document.getElementById('resetPasswordModal')).show();
+    })
+    .catch(() => {
+        const successEl = document.getElementById('resetResultSuccess');
+        const errorEl = document.getElementById('resetResultError');
+        successEl.style.display = 'none';
+        errorEl.style.display = 'block';
+        document.getElementById('resetErrorText').textContent = 'Failed to reset password. Please try again.';
+        new bootstrap.Modal(document.getElementById('resetPasswordModal')).show();
+    });
+}
+
+function copyPassword(btn) {
+    const password = document.getElementById('newPasswordText').textContent;
+    navigator.clipboard.writeText(password).then(() => showCopyFeedback(btn, 14));
+}
+
+function showActionConfirm(title, message, warning, btnText, btnClass, onConfirm) {
+    document.getElementById('actionConfirmTitle').textContent = title;
+    document.getElementById('actionConfirmMessage').innerHTML = message;
+    document.getElementById('actionConfirmWarning').textContent = warning;
+
+    const confirmBtn = document.getElementById('actionConfirmBtn');
+    const newBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
+
+    newBtn.className = 'btn ' + btnClass;
+    newBtn.textContent = btnText;
+
+    const modal = new bootstrap.Modal(document.getElementById('actionConfirmModal'));
+
+    newBtn.addEventListener('click', function() {
+        modal.hide();
+        onConfirm();
+    });
+
+    modal.show();
+}
+
+function postAction(url, onSuccess, onError) {
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showActionConfirm('Error', data.error, '', 'OK', 'btn-primary', function() {});
+        } else {
+            onSuccess(data);
+        }
+    })
+    .catch(() => {
+        showActionConfirm('Error', 'Something went wrong. Please try again.', '', 'OK', 'btn-primary', function() {});
+    });
+}
+
+function deactivateMember(orgId, userId, username) {
+    showActionConfirm(
+        'Deactivate Member',
+        'Are you sure you want to deactivate <strong>' + username + '</strong>?',
+        'This member will no longer be able to access the organization. You can reactivate them later.',
+        'Deactivate',
+        'btn-warning',
+        function() {
+            postAction(
+                '/user/organizations/' + orgId + '/deactivate-member/' + userId + '/',
+                function() { reloadToMembers(); }
+            );
+        }
+    );
+}
+
+function activateMember(orgId, userId, username) {
+    showActionConfirm(
+        'Activate Member',
+        'Reactivate <strong>' + username + '</strong>?',
+        'This member will regain access to the organization.',
+        'Activate',
+        'btn-success',
+        function() {
+            postAction(
+                '/user/organizations/' + orgId + '/deactivate-member/' + userId + '/',
+                function() { reloadToMembers(); }
+            );
+        }
+    );
+}
+
+function deleteMember(orgId, userId, username) {
+    showActionConfirm(
+        'Delete Member',
+        'Are you sure you want to permanently delete <strong>' + username + '</strong>?',
+        'This will permanently delete their account, all their data, meetings, and room links. This action cannot be undone.',
+        'Delete',
+        'btn-danger',
+        function() {
+            postAction(
+                '/user/organizations/' + orgId + '/delete-member/' + userId + '/',
+                function() { reloadToMembers(); }
+            );
+        }
+    );
+}
+
+function reloadToMembers() {
+    window.location.hash = 'members';
+    window.location.reload();
+}
+
+// Auto-activate Members tab when paginating, searching, or returning from an action
+var urlParams = new URLSearchParams(window.location.search);
+if (urlParams.has('page') || urlParams.has('q') || window.location.hash === '#members') {
+    var membersTab = new bootstrap.Tab(document.getElementById('members-tab'));
+    membersTab.show();
+}
+
+// Real-time member search
+document.getElementById('memberSearchInput').addEventListener('input', function() {
+    var query = this.value.toLowerCase().trim();
+    var rows = document.querySelectorAll('.member-row[data-username]');
+    var visibleCount = 0;
+
+    rows.forEach(function(row) {
+        var username = row.getAttribute('data-username');
+        if (!query || username.indexOf(query) !== -1) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    // Show/hide no results message
+    var noResults = document.getElementById('memberSearchNoResults');
+    if (visibleCount === 0 && query) {
+        if (!noResults) {
+            noResults = document.createElement('div');
+            noResults.id = 'memberSearchNoResults';
+            noResults.className = 'text-center py-4';
+            noResults.innerHTML = '<p class="text-muted mb-0">No members found matching "<strong>' + query + '</strong>"</p>';
+            document.querySelector('.members-list').appendChild(noResults);
+        } else {
+            noResults.innerHTML = '<p class="text-muted mb-0">No members found matching "<strong>' + query + '</strong>"</p>';
+            noResults.style.display = '';
+        }
+    } else if (noResults) {
+        noResults.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

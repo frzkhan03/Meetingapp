@@ -1,0 +1,110 @@
+{% if page_obj.paginator.num_pages > 1 %}
+<nav class="pagination-nav" aria-label="Page navigation">
+    <div class="pagination-info">
+        Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }}
+    </div>
+    <ul class="pagination-controls">
+        {% if page_obj.has_previous %}
+        <li>
+            <a href="#" class="page-btn" data-page="{{ page_obj.previous_page_number }}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+            </a>
+        </li>
+        {% endif %}
+
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+            <li><a href="#" class="page-btn active" data-page="{{ num }}">{{ num }}</a></li>
+            {% elif num == 1 or num == page_obj.paginator.num_pages or num >= page_obj.number|add:"-2" and num <= page_obj.number|add:"2" %}
+            <li><a href="#" class="page-btn" data-page="{{ num }}">{{ num }}</a></li>
+            {% elif num == page_obj.number|add:"-3" or num == page_obj.number|add:"3" %}
+            <li><span class="page-ellipsis">...</span></li>
+            {% endif %}
+        {% endfor %}
+
+        {% if page_obj.has_next %}
+        <li>
+            <a href="#" class="page-btn" data-page="{{ page_obj.next_page_number }}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+
+<style>
+    .pagination-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .pagination-info {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .pagination-controls {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .page-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 36px;
+        height: 36px;
+        padding: 0 8px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        text-decoration: none;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+    }
+
+    .page-btn:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+
+    .page-btn.active {
+        background: var(--accent-primary);
+        color: white;
+        border-color: var(--accent-primary);
+    }
+
+    .page-ellipsis {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 36px;
+        height: 36px;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+    }
+</style>
+
+<script>
+document.querySelectorAll('.page-btn[data-page]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var params = new URLSearchParams(window.location.search);
+        params.set('page', this.dataset.page);
+        window.location.search = params.toString();
+    });
+});
+</script>
+{% endif %}

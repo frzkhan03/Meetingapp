@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Sign In - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <div class="card fade-in">
+                <div class="card-header text-center">
+                    <h3>Welcome back</h3>
+                    <p class="text-secondary mb-0">Sign in to continue to PyTalk</p>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="mb-4">
+                            <label for="id_username" class="form-label">Username</label>
+                            {{ form.username }}
+                        </div>
+                        <div class="mb-4">
+                            <label for="id_password" class="form-label">Password</label>
+                            {{ form.password }}
+                        </div>
+                        <div class="d-grid mb-4">
+                            <button type="submit" class="btn btn-primary btn-lg">Sign In</button>
+                        </div>
+                    </form>
+                    <div class="text-center">
+                        <span class="text-secondary">Don't have an account?</span>
+                        <a href="{% url 'register' %}" class="ms-1">Create one</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

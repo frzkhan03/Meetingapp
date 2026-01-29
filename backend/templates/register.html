@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}Get Started - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <div class="card fade-in">
+                <div class="card-header text-center">
+                    <h3>Create your account</h3>
+                    <p class="text-secondary mb-0">Join PyTalk and start connecting</p>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label for="id_username" class="form-label">Username</label>
+                            {{ form.username }}
+                            {% if form.username.errors %}
+                                <small class="text-danger">{{ form.username.errors.0 }}</small>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="id_email" class="form-label">Email</label>
+                            {{ form.email }}
+                            {% if form.email.errors %}
+                                <small class="text-danger">{{ form.email.errors.0 }}</small>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="id_password1" class="form-label">Password</label>
+                            {{ form.password1 }}
+                            {% if form.password1.errors %}
+                                <small class="text-danger">{{ form.password1.errors.0 }}</small>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="id_password2" class="form-label">Confirm Password</label>
+                            {{ form.password2 }}
+                            {% if form.password2.errors %}
+                                <small class="text-danger">{{ form.password2.errors.0 }}</small>
+                            {% endif %}
+                        </div>
+                        <hr class="my-4">
+                        <div class="mb-4">
+                            <label for="organization_name" class="form-label">Organization Name <span class="text-muted">(optional)</span></label>
+                            <input type="text" class="form-control" id="organization_name" name="organization_name"
+                                   placeholder="e.g., Acme Inc.">
+                            <div class="form-text">Create a new organization or leave blank for a personal workspace.</div>
+                        </div>
+                        <div class="d-grid mb-4">
+                            <button type="submit" class="btn btn-primary btn-lg">Create Account</button>
+                        </div>
+                    </form>
+                    <div class="text-center">
+                        <span class="text-secondary">Already have an account?</span>
+                        <a href="{% url 'login' %}" class="ms-1">Sign in</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

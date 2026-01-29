@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+
+{% block title %}Joining Meeting - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5 text-center">
+            <div class="card fade-in">
+                <div class="card-body py-5">
+                    <div class="mb-4">
+                        <div class="spinner-border" style="width: 3rem; height: 3rem;" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                    <h3 class="mb-2">Waiting for Host</h3>
+                    <p class="text-secondary mb-4">
+                        The host will let you in soon. Please wait...
+                    </p>
+                    <div id="status-message" class="mb-3"></div>
+                    <a href="{% url 'home' %}" class="btn btn-outline-secondary">
+                        Cancel
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const roomId = "{{ room_id }}";
+    const authorId = "{{ author_id }}";
+    const userId = "{{ user_id }}";
+    const username = "{{ username }}";
+
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const userSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/user/`);
+    const roomSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/room/${roomId}/`);
+
+    userSocket.onopen = function() {
+        // Register guest ID if it's a guest user
+        if (userId.startsWith('guest_')) {
+            userSocket.send(JSON.stringify({
+                type: 'register',
+                user_id: userId
+            }));
+        }
+    };
+
+    roomSocket.onopen = function() {
+        roomSocket.send(JSON.stringify({
+            type: 'alert',
+            data: {
+                author_id: authorId,
+                user_id: userId,
+                username: username
+            }
+        }));
+    };
+
+    const pendingToken = "{{ pending_token|default:'' }}";
+
+    userSocket.onmessage = async function(e) {
+        const data = JSON.parse(e.data);
+        console.log('UserSocket received:', data);
+
+        if (data.type === 'registered') {
+            console.log('Successfully registered for notifications as:', data.user_id);
+        }
+
+        if (data.type === 'alert-response') {
+            if (data.approved) {
+                document.getElementById('status-message').innerHTML =
+                    '<div class="alert alert-success">Approved! Joining meeting...</div>';
+
+                // Mark as approved in session before redirecting (for guests)
+                if (pendingToken && userId.startsWith('guest_')) {
+                    try {
+                        await fetch('/meeting/room/' + roomId + '/mark-approved/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCookie('csrftoken')
+                            }
+                        });
+                    } catch (err) {
+                        console.error('Error marking approval:', err);
+                    }
+                }
+
+                setTimeout(() => {
+                    // If we have a token, it's a personal room - redirect with token
+                    if (pendingToken) {
+                        window.location.href = '/meeting/room/' + roomId + '/join/?token=' + pendingToken;
+                    } else {
+                        window.location.href = '/meeting/startmeeting/' + roomId + '/';
+                    }
+                }, 1000);
+            } else {
+                document.getElementById('status-message').innerHTML =
+                    '<div class="alert alert-danger">The host has denied your request.</div>';
+            }
+        }
+    };
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    userSocket.onerror = function(e) {
+        console.error('WebSocket error:', e);
+    };
+
+    roomSocket.onerror = function(e) {
+        console.error('Room WebSocket error:', e);
+    };
+</script>
+{% endblock %}

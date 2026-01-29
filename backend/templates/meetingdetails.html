@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ meeting.name }} - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card fade-in">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h3 class="mb-1">{{ meeting.name }}</h3>
+                            <span class="text-secondary">Hosted by {{ meeting.author_name }}</span>
+                        </div>
+                        {% if meeting.author == user %}
+                            <span class="badge bg-primary">Your Meeting</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polyline points="12 6 12 12 16 14"/>
+                                </svg>
+                                Start Time
+                            </label>
+                            <div class="fw-bold">{{ meeting.start_time|date:"F d, Y" }} at {{ meeting.start_time|time:"H:i" }}</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polyline points="12 6 12 12 16 14"/>
+                                </svg>
+                                End Time
+                            </label>
+                            <div class="fw-bold">{{ meeting.end_time|date:"F d, Y" }} at {{ meeting.end_time|time:"H:i" }}</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label text-muted">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                            </svg>
+                            Meeting Link
+                        </label>
+                        <div class="d-flex align-items-center gap-2">
+                            <code id="meetingLink" class="p-2 flex-grow-1" style="font-size: 0.9rem; word-break: break-all;"></code>
+                            <button class="btn btn-outline-secondary" onclick="copyMeetingLink()" title="Copy link">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <small class="text-muted">Share this link with participants to join the meeting</small>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label text-muted">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                            Meeting ID
+                        </label>
+                        <div class="d-flex align-items-center gap-2">
+                            <code id="meetingId" class="p-2 flex-grow-1" style="font-size: 1rem;">{{ meeting.room_id }}</code>
+                            <button class="btn btn-outline-secondary" onclick="copyMeetingId()" title="Copy ID">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <small class="text-muted">Or share just the meeting ID</small>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <a href="{% url 'start_meeting' meeting.room_id %}" class="btn btn-primary btn-lg">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                                <polygon points="23 7 16 12 23 17 23 7"/>
+                                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                            </svg>
+                            Join Meeting
+                        </a>
+                        <a href="{% url 'meetings_list' %}" class="btn btn-outline-secondary">
+                            Back to Meetings
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Build and display the full meeting link
+const roomId = "{{ meeting.room_id }}";
+const meetingLink = window.location.origin + "/meeting/startmeeting/" + roomId + "/";
+document.getElementById('meetingLink').textContent = meetingLink;
+
+function copyToClipboard(text, button) {
+    navigator.clipboard.writeText(text).then(() => {
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+        button.classList.add('btn-success');
+        button.classList.remove('btn-outline-secondary');
+        setTimeout(() => {
+            button.innerHTML = originalHTML;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-outline-secondary');
+        }, 2000);
+    });
+}
+
+function copyMeetingLink() {
+    const link = document.getElementById('meetingLink').textContent;
+    copyToClipboard(link, event.target.closest('button'));
+}
+
+function copyMeetingId() {
+    const meetingId = document.getElementById('meetingId').textContent;
+    copyToClipboard(meetingId, event.target.closest('button'));
+}
+</script>
+{% endblock %}

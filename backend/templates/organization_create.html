@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Organization - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card fade-in">
+                <div class="card-header">
+                    <h4 class="mb-0">Create New Organization</h4>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Organization Name</label>
+                            <input type="text" class="form-control" id="name" name="name" required
+                                   placeholder="Enter organization name">
+                            <div class="form-text">This will be visible to all members.</div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">Create Organization</button>
+                            <a href="{% url 'organization_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

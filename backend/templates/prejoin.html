@@ -1,0 +1,232 @@
+{% extends 'base.html' %}
+
+{% block title %}Join Meeting - PyTalk{% endblock %}
+
+{% block extra_css %}
+<style>
+    .prejoin-container {
+        max-width: 480px;
+        margin: 0 auto;
+    }
+
+    .prejoin-card {
+        background: var(--bg-elevated);
+        border-radius: var(--radius-lg);
+        padding: 2.5rem;
+        text-align: center;
+    }
+
+    .prejoin-icon {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1.5rem;
+    }
+
+    .prejoin-icon svg {
+        width: 40px;
+        height: 40px;
+        color: white;
+    }
+
+    .prejoin-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+    }
+
+    .prejoin-subtitle {
+        color: var(--text-secondary);
+        margin-bottom: 2rem;
+    }
+
+    .prejoin-room-info {
+        background: var(--bg-secondary);
+        border-radius: var(--radius-md);
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .prejoin-room-name {
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .prejoin-room-owner {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+    }
+
+    .name-input-group {
+        margin-bottom: 1.5rem;
+        text-align: left;
+    }
+
+    .name-input-group label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        margin-bottom: 0.5rem;
+    }
+
+    .name-input {
+        width: 100%;
+        padding: 0.875rem 1rem;
+        font-size: 1rem;
+        border: 2px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        transition: border-color 0.2s;
+    }
+
+    .name-input:focus {
+        outline: none;
+        border-color: var(--accent-primary);
+    }
+
+    .name-input::placeholder {
+        color: var(--text-muted);
+    }
+
+    .join-btn {
+        width: 100%;
+        padding: 0.875rem;
+        font-size: 1rem;
+        font-weight: 600;
+        background: var(--accent-primary);
+        color: white;
+        border: none;
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: background 0.2s, transform 0.1s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .join-btn:hover {
+        background: var(--accent-secondary);
+        transform: translateY(-1px);
+    }
+
+    .join-btn:disabled {
+        background: var(--text-muted);
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    .back-link {
+        display: inline-block;
+        margin-top: 1.5rem;
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-size: 0.875rem;
+    }
+
+    .back-link:hover {
+        color: var(--text-primary);
+    }
+
+    .lock-notice {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(99, 102, 241, 0.1);
+        color: var(--accent-primary);
+        padding: 0.75rem 1rem;
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .lock-notice svg {
+        flex-shrink: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="prejoin-container">
+        <div class="prejoin-card card">
+            <div class="prejoin-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="23 7 16 12 23 17 23 7"/>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                </svg>
+            </div>
+
+            <h1 class="prejoin-title">Join Meeting</h1>
+            <p class="prejoin-subtitle">Enter your name to continue</p>
+
+            {% if room_name %}
+            <div class="prejoin-room-info">
+                <div class="prejoin-room-name">{{ room_name }}</div>
+                <div class="prejoin-room-owner">Hosted by {{ room_owner }}</div>
+            </div>
+            {% endif %}
+
+            {% if is_locked %}
+            <div class="lock-notice">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <span>The host will need to admit you to join</span>
+            </div>
+            {% endif %}
+
+            <form method="post" id="prejoinForm">
+                {% csrf_token %}
+                <input type="hidden" name="token" value="{{ token }}">
+
+                <div class="name-input-group">
+                    <label for="display_name">Your Name</label>
+                    <input type="text"
+                           id="display_name"
+                           name="display_name"
+                           class="name-input"
+                           placeholder="Enter your name"
+                           value="{{ suggested_name|default:'' }}"
+                           required
+                           autofocus
+                           maxlength="50">
+                </div>
+
+                <button type="submit" class="join-btn" id="joinBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="23 7 16 12 23 17 23 7"/>
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                    </svg>
+                    Join Meeting
+                </button>
+            </form>
+
+            <a href="{% url 'home' %}" class="back-link">
+                &larr; Back to home
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+    const nameInput = document.getElementById('display_name');
+    const joinBtn = document.getElementById('joinBtn');
+
+    // Enable/disable button based on input
+    nameInput.addEventListener('input', function() {
+        joinBtn.disabled = this.value.trim().length === 0;
+    });
+
+    // Initial state
+    joinBtn.disabled = nameInput.value.trim().length === 0;
+</script>
+{% endblock %}
