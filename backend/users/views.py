@@ -11,6 +11,7 @@ from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
 from .forms import RegisterForm, LoginForm, OrganizationForm
 from .models import Organization, OrganizationMembership, Profile
+from .tasks import setup_user_in_org
 from meetings.models import PersonalRoom
 
 
@@ -44,43 +45,23 @@ def register_view(request):
 
             # Create or join organization
             if org_name:
-                # Create new organization
                 slug = _create_unique_slug(org_name)
-                org = Organization.objects.create(
-                    name=org_name,
-                    slug=slug
-                )
-                OrganizationMembership.objects.create(
-                    user=user,
-                    organization=org,
-                    role='owner'
-                )
-                # Create personal room for the user
-                PersonalRoom.objects.create(
-                    user=user,
-                    organization=org
-                )
-                profile.current_organization = org
-                profile.save()
+                org = Organization.objects.create(name=org_name, slug=slug)
             else:
-                # Create a personal organization
                 slug = _create_unique_slug(f"{user.username}-org")
                 org = Organization.objects.create(
                     name=f"{user.username}'s Organization",
                     slug=slug
                 )
-                OrganizationMembership.objects.create(
-                    user=user,
-                    organization=org,
-                    role='owner'
-                )
-                # Create personal room for the user
-                PersonalRoom.objects.create(
-                    user=user,
-                    organization=org
-                )
-                profile.current_organization = org
-                profile.save()
+
+            OrganizationMembership.objects.create(
+                user=user, organization=org, role='owner'
+            )
+            profile.current_organization = org
+            profile.save(update_fields=['current_organization', 'updated_at'])
+
+            # Create personal room in background (not needed for login)
+            setup_user_in_org.delay(user.id, str(org.id))
 
             login(request, user)
             messages.success(request, 'Registration successful!')
@@ -146,6 +127,9 @@ def organization_create_view(request):
                 organization=org,
                 role='owner'
             )
+
+            # Create personal room in background
+            setup_user_in_org.delay(request.user.id, str(org.id))
 
             messages.success(request, f'Organization "{org.name}" created successfully!')
             return redirect('organization_switch', org_id=org.id)
@@ -269,11 +253,8 @@ def organization_add_member_view(request, org_id):
                     organization=org,
                     role=role
                 )
-                PersonalRoom.objects.get_or_create(user=existing_user, organization=org)
-                # Update user's current organization
-                profile, _ = Profile.objects.get_or_create(user=existing_user)
-                profile.current_organization = org
-                profile.save()
+                # Create personal room and update profile in background
+                setup_user_in_org.delay(existing_user.id, str(org.id))
                 messages.success(request, f'{username} has been added to the organization.')
             return redirect('organization_settings', org_id=org.id)
 
@@ -290,18 +271,14 @@ def organization_add_member_view(request, org_id):
             password=temp_password
         )
 
-        # Create profile with current organization
+        # Create profile and membership (required immediately)
         Profile.objects.create(user=user, current_organization=org)
-
-        # Create membership
         OrganizationMembership.objects.create(
-            user=user,
-            organization=org,
-            role=role
+            user=user, organization=org, role=role
         )
 
-        # Create personal room for the new member
-        PersonalRoom.objects.get_or_create(user=user, organization=org)
+        # Create personal room in background
+        setup_user_in_org.delay(user.id, str(org.id))
 
         messages.success(
             request,
