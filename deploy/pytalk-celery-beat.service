@@ -1,0 +1,40 @@
+# PyTalk Celery Beat Scheduler
+# Place this file at: /etc/systemd/system/pytalk-celery-beat.service
+
+[Unit]
+Description=PyTalk Celery Beat Scheduler
+After=network.target redis.service postgresql.service
+Requires=redis.service
+
+[Service]
+Type=simple
+User=pytalk
+Group=pytalk
+WorkingDirectory=/opt/pytalk/backend
+Environment="PATH=/opt/pytalk/venv/bin"
+EnvironmentFile=/opt/pytalk/backend/.env
+
+# Celery Beat for scheduled tasks (recurring billing, exchange rates, usage)
+ExecStart=/opt/pytalk/venv/bin/celery \
+    -A meet beat \
+    --loglevel=info \
+    --schedule=/opt/pytalk/backend/celerybeat-schedule
+
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/pytalk/celery_beat.log
+StandardError=append:/var/log/pytalk/celery_beat_error.log
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/pytalk/backend /var/log/pytalk
+
+# Minimal resources — beat is a scheduler, not a worker
+MemoryMax=50M
+CPUQuota=10%
+
+[Install]
+WantedBy=multi-user.target
