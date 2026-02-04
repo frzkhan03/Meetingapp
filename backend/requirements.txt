@@ -8,6 +8,9 @@ python-dotenv>=1.0
 whitenoise>=6.6  # Static file serving in production
 django-redis>=5.4  # Redis cache backend for sessions, caching, rate limiting
 
+# AWS
+boto3>=1.28  # AWS SDK for S3 recording storage
+
 # Security packages
 argon2-cffi>=21.0  # Argon2 password hashing (most secure)
 cryptography>=41.0  # Encryption library for data at rest

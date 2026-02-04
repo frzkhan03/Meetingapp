@@ -12,6 +12,7 @@ class Organization(models.Model):
     domain = models.CharField(max_length=255, blank=True, null=True, unique=True)
     logo = models.URLField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    recording_to_s3 = models.BooleanField(default=False, help_text='Save recordings to cloud storage instead of local download')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

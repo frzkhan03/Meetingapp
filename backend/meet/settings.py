@@ -71,7 +71,7 @@ CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "https://unpkg.com", "https://cdn
 CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://fonts.googleapis.com")
 CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net")
 CSP_IMG_SRC = ("'self'", "data:", "blob:")
-CSP_CONNECT_SRC = ("'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://*.peerjs.com", "https://0.peerjs.com")
+CSP_CONNECT_SRC = ("'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://*.peerjs.com", "https://0.peerjs.com", "https://storage.googleapis.com")
 CSP_MEDIA_SRC = ("'self'", "blob:")
 CSP_FRAME_ANCESTORS = ("'none'",)
 
@@ -331,9 +331,15 @@ LOGGING = {
 ADMIN_URL = os.getenv('ADMIN_URL', 'secure-admin/')  # Custom admin URL
 
 # ==================== FILE UPLOAD SECURITY ====================
-FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024  # 5 MB
-DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024  # 5 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200 MB (for recording uploads)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200 MB
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
+
+# ==================== AWS S3 (Recording Storage) ====================
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
+AWS_S3_BUCKET_NAME = os.getenv('AWS_S3_BUCKET_NAME', 'pytalk-recordings')
+AWS_S3_REGION = os.getenv('AWS_S3_REGION', 'ap-south-1')
 
 # ==================== CELERY TASK QUEUE ====================
 if PRODUCTION:

@@ -2,11 +2,13 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseRedirect
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
+from django.conf import settings
 import json
-from .models import Meeting, UserMeetingPacket, PersonalRoom
+import uuid
+from .models import Meeting, UserMeetingPacket, PersonalRoom, MeetingRecording
 from .forms import MeetingForm
 
 
@@ -135,7 +137,8 @@ def start_meeting_view(request, room_id):
             'username': request.user.username,
             'organization': org,
             'is_moderator': True,
-            'author_id': str(meeting.author.id)
+            'author_id': str(meeting.author.id),
+            'recording_to_s3': org.recording_to_s3 if org else False,
         })
 
     # Check if user has been approved (has a packet)
@@ -152,7 +155,8 @@ def start_meeting_view(request, room_id):
             'username': request.user.username,
             'organization': org,
             'is_moderator': False,
-            'author_id': str(meeting.author.id)
+            'author_id': str(meeting.author.id),
+            'recording_to_s3': org.recording_to_s3 if org else False,
         })
 
     # Check if meeting requires approval
@@ -164,7 +168,8 @@ def start_meeting_view(request, room_id):
             'username': request.user.username,
             'organization': org,
             'is_moderator': False,
-            'author_id': str(meeting.author.id)
+            'author_id': str(meeting.author.id),
+            'recording_to_s3': org.recording_to_s3 if org else False,
         })
 
     # User needs approval - store room info in session and redirect to pending
@@ -349,7 +354,8 @@ def join_personal_room_view(request, room_id):
         'room_owner': personal_room.user.username,
         'room_name': personal_room.room_name,
         'organization': personal_room.organization,
-        'is_locked': personal_room.is_locked
+        'is_locked': personal_room.is_locked,
+        'recording_to_s3': personal_room.organization.recording_to_s3,
     })
 
 
@@ -436,3 +442,140 @@ def mark_guest_approved_view(request, room_id):
         return JsonResponse({'success': True})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def upload_recording_view(request):
+    """Upload a meeting recording to S3"""
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+
+        recording_file = request.FILES.get('recording')
+        room_id = request.POST.get('room_id', '')
+        duration = int(request.POST.get('duration', 0))
+
+        if not recording_file:
+            return JsonResponse({'error': 'No recording file provided'}, status=400)
+
+        # Get user's current organization
+        org = getattr(request, 'organization', None)
+        if not org:
+            return JsonResponse({'error': 'No organization context'}, status=400)
+
+        if not org.recording_to_s3:
+            return JsonResponse({'error': 'Cloud recording is not enabled for this organization'}, status=400)
+
+        # Check AWS config
+        if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
+            return JsonResponse({'error': 'S3 storage is not configured'}, status=500)
+
+        # Generate unique S3 key
+        timestamp = timezone.now().strftime('%Y%m%d-%H%M%S')
+        short_uuid = uuid.uuid4().hex[:8]
+        s3_key = f"{org.slug}/{request.user.username}/{timestamp}-{short_uuid}.webm"
+        recording_name = f"{room_id}-{timestamp}.webm"
+
+        # Upload to S3
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_S3_REGION,
+        )
+
+        s3_client.upload_fileobj(
+            recording_file,
+            settings.AWS_S3_BUCKET_NAME,
+            s3_key,
+            ExtraArgs={'ContentType': 'video/webm'}
+        )
+
+        # Create database record
+        recording = MeetingRecording.objects.create(
+            organization=org,
+            recorded_by=request.user,
+            file_path='',
+            s3_key=s3_key,
+            recording_name=recording_name,
+            file_size=recording_file.size,
+            duration=duration,
+        )
+
+        return JsonResponse({
+            'success': True,
+            'recording_id': recording.id,
+            'recording_name': recording_name,
+        })
+
+    except ClientError as e:
+        return JsonResponse({'error': f'S3 upload failed: {str(e)}'}, status=500)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+def my_recordings_view(request):
+    """View user's recordings"""
+    org = getattr(request, 'organization', None)
+    if not org:
+        messages.warning(request, 'Please select or create an organization first.')
+        return redirect('organization_list')
+
+    recordings = MeetingRecording.objects.filter(
+        recorded_by=request.user,
+        organization=org,
+    ).order_by('-created_at')
+
+    paginator = Paginator(recordings, 10)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    return render(request, 'my_recordings.html', {
+        'recordings': page_obj,
+        'page_obj': page_obj,
+        'organization': org,
+    })
+
+
+@login_required
+def download_recording_view(request, recording_id):
+    """Generate a pre-signed S3 URL and redirect to download"""
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+
+        recording = get_object_or_404(MeetingRecording, id=recording_id)
+
+        # Verify ownership
+        if recording.recorded_by != request.user:
+            return JsonResponse({'error': 'Access denied'}, status=403)
+
+        if not recording.s3_key:
+            return JsonResponse({'error': 'No S3 file associated with this recording'}, status=404)
+
+        # Check AWS config
+        if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
+            return JsonResponse({'error': 'S3 storage is not configured'}, status=500)
+
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_S3_REGION,
+        )
+
+        presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': settings.AWS_S3_BUCKET_NAME,
+                'Key': recording.s3_key,
+                'ResponseContentDisposition': f'attachment; filename="{recording.recording_name}"',
+            },
+            ExpiresIn=3600,  # 1 hour
+        )
+
+        return HttpResponseRedirect(presigned_url)
+
+    except ClientError as e:
+        return JsonResponse({'error': f'Failed to generate download link: {str(e)}'}, status=500)

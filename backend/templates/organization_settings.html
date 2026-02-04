@@ -320,6 +320,23 @@
                                         <input type="text" class="form-control" value="{{ members|length }}" disabled>
                                     </div>
                                 </div>
+                                <div class="row">
+                                    <div class="col-12 mb-3">
+                                        <hr class="my-3" style="border-color: var(--border-color);">
+                                        <h6 class="mb-3">Recording Settings</h6>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>Save recordings to cloud</strong>
+                                                <p class="text-muted mb-0 small">When enabled, meeting recordings will be uploaded to cloud storage instead of downloading locally.</p>
+                                            </div>
+                                            <div class="form-check form-switch">
+                                                <input type="checkbox" class="form-check-input" id="recordingToS3" name="recording_to_s3"
+                                                       {% if organization.recording_to_s3 %}checked{% endif %}
+                                                       {% if not is_owner %}disabled{% endif %}>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                                 {% if is_owner %}
                                 <div class="mt-3">
                                     <button type="submit" class="btn btn-primary">

@@ -173,7 +173,16 @@ class MeetingRecording(models.Model):
     meeting = models.ForeignKey(
         Meeting,
         on_delete=models.CASCADE,
-        related_name='recordings'
+        related_name='recordings',
+        null=True,
+        blank=True
+    )
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='recordings',
+        null=True,
+        blank=True
     )
     recorded_by = models.ForeignKey(
         User,
@@ -182,9 +191,19 @@ class MeetingRecording(models.Model):
         related_name='recordings'
     )
     file_path = models.CharField(max_length=500)
+    s3_key = models.CharField(max_length=500, blank=True, default='')
+    recording_name = models.CharField(max_length=255, blank=True, default='')
     file_size = models.BigIntegerField(default=0)
     duration = models.IntegerField(default=0)  # in seconds
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recorded_by', '-created_at']),
+            models.Index(fields=['organization', '-created_at']),
+        ]
+
     def __str__(self):
-        return f"Recording - {self.meeting.name} - {self.created_at}"
+        name = self.recording_name or self.s3_key or self.file_path
+        return f"Recording - {name} - {self.created_at}"

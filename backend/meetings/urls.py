@@ -20,4 +20,9 @@ urlpatterns = [
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/lock-status/$', views.get_room_lock_status_view, name='room_lock_status'),
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/mark-approved/$', views.mark_guest_approved_view, name='mark_guest_approved'),
     path('all-rooms/', views.all_rooms_view, name='all_rooms'),
+
+    # Recording routes
+    path('upload-recording/', views.upload_recording_view, name='upload_recording'),
+    path('my-recordings/', views.my_recordings_view, name='my_recordings'),
+    path('recording/<int:recording_id>/download/', views.download_recording_view, name='download_recording'),
 ]

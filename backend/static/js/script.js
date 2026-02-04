@@ -272,6 +272,7 @@ let RecordingDetails = {
     recordingCanvas: null,
     canvasContext: null,
     animationFrameId: null,
+    startTime: null,
 };
 
 // Initialize Video Stream
@@ -971,18 +972,29 @@ async function startRecording() {
 
         RecordingDetails.mediaRecorder.onstop = () => {
             const blob = new Blob(RecordingDetails.recordedChunks, { type: 'video/webm' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `meeting-recording-${Date.now()}.webm`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            const duration = RecordingDetails.startTime
+                ? Math.round((Date.now() - RecordingDetails.startTime) / 1000)
+                : 0;
+
+            if (typeof RECORDING_TO_S3 !== 'undefined' && RECORDING_TO_S3) {
+                // Upload to S3 via server
+                uploadRecordingToS3(blob, duration);
+            } else {
+                // Download locally
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `meeting-recording-${Date.now()}.webm`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
         };
 
         RecordingDetails.mediaRecorder.start(1000);
         RecordingDetails.isRecording = true;
+        RecordingDetails.startTime = Date.now();
 
         drawVideosToCanvas();
 
@@ -1834,6 +1846,12 @@ document.addEventListener('keydown', (e) => {
                 toggleChat();
             }
             break;
+        case 'b':
+            // B for background effects
+            if (!e.ctrlKey && !e.metaKey) {
+                toggleBgEffectsPopup();
+            }
+            break;
         case 'escape':
             // Escape to close panels
             const sidebar = document.getElementById('sidebar');
@@ -1844,6 +1862,416 @@ document.addEventListener('keydown', (e) => {
             if (participantsPanel && participantsPanel.style.display !== 'none') {
                 participantsPanel.style.display = 'none';
             }
+            // Close bg effects popup
+            const bgPopup = document.getElementById('bgEffectsPopup');
+            if (bgPopup) bgPopup.classList.remove('open');
             break;
+    }
+});
+
+// ================== S3 RECORDING UPLOAD ==================
+
+async function uploadRecordingToS3(blob, duration) {
+    // Show upload progress notification
+    const notification = document.createElement('div');
+    notification.id = 'upload-notification';
+    notification.className = 'moderator-notification';
+    notification.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; animation: spin 1s linear infinite;">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+        </svg>
+        <span>Uploading recording...</span>
+    `;
+    notification.style.animation = 'none';
+    notification.style.background = 'var(--accent, #6366f1)';
+    document.body.appendChild(notification);
+
+    try {
+        const formData = new FormData();
+        formData.append('recording', blob, `recording-${Date.now()}.webm`);
+        formData.append('room_id', ROOM_ID);
+        formData.append('duration', duration);
+
+        const response = await fetch('/meeting/upload-recording/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+            },
+            body: formData,
+        });
+
+        const data = await response.json();
+
+        // Remove progress notification
+        notification.remove();
+
+        if (data.success) {
+            showNotification('Recording saved to cloud successfully!');
+        } else {
+            showNotification(data.error || 'Failed to upload recording');
+            // Fallback: download locally
+            downloadRecordingLocally(blob);
+        }
+    } catch (err) {
+        console.error('Error uploading recording:', err);
+        notification.remove();
+        showNotification('Upload failed. Downloading locally instead.');
+        downloadRecordingLocally(blob);
+    }
+}
+
+function downloadRecordingLocally(blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `meeting-recording-${Date.now()}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// ================== BACKGROUND EFFECTS ==================
+
+let bgEffectState = {
+    currentEffect: 'none',   // 'none', 'blur', 'image'
+    segmenter: null,
+    canvas: null,
+    ctx: null,
+    bgImage: null,
+    bgGradient: null,
+    animFrameId: null,
+    originalStream: null,
+    processedStream: null,
+    isProcessing: false,
+};
+
+// Toggle popup
+function toggleBgEffectsPopup() {
+    const popup = document.getElementById('bgEffectsPopup');
+    if (popup) popup.classList.toggle('open');
+}
+
+// Setup popup event listeners
+const bgEffectBtn = document.getElementById('bgEffectBtn');
+if (bgEffectBtn) {
+    bgEffectBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        toggleBgEffectsPopup();
+    });
+}
+
+// Close popup when clicking outside
+document.addEventListener('click', function(e) {
+    const popup = document.getElementById('bgEffectsPopup');
+    const btn = document.getElementById('bgEffectBtn');
+    if (popup && !popup.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+        popup.classList.remove('open');
+    }
+});
+
+// Handle effect option clicks
+document.querySelectorAll('.bg-effect-option').forEach(function(opt) {
+    opt.addEventListener('click', function() {
+        const effect = this.dataset.effect;
+        const presetsEl = document.getElementById('bgPresets');
+
+        // Update active state
+        document.querySelectorAll('.bg-effect-option').forEach(o => o.classList.remove('active'));
+        this.classList.add('active');
+
+        if (effect === 'image') {
+            if (presetsEl) presetsEl.style.display = 'block';
+        } else {
+            if (presetsEl) presetsEl.style.display = 'none';
+        }
+
+        if (effect === 'none') {
+            disableBgEffect();
+        } else if (effect === 'blur') {
+            enableBgEffect('blur');
+        }
+        // 'image' waits for preset/upload selection
+    });
+});
+
+// Handle preset background clicks
+document.querySelectorAll('.bg-preset-item').forEach(function(item) {
+    item.addEventListener('click', function() {
+        // Remove active from all presets
+        document.querySelectorAll('.bg-preset-item').forEach(i => i.classList.remove('active'));
+        this.classList.add('active');
+
+        // Create gradient image from the preset
+        const gradientCanvas = document.createElement('canvas');
+        gradientCanvas.width = 640;
+        gradientCanvas.height = 480;
+        const gCtx = gradientCanvas.getContext('2d');
+
+        const style = window.getComputedStyle(this);
+        const bgStr = style.backgroundImage;
+
+        // Parse gradient colors
+        const gradients = {
+            'gradient1': ['#667eea', '#764ba2'],
+            'gradient2': ['#f093fb', '#f5576c'],
+            'gradient3': ['#4facfe', '#00f2fe'],
+            'gradient4': ['#43e97b', '#38f9d7'],
+        };
+
+        const colors = gradients[this.dataset.bg] || ['#667eea', '#764ba2'];
+        const grad = gCtx.createLinearGradient(0, 0, 640, 480);
+        grad.addColorStop(0, colors[0]);
+        grad.addColorStop(1, colors[1]);
+        gCtx.fillStyle = grad;
+        gCtx.fillRect(0, 0, 640, 480);
+
+        const img = new Image();
+        img.src = gradientCanvas.toDataURL();
+        img.onload = function() {
+            bgEffectState.bgImage = img;
+            enableBgEffect('image');
+        };
+    });
+});
+
+// Handle custom image upload
+const bgImageUpload = document.getElementById('bgImageUpload');
+if (bgImageUpload) {
+    bgImageUpload.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            const img = new Image();
+            img.src = ev.target.result;
+            img.onload = function() {
+                bgEffectState.bgImage = img;
+                // Remove active from presets
+                document.querySelectorAll('.bg-preset-item').forEach(i => i.classList.remove('active'));
+                enableBgEffect('image');
+            };
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+async function initSegmenter() {
+    if (bgEffectState.segmenter) return bgEffectState.segmenter;
+
+    if (typeof SelfieSegmentation === 'undefined') {
+        showNotification('Background effects not available. MediaPipe not loaded.');
+        return null;
+    }
+
+    const segmenter = new SelfieSegmentation({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+    });
+
+    segmenter.setOptions({
+        modelSelection: 1, // 1 = landscape (faster), 0 = general
+        selfieMode: true,
+    });
+
+    segmenter.onResults(onSegmentationResults);
+
+    bgEffectState.segmenter = segmenter;
+    return segmenter;
+}
+
+function onSegmentationResults(results) {
+    if (!bgEffectState.ctx || !bgEffectState.canvas) return;
+
+    const ctx = bgEffectState.ctx;
+    const canvas = bgEffectState.canvas;
+    const width = canvas.width;
+    const height = canvas.height;
+
+    ctx.save();
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw the segmentation mask
+    ctx.drawImage(results.segmentationMask, 0, 0, width, height);
+
+    // Only draw the person (where mask is white)
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.drawImage(results.image, 0, 0, width, height);
+
+    // Draw background behind person
+    ctx.globalCompositeOperation = 'destination-over';
+
+    if (bgEffectState.currentEffect === 'blur') {
+        // Draw blurred version of camera
+        ctx.filter = 'blur(15px)';
+        ctx.drawImage(results.image, 0, 0, width, height);
+        ctx.filter = 'none';
+    } else if (bgEffectState.currentEffect === 'image' && bgEffectState.bgImage) {
+        // Draw custom background image
+        ctx.drawImage(bgEffectState.bgImage, 0, 0, width, height);
+    }
+
+    ctx.restore();
+}
+
+async function enableBgEffect(effect) {
+    bgEffectState.currentEffect = effect;
+
+    // Save to localStorage
+    localStorage.setItem('bgEffect', effect);
+
+    const segmenter = await initSegmenter();
+    if (!segmenter) return;
+
+    if (!VideoDetails.myVideoStream) return;
+
+    // Store original stream if not already stored
+    if (!bgEffectState.originalStream) {
+        bgEffectState.originalStream = VideoDetails.myVideoStream;
+    }
+
+    // Create offscreen canvas if not exists
+    if (!bgEffectState.canvas) {
+        bgEffectState.canvas = document.createElement('canvas');
+        bgEffectState.canvas.width = 640;
+        bgEffectState.canvas.height = 480;
+        bgEffectState.ctx = bgEffectState.canvas.getContext('2d');
+    }
+
+    // Start processing loop if not already running
+    if (!bgEffectState.isProcessing) {
+        bgEffectState.isProcessing = true;
+        processBgFrame();
+    }
+
+    // Replace video track with canvas stream
+    const canvasStream = bgEffectState.canvas.captureStream(30);
+    const processedVideoTrack = canvasStream.getVideoTracks()[0];
+
+    // Create new stream with processed video + original audio
+    const originalAudioTracks = bgEffectState.originalStream.getAudioTracks();
+    const newStream = new MediaStream();
+    newStream.addTrack(processedVideoTrack);
+    originalAudioTracks.forEach(t => newStream.addTrack(t));
+
+    bgEffectState.processedStream = newStream;
+    VideoDetails.myVideoStream = newStream;
+
+    // Update local video display
+    if (VideoDetails.myVideo) {
+        VideoDetails.myVideo.srcObject = newStream;
+    }
+
+    // Replace track in all active peer connections
+    replaceVideoTrackInPeers(processedVideoTrack);
+
+    // Update button state
+    if (bgEffectBtn) bgEffectBtn.classList.add('active');
+}
+
+async function processBgFrame() {
+    if (!bgEffectState.isProcessing || bgEffectState.currentEffect === 'none') return;
+
+    if (bgEffectState.originalStream && bgEffectState.segmenter) {
+        const videoTrack = bgEffectState.originalStream.getVideoTracks()[0];
+        if (videoTrack && videoTrack.readyState === 'live') {
+            // Get video frame from a hidden video element
+            let srcVideo = document.getElementById('bg-src-video');
+            if (!srcVideo) {
+                srcVideo = document.createElement('video');
+                srcVideo.id = 'bg-src-video';
+                srcVideo.style.display = 'none';
+                srcVideo.srcObject = bgEffectState.originalStream;
+                srcVideo.muted = true;
+                srcVideo.play();
+                document.body.appendChild(srcVideo);
+            }
+
+            if (srcVideo.readyState >= 2) {
+                await bgEffectState.segmenter.send({ image: srcVideo });
+            }
+        }
+    }
+
+    bgEffectState.animFrameId = requestAnimationFrame(processBgFrame);
+}
+
+function disableBgEffect() {
+    bgEffectState.currentEffect = 'none';
+    bgEffectState.isProcessing = false;
+    localStorage.removeItem('bgEffect');
+
+    if (bgEffectState.animFrameId) {
+        cancelAnimationFrame(bgEffectState.animFrameId);
+        bgEffectState.animFrameId = null;
+    }
+
+    // Remove hidden video element
+    const srcVideo = document.getElementById('bg-src-video');
+    if (srcVideo) srcVideo.remove();
+
+    // Restore original stream
+    if (bgEffectState.originalStream) {
+        VideoDetails.myVideoStream = bgEffectState.originalStream;
+
+        if (VideoDetails.myVideo) {
+            VideoDetails.myVideo.srcObject = bgEffectState.originalStream;
+        }
+
+        // Replace track in peers with original
+        const originalVideoTrack = bgEffectState.originalStream.getVideoTracks()[0];
+        if (originalVideoTrack) {
+            replaceVideoTrackInPeers(originalVideoTrack);
+        }
+    }
+
+    bgEffectState.originalStream = null;
+    bgEffectState.processedStream = null;
+
+    // Update button state
+    if (bgEffectBtn) bgEffectBtn.classList.remove('active');
+}
+
+function replaceVideoTrackInPeers(newTrack) {
+    // Replace track in all PeerJS connections
+    if (myPeer && myPeer.connections) {
+        Object.values(myPeer.connections).forEach(conns => {
+            conns.forEach(conn => {
+                if (conn.peerConnection) {
+                    const senders = conn.peerConnection.getSenders();
+                    const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+                    if (videoSender) {
+                        videoSender.replaceTrack(newTrack).catch(err => {
+                            console.error('Error replacing video track:', err);
+                        });
+                    }
+                }
+            });
+        });
+    }
+}
+
+// Restore saved background effect on load
+document.addEventListener('DOMContentLoaded', function() {
+    const savedEffect = localStorage.getItem('bgEffect');
+    if (savedEffect && savedEffect !== 'none') {
+        // Wait for video stream to be ready
+        const waitForStream = setInterval(function() {
+            if (VideoDetails.myVideoStream) {
+                clearInterval(waitForStream);
+                // Update UI
+                document.querySelectorAll('.bg-effect-option').forEach(o => {
+                    o.classList.toggle('active', o.dataset.effect === savedEffect);
+                });
+                if (savedEffect === 'image') {
+                    const presetsEl = document.getElementById('bgPresets');
+                    if (presetsEl) presetsEl.style.display = 'block';
+                }
+                // For blur, enable immediately. For image, need a stored bg.
+                if (savedEffect === 'blur') {
+                    enableBgEffect('blur');
+                }
+            }
+        }, 500);
     }
 });

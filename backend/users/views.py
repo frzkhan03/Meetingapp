@@ -179,6 +179,7 @@ def organization_settings_view(request, org_id):
 
     if request.method == 'POST':
         org.name = request.POST.get('name', org.name)
+        org.recording_to_s3 = request.POST.get('recording_to_s3') == 'on'
         org.save()
         messages.success(request, 'Organization updated successfully!')
         return redirect('organization_settings', org_id=org.id)
