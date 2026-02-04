@@ -275,6 +275,9 @@ let RecordingDetails = {
 };
 
 // Initialize Video Stream
+let mediaReady = false;
+let mediaReadyPromise = new Promise((resolve) => { window._resolveMediaReady = resolve; });
+
 let initializeVideoStreamSetup = async () => {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -284,9 +287,13 @@ let initializeVideoStreamSetup = async () => {
         VideoDetails.myVideoStream = stream;
         ButtonDetails.onVideoButton = 1;
         await addVideoStream(stream, USER_ID);
+        mediaReady = true;
+        window._resolveMediaReady();
     } catch (err) {
         console.error('Error accessing media devices:', err);
         alert('Could not access camera/microphone. Please check permissions.');
+        mediaReady = true;
+        window._resolveMediaReady();
     }
 };
 initializeVideoStreamSetup();
@@ -458,16 +465,14 @@ function updateParticipantCount() {
 myPeer.on('call', async function(call) {
     let userId = call.peer;
     console.log('Received call from:', userId);
+    // Wait for getUserMedia to complete before answering
+    if (!mediaReady) {
+        await mediaReadyPromise;
+    }
     await call.answer(VideoDetails.myVideoStream);
     call.on('stream', async function(stream) {
         if (stream) {
-            const tracks = await stream.getTracks();
-            for (let i = 0; i < tracks.length; i++) {
-                if (tracks[i].enabled) {
-                    await addVideoStream(stream, userId);
-                    break;
-                }
-            }
+            await addVideoStream(stream, userId);
             ActiveUsers[userId] = 1;
             UserStreamwithId[userId] = stream;
         }
