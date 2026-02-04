@@ -130,6 +130,7 @@
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
+            <span id="chat-badge" class="chat-badge"></span>
         </button>
 
         <button class="control-btn" id="screenshotBtn" title="Take Screenshot (Ctrl+S)">
@@ -272,6 +273,12 @@
         function toggleChat() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('active');
+            if (sidebar.classList.contains('active')) {
+                unreadChatCount = 0;
+                const badge = document.getElementById('chat-badge');
+                badge.textContent = '';
+                badge.style.display = 'none';
+            }
         }
 
         // Theme toggle

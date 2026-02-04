@@ -360,10 +360,20 @@ socketWrapper.on('user-disconnected', async (userId) => {
     }
 });
 
+let unreadChatCount = 0;
+
 socketWrapper.on('newmessage', (data) => {
     const msg = typeof data === 'object' ? data.message : data;
     const senderName = (typeof data === 'object' && data.username) ? data.username : '';
     displaychat(msg, 0, senderName);
+
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar.classList.contains('active')) {
+        unreadChatCount++;
+        const badge = document.getElementById('chat-badge');
+        badge.textContent = unreadChatCount > 99 ? '99+' : unreadChatCount;
+        badge.style.display = 'flex';
+    }
 });
 
 // Chat functionality
@@ -492,8 +502,38 @@ micButton.addEventListener('click', async () => {
             micButton.classList.add('muted');
             micButton.title = 'Unmute Microphone (M)';
         }
+
+        socketWrapper.emit('mute-status', { room_id: ROOM_ID, user_id: USER_ID, is_muted: !micEnabled });
+        updateMuteIndicator(USER_ID, !micEnabled);
     }
 });
+
+// Mute state indicator on video tiles
+socketWrapper.on('user-mute-status', (data) => {
+    const userId = data.user_id;
+    const isMuted = data.is_muted;
+    updateMuteIndicator(userId, isMuted);
+});
+
+function updateMuteIndicator(userId, isMuted) {
+    const videoTile = document.getElementById(userId);
+    if (!videoTile) return;
+
+    let indicator = videoTile.querySelector('.muted-indicator');
+
+    if (isMuted) {
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.className = 'muted-indicator';
+            indicator.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+            videoTile.appendChild(indicator);
+        }
+    } else {
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+}
 
 // Video Toggle
 const onVideo = document.getElementById('onVideo');
@@ -1086,6 +1126,11 @@ socketWrapper.on('mute-all', (data) => {
         audioTracks.forEach(track => {
             track.enabled = false;
         });
+        micEnabled = false;
+        micButton.classList.add('muted');
+        micButton.title = 'Unmute Microphone (M)';
+        socketWrapper.emit('mute-status', { room_id: ROOM_ID, user_id: USER_ID, is_muted: true });
+        updateMuteIndicator(USER_ID, true);
         showMuteNotification('You have been muted by the moderator');
     }
 });

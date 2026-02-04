@@ -320,6 +320,7 @@ body {
 }
 
 .control-btn {
+    position: relative;
     width: 52px;
     height: 52px;
     border-radius: 12px;
@@ -365,6 +366,32 @@ body {
 
 .control-btn.danger svg {
     stroke: white;
+}
+
+/* Chat Notification Badge */
+.chat-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background: var(--danger);
+    color: white;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    animation: badgePulse 0.3s ease-out;
+}
+
+@keyframes badgePulse {
+    0% { transform: scale(0); }
+    70% { transform: scale(1.2); }
+    100% { transform: scale(1); }
 }
 
 /* Mic Muted State */
@@ -865,6 +892,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 3;
+    animation: badgePulse 0.3s ease-out;
 }
 
 .muted-indicator svg {

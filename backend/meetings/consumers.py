@@ -109,6 +109,8 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 await self.handle_alert(payload)
             elif event_type == 'alert-response':
                 await self.handle_alert_response(payload)
+            elif event_type == 'mute-status':
+                await self.handle_mute_status(payload)
             elif event_type == 'mute-all':
                 await self.handle_mute_all(payload)
             elif event_type == 'kick-user':
@@ -242,6 +244,18 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 'type': 'alert_response',
                 'approved': approved,
                 'room_id': self.room_id
+            }
+        )
+
+    async def handle_mute_status(self, payload):
+        """User broadcasts their mute/unmute state"""
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'user_mute_status',
+                'user_id': payload.get('user_id', self.user_id),
+                'is_muted': payload.get('is_muted', False),
+                'sender_channel': self.channel_name
             }
         )
 
@@ -396,6 +410,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
             'type': 'alert-response',
             'approved': event['approved'],
             'room_id': event['room_id']
+        }))
+
+    async def user_mute_status(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'user-mute-status',
+            'user_id': event['user_id'],
+            'is_muted': event['is_muted']
         }))
 
     async def mute_all(self, event):
