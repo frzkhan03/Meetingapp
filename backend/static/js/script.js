@@ -732,7 +732,7 @@ async function addVideoStream(stream, userId, isScreenShare) {
             VideoDetails.myVideo = myVideo;
         }
 
-        myVideo.muted = true;
+        myVideo.muted = (userId === USER_ID);
         myVideo.srcObject = stream;
         myVideo.addEventListener('loadedmetadata', () => {
             myVideo.play();
