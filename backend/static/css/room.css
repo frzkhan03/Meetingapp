@@ -192,50 +192,52 @@ body {
     justify-content: center;
     align-items: center;
     align-content: center;
-    gap: 12px;
-    padding: 16px;
+    gap: 6px;
+    padding: 6px;
     overflow-y: auto;
-    background: var(--bg-primary);
+    background: #000;
 }
 
 .innervideo {
     position: relative;
     background: var(--video-bg);
-    border-radius: 16px;
+    border-radius: 12px;
     overflow: hidden;
-    border: 1px solid var(--border);
+    border: none;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: var(--video-shadow);
 }
 
 /* Dynamic sizing based on participant count */
 #video-area .innervideo {
-    width: calc(50% - 8px);
-    max-width: 800px;
-    aspect-ratio: 16/9;
+    width: calc(50% - 4px);
+    height: calc(50% - 4px);
 }
 
 #video-area:has(.innervideo:only-child) .innervideo {
-    width: 90%;
-    max-width: 1200px;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+}
+
+#video-area:has(> .innervideo:nth-child(2):last-child) .innervideo {
+    width: calc(50% - 4px);
+    height: calc(100% - 4px);
 }
 
 #video-area:has(.innervideo:nth-child(3)) .innervideo,
 #video-area:has(.innervideo:nth-child(4)) .innervideo {
-    width: calc(50% - 8px);
-    max-width: 640px;
+    width: calc(50% - 4px);
+    height: calc(50% - 4px);
 }
 
 #video-area:has(.innervideo:nth-child(5)) .innervideo,
 #video-area:has(.innervideo:nth-child(6)) .innervideo {
-    width: calc(33.333% - 8px);
-    max-width: 500px;
+    width: calc(33.333% - 4px);
+    height: calc(50% - 4px);
 }
 
 .innervideo:hover {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent), 0 8px 32px rgba(99, 102, 241, 0.2);
-    transform: scale(1.01);
+    box-shadow: 0 0 0 2px var(--accent);
 }
 
 .innervideo video {
@@ -243,6 +245,7 @@ body {
     height: 100%;
     object-fit: cover;
     background: #000;
+    display: block;
 }
 
 .innervideo p {
@@ -687,13 +690,13 @@ body {
     }
 
     #video-area {
-        padding: 16px;
-        gap: 12px;
+        padding: 4px;
+        gap: 4px;
     }
 
     #video-area .innervideo {
         width: 100%;
-        max-width: none;
+        height: calc(50% - 2px);
     }
 
     .allbuttons {
