@@ -9,11 +9,28 @@
             <div class="card fade-in">
                 <div class="card-header text-center">
                     <h3>Create your account</h3>
+                    {% if selected_plan_obj %}
+                    <p class="mb-0 mt-2">
+                        <span class="badge" style="background: linear-gradient(135deg, #6366f1, #a855f7); font-size: 0.85rem; padding: 6px 14px;">
+                            {{ selected_plan_obj.name }} Plan &mdash;
+                            {% if selected_cycle == 'annual' %}
+                                ${{ selected_plan_obj.annual_price|floatformat:2 }}/yr{% if selected_plan_obj.is_per_user %}/user{% endif %}
+                            {% else %}
+                                ${{ selected_plan_obj.monthly_price|floatformat:2 }}/mo{% if selected_plan_obj.is_per_user %}/user{% endif %}
+                            {% endif %}
+                        </span>
+                    </p>
+                    {% else %}
                     <p class="text-secondary mb-0">Join PyTalk and start connecting</p>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     <form method="post">
                         {% csrf_token %}
+                        {% if selected_plan %}
+                        <input type="hidden" name="selected_plan" value="{{ selected_plan }}">
+                        <input type="hidden" name="selected_cycle" value="{{ selected_cycle }}">
+                        {% endif %}
                         <div class="mb-3">
                             <label for="id_username" class="form-label">Username</label>
                             {{ form.username }}
@@ -55,7 +72,11 @@
                     </form>
                     <div class="text-center">
                         <span class="text-secondary">Already have an account?</span>
+                        {% if selected_plan %}
+                        <a href="{% url 'login' %}?next=/billing/checkout/{{ selected_plan }}/{{ selected_cycle }}/" class="ms-1">Sign in</a>
+                        {% else %}
                         <a href="{% url 'login' %}" class="ms-1">Sign in</a>
+                        {% endif %}
                     </div>
                 </div>
             </div>

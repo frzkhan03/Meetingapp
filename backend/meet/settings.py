@@ -360,11 +360,30 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30  # Hard limit: 30 seconds per task
 CELERY_TASK_SOFT_TIME_LIMIT = 25  # Soft limit: raise SoftTimeLimitExceeded
 
-# ==================== STRIPE BILLING ====================
-STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
-STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '')
-STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
-STRIPE_ENABLED = bool(STRIPE_SECRET_KEY)
+from celery.schedules import crontab  # noqa: E402
+CELERY_BEAT_SCHEDULE = {
+    'process-recurring-billing': {
+        'task': 'billing.tasks.process_recurring_billing',
+        'schedule': crontab(hour=6, minute=0),
+    },
+    'refresh-exchange-rates': {
+        'task': 'billing.tasks.refresh_exchange_rates',
+        'schedule': crontab(hour='*/6', minute=30),
+    },
+    'record-daily-usage': {
+        'task': 'billing.tasks.record_daily_usage',
+        'schedule': crontab(hour=1, minute=0),
+    },
+}
+
+# ==================== PAYU BILLING ====================
+PAYU_POS_ID = os.getenv('PAYU_POS_ID', '')
+PAYU_CLIENT_SECRET = os.getenv('PAYU_CLIENT_SECRET', '')
+PAYU_SECOND_KEY = os.getenv('PAYU_SECOND_KEY', '')
+PAYU_SANDBOX = os.getenv('PAYU_SANDBOX', 'True').lower() == 'true'
+PAYU_BASE_URL = 'https://secure.snd.payu.com' if PAYU_SANDBOX else 'https://secure.payu.com'
+PAYU_ENABLED = bool(PAYU_POS_ID)
+SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000')
 
 # ==================== WEBSOCKET SECURITY ====================
 WEBSOCKET_ALLOWED_ORIGINS = os.getenv(

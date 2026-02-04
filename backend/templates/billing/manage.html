@@ -93,14 +93,11 @@
     {% endif %}
 
     <!-- Actions -->
-    {% if is_owner and subscription.plan.tier != 'free' and stripe_enabled %}
+    {% if is_owner and subscription.plan.tier != 'free' and payu_enabled %}
     <div class="card mb-4" style="background: var(--card-bg); border: 1px solid var(--border-color);">
         <div class="card-body">
             <h5 class="card-title mb-3">Manage</h5>
             <div class="d-flex gap-2 flex-wrap">
-                <a href="{% url 'billing_portal' %}" class="btn btn-outline-primary btn-sm">
-                    Manage Payment Method
-                </a>
                 {% if not subscription.cancel_at_period_end %}
                 <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal">
                     Cancel Subscription

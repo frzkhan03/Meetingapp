@@ -8,8 +8,8 @@ urlpatterns = [
     path('checkout/success/', views.checkout_success_view, name='billing_checkout_success'),
     path('checkout/cancel/', views.checkout_cancel_view, name='billing_checkout_cancel'),
     path('manage/', views.billing_manage_view, name='billing_manage'),
-    path('portal/', views.customer_portal_view, name='billing_portal'),
     path('cancel/', views.cancel_subscription_view, name='billing_cancel'),
     path('resume/', views.resume_subscription_view, name='billing_resume'),
-    path('webhooks/stripe/', webhooks.stripe_webhook_view, name='stripe_webhook'),
+    path('webhooks/payu/', webhooks.payu_webhook_view, name='payu_webhook'),
+    path('api/currency-rates/', views.currency_rates_api, name='currency_rates'),
 ]

@@ -14,6 +14,16 @@
         <h1 class="fw-bold mb-3">Simple, transparent pricing</h1>
         <p class="text-muted fs-5">Choose the plan that fits your team</p>
 
+        <!-- Currency Selector -->
+        <div class="mt-3 mb-2">
+            <label for="currencySelect" class="form-label text-muted me-2" style="font-size: 0.9rem;">Currency:</label>
+            <select id="currencySelect" class="form-select form-select-sm d-inline-block" style="width: auto; background: var(--card-bg); color: var(--text-primary); border-color: var(--border-color);">
+                {% for code, info in supported_currencies.items %}
+                <option value="{{ code }}" {% if code == selected_currency %}selected{% endif %}>{{ code }} ({{ info.0 }})</option>
+                {% endfor %}
+            </select>
+        </div>
+
         <!-- Billing Toggle -->
         <div class="billing-toggle mt-4">
             <span class="toggle-label" id="monthlyLabel">Monthly</span>
@@ -36,8 +46,8 @@
                 <div class="plan-header">
                     <h3 class="plan-name">{{ plan.name }}</h3>
                     <div class="plan-price">
-                        <span class="price-amount monthly-price">${{ plan.monthly_price|floatformat:2 }}</span>
-                        <span class="price-amount annual-price" style="display:none;">${{ plan.annual_price|floatformat:2 }}</span>
+                        <span class="price-amount monthly-price" data-tier="{{ plan.tier }}">${{ plan.monthly_price|floatformat:2 }}</span>
+                        <span class="price-amount annual-price" data-tier="{{ plan.tier }}" style="display:none;">${{ plan.annual_price|floatformat:2 }}</span>
                         {% if plan.tier != 'free' %}
                         <span class="price-period monthly-period">/month{% if plan.is_per_user %}/user{% endif %}</span>
                         <span class="price-period annual-period" style="display:none;">/year{% if plan.is_per_user %}/user{% endif %}</span>
@@ -86,16 +96,28 @@
                 </ul>
 
                 <div class="plan-action">
-                    {% if plan.tier == current_tier %}
-                        <button class="btn btn-outline-secondary w-100" disabled>Current Plan</button>
-                    {% elif plan.tier == 'free' %}
-                        <button class="btn btn-outline-secondary w-100" disabled>Free</button>
-                    {% elif stripe_enabled %}
-                        <a href="{% url 'billing_checkout' plan.tier 'monthly' %}" class="btn btn-primary w-100 checkout-btn" data-tier="{{ plan.tier }}">
-                            {% if current_tier == 'free' %}Upgrade{% else %}Switch{% endif %} to {{ plan.name }}
-                        </a>
+                    {% if user.is_authenticated %}
+                        {% if plan.tier == current_tier %}
+                            <button class="btn btn-outline-secondary w-100" disabled>Current Plan</button>
+                        {% elif plan.tier == 'free' %}
+                            <button class="btn btn-outline-secondary w-100" disabled>Free</button>
+                        {% elif payu_enabled %}
+                            <a href="{% url 'billing_checkout' plan.tier 'monthly' %}" class="btn btn-primary w-100 checkout-btn" data-tier="{{ plan.tier }}">
+                                {% if current_tier == 'free' %}Upgrade{% else %}Switch{% endif %} to {{ plan.name }}
+                            </a>
+                        {% else %}
+                            <button class="btn btn-secondary w-100" disabled>Billing not configured</button>
+                        {% endif %}
                     {% else %}
-                        <button class="btn btn-secondary w-100" disabled>Billing not configured</button>
+                        {% if plan.tier == 'free' %}
+                            <a href="{% url 'register' %}" class="btn btn-outline-primary w-100">Get Started Free</a>
+                        {% elif payu_enabled %}
+                            <a href="{% url 'register' %}?plan={{ plan.tier }}&cycle=monthly" class="btn btn-primary w-100 signup-btn" data-tier="{{ plan.tier }}">
+                                Get {{ plan.name }}
+                            </a>
+                        {% else %}
+                            <button class="btn btn-secondary w-100" disabled>Coming Soon</button>
+                        {% endif %}
                     {% endif %}
                 </div>
             </div>
@@ -107,27 +129,65 @@
 <script>
 (function() {
     var toggle = document.getElementById('billingToggle');
-    if (!toggle) return;
+    var currencySelect = document.getElementById('currencySelect');
 
-    toggle.addEventListener('change', function() {
-        var isAnnual = this.checked;
-        document.querySelectorAll('.monthly-price').forEach(function(el) { el.style.display = isAnnual ? 'none' : ''; });
-        document.querySelectorAll('.annual-price').forEach(function(el) { el.style.display = isAnnual ? '' : 'none'; });
-        document.querySelectorAll('.monthly-period').forEach(function(el) { el.style.display = isAnnual ? 'none' : ''; });
-        document.querySelectorAll('.annual-period').forEach(function(el) { el.style.display = isAnnual ? '' : 'none'; });
+    // Billing toggle
+    if (toggle) {
+        toggle.addEventListener('change', function() {
+            var isAnnual = this.checked;
+            document.querySelectorAll('.monthly-price').forEach(function(el) { el.style.display = isAnnual ? 'none' : ''; });
+            document.querySelectorAll('.annual-price').forEach(function(el) { el.style.display = isAnnual ? '' : 'none'; });
+            document.querySelectorAll('.monthly-period').forEach(function(el) { el.style.display = isAnnual ? 'none' : ''; });
+            document.querySelectorAll('.annual-period').forEach(function(el) { el.style.display = isAnnual ? '' : 'none'; });
 
-        // Update checkout links
-        document.querySelectorAll('.checkout-btn').forEach(function(btn) {
-            var tier = btn.getAttribute('data-tier');
             var cycle = isAnnual ? 'annual' : 'monthly';
-            btn.href = '/billing/checkout/' + tier + '/' + cycle + '/';
+
+            // Update checkout links (authenticated users)
+            document.querySelectorAll('.checkout-btn').forEach(function(btn) {
+                var tier = btn.getAttribute('data-tier');
+                btn.href = '/billing/checkout/' + tier + '/' + cycle + '/';
+            });
+
+            // Update signup links (non-authenticated users)
+            document.querySelectorAll('.signup-btn').forEach(function(btn) {
+                var tier = btn.getAttribute('data-tier');
+                btn.href = '/user/register/?plan=' + tier + '&cycle=' + cycle;
+            });
+
+            document.getElementById('monthlyLabel').classList.toggle('active', !isAnnual);
+            document.getElementById('annualLabel').classList.toggle('active', isAnnual);
         });
 
-        document.getElementById('monthlyLabel').classList.toggle('active', !isAnnual);
-        document.getElementById('annualLabel').classList.toggle('active', isAnnual);
-    });
+        document.getElementById('monthlyLabel').classList.add('active');
+    }
 
-    document.getElementById('monthlyLabel').classList.add('active');
+    // Currency selector
+    if (currencySelect) {
+        currencySelect.addEventListener('change', function() {
+            var currency = this.value;
+            // Save preference in cookie
+            document.cookie = 'preferred_currency=' + currency + ';path=/;max-age=31536000';
+
+            // Fetch converted prices via AJAX
+            fetch('/billing/api/currency-rates/?currency=' + currency)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) return;
+                    var plans = data.plans;
+                    for (var tier in plans) {
+                        var prices = plans[tier];
+                        // Update monthly price elements
+                        document.querySelectorAll('.monthly-price[data-tier="' + tier + '"]').forEach(function(el) {
+                            el.textContent = prices.monthly;
+                        });
+                        // Update annual price elements
+                        document.querySelectorAll('.annual-price[data-tier="' + tier + '"]').forEach(function(el) {
+                            el.textContent = prices.annual;
+                        });
+                    }
+                });
+        });
+    }
 })();
 </script>
 {% endblock %}

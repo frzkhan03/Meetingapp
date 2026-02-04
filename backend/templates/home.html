@@ -1,6 +1,13 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}PyTalk - Modern Video Conferencing{% endblock %}
+
+{% block extra_css %}
+{% if not user.is_authenticated %}
+<link rel="stylesheet" href="{% static 'css/billing.css' %}">
+{% endif %}
+{% endblock %}
 
 {% block content %}
 <div class="container">
@@ -46,7 +53,7 @@
                 <a href="{% url 'register' %}" class="btn btn-primary btn-lg">
                     Get Started Free
                 </a>
-                <a href="{% url 'pricing' %}" class="btn btn-outline-primary btn-lg">
+                <a href="#pricing" class="btn btn-outline-primary btn-lg">
                     View Pricing
                 </a>
             </div>
@@ -123,6 +130,116 @@
         </div>
     </section>
 
+    {% if not user.is_authenticated and plans %}
+    <!-- Pricing Section -->
+    <section class="fade-in py-5" id="pricing">
+        <div class="text-center mb-5">
+            <h2 class="fw-bold mb-3">Simple, transparent pricing</h2>
+            <p class="text-muted fs-5">Choose the plan that fits your team</p>
+
+            <!-- Currency Selector -->
+            <div class="mt-3 mb-2">
+                <label for="currencySelect" class="form-label text-muted me-2" style="font-size: 0.9rem;">Currency:</label>
+                <select id="currencySelect" class="form-select form-select-sm d-inline-block" style="width: auto; background: var(--card-bg); color: var(--text-primary); border-color: var(--border-color);">
+                    <option value="USD" selected>USD ($)</option>
+                    <option value="INR">INR (&#8377;)</option>
+                    <option value="EUR">EUR (&euro;)</option>
+                    <option value="GBP">GBP (&pound;)</option>
+                    <option value="SGD">SGD (S$)</option>
+                    <option value="MYR">MYR (RM)</option>
+                    <option value="AED">AED (&#1583;.&#1573;)</option>
+                    <option value="JPY">JPY (&yen;)</option>
+                </select>
+            </div>
+
+            <div class="billing-toggle mt-4">
+                <span class="toggle-label active" id="monthlyLabel">Monthly</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="billingToggle">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-label" id="annualLabel">Annual <span class="save-badge">Save 20%</span></span>
+            </div>
+        </div>
+
+        <div class="row g-4 justify-content-center">
+            {% for plan in plans %}
+            <div class="col-md-4">
+                <div class="plan-card {% if plan.tier == 'pro' %}plan-featured{% endif %}">
+                    {% if plan.tier == 'pro' %}
+                    <div class="plan-badge">Most Popular</div>
+                    {% endif %}
+
+                    <div class="plan-header">
+                        <h3 class="plan-name">{{ plan.name }}</h3>
+                        <div class="plan-price">
+                            <span class="price-amount monthly-price" data-tier="{{ plan.tier }}">${{ plan.monthly_price|floatformat:2 }}</span>
+                            <span class="price-amount annual-price" data-tier="{{ plan.tier }}" style="display:none;">${{ plan.annual_price|floatformat:2 }}</span>
+                            {% if plan.tier != 'free' %}
+                            <span class="price-period monthly-period">/month{% if plan.is_per_user %}/user{% endif %}</span>
+                            <span class="price-period annual-period" style="display:none;">/year{% if plan.is_per_user %}/user{% endif %}</span>
+                            {% else %}
+                            <span class="price-period">forever</span>
+                            {% endif %}
+                        </div>
+                        <p class="plan-description">{{ plan.description }}</p>
+                    </div>
+
+                    <ul class="plan-features">
+                        <li class="feature-item">
+                            <span class="feature-check">&#10003;</span>
+                            {% if plan.has_unlimited_rooms %}Unlimited rooms{% else %}{{ plan.max_rooms }} room{{ plan.max_rooms|pluralize }}{% endif %}
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-check">&#10003;</span>
+                            Up to {{ plan.max_participants }} participants
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-check">&#10003;</span>
+                            {% if plan.has_unlimited_duration %}Unlimited meeting duration{% else %}{{ plan.max_meeting_duration_minutes }}-minute meetings{% endif %}
+                        </li>
+                        <li class="feature-item {% if not plan.recording_enabled %}feature-disabled{% endif %}">
+                            <span class="feature-check">{% if plan.recording_enabled %}&#10003;{% else %}&#10007;{% endif %}</span>
+                            Meeting recording
+                        </li>
+                        <li class="feature-item {% if not plan.custom_branding %}feature-disabled{% endif %}">
+                            <span class="feature-check">{% if plan.custom_branding %}&#10003;{% else %}&#10007;{% endif %}</span>
+                            Custom branding
+                        </li>
+                        {% if plan.tier == 'business' %}
+                        <li class="feature-item">
+                            <span class="feature-check">&#10003;</span>
+                            Custom subdomain
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-check">&#10003;</span>
+                            Breakout rooms
+                        </li>
+                        <li class="feature-item">
+                            <span class="feature-check">&#10003;</span>
+                            Waiting rooms
+                        </li>
+                        {% endif %}
+                    </ul>
+
+                    <div class="plan-action">
+                        {% if plan.tier == 'free' %}
+                            <a href="{% url 'register' %}" class="btn btn-outline-primary w-100">Get Started Free</a>
+                        {% elif payu_enabled %}
+                            <a href="{% url 'register' %}?plan={{ plan.tier }}&cycle=monthly" class="btn btn-primary w-100 signup-btn" data-tier="{{ plan.tier }}">
+                                Get {{ plan.name }}
+                            </a>
+                        {% else %}
+                            <button class="btn btn-secondary w-100" disabled>Coming Soon</button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
     <footer class="text-center py-5 mt-5">
     </footer>
 </div>
@@ -135,5 +252,52 @@ document.getElementById('joinForm')?.addEventListener('submit', function(e) {
         window.location.href = '/meeting/startmeeting/' + meetingId + '/';
     }
 });
+
+// Billing toggle and currency selector for landing page pricing section
+(function() {
+    var toggle = document.getElementById('billingToggle');
+    var currencySelect = document.getElementById('currencySelect');
+
+    if (toggle) {
+        toggle.addEventListener('change', function() {
+            var isAnnual = this.checked;
+            document.querySelectorAll('.monthly-price').forEach(function(el) { el.style.display = isAnnual ? 'none' : ''; });
+            document.querySelectorAll('.annual-price').forEach(function(el) { el.style.display = isAnnual ? '' : 'none'; });
+            document.querySelectorAll('.monthly-period').forEach(function(el) { el.style.display = isAnnual ? 'none' : ''; });
+            document.querySelectorAll('.annual-period').forEach(function(el) { el.style.display = isAnnual ? '' : 'none'; });
+
+            document.querySelectorAll('.signup-btn').forEach(function(btn) {
+                var tier = btn.getAttribute('data-tier');
+                var cycle = isAnnual ? 'annual' : 'monthly';
+                btn.href = '/user/register/?plan=' + tier + '&cycle=' + cycle;
+            });
+
+            document.getElementById('monthlyLabel').classList.toggle('active', !isAnnual);
+            document.getElementById('annualLabel').classList.toggle('active', isAnnual);
+        });
+    }
+
+    if (currencySelect) {
+        currencySelect.addEventListener('change', function() {
+            var currency = this.value;
+            document.cookie = 'preferred_currency=' + currency + ';path=/;max-age=31536000';
+            fetch('/billing/api/currency-rates/?currency=' + currency)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) return;
+                    var plans = data.plans;
+                    for (var tier in plans) {
+                        var prices = plans[tier];
+                        document.querySelectorAll('.monthly-price[data-tier="' + tier + '"]').forEach(function(el) {
+                            el.textContent = prices.monthly;
+                        });
+                        document.querySelectorAll('.annual-price[data-tier="' + tier + '"]').forEach(function(el) {
+                            el.textContent = prices.annual;
+                        });
+                    }
+                });
+        });
+    }
+})();
 </script>
 {% endblock %}

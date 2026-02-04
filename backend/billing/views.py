@@ -2,8 +2,10 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.conf import settings
+from django.http import JsonResponse
 
 from .models import Plan, Subscription, Payment
+from .currency import SUPPORTED_CURRENCIES, get_exchange_rates, convert_price, format_currency
 
 
 def pricing_view(request):
@@ -14,18 +16,23 @@ def pricing_view(request):
     if request.user.is_authenticated and hasattr(request, 'plan_tier'):
         current_tier = request.plan_tier
 
+    currency = request.COOKIES.get('preferred_currency', 'USD')
+    if currency not in SUPPORTED_CURRENCIES:
+        currency = 'USD'
+
     return render(request, 'billing/pricing.html', {
         'plans': plans,
         'current_tier': current_tier,
-        'stripe_enabled': settings.STRIPE_ENABLED,
-        'stripe_publishable_key': settings.STRIPE_PUBLISHABLE_KEY,
+        'payu_enabled': settings.PAYU_ENABLED,
+        'supported_currencies': SUPPORTED_CURRENCIES,
+        'selected_currency': currency,
     })
 
 
 @login_required
 def create_checkout_view(request, plan_tier, billing_cycle):
-    """Initiate Stripe Checkout for a plan. Owner-only."""
-    if not settings.STRIPE_ENABLED:
+    """Initiate PayU checkout for a plan. Owner-only."""
+    if not settings.PAYU_ENABLED:
         messages.info(request, 'Billing is not configured in this environment.')
         return redirect('pricing')
 
@@ -49,19 +56,37 @@ def create_checkout_view(request, plan_tier, billing_cycle):
         messages.info(request, 'You are already on the Free plan.')
         return redirect('pricing')
 
-    success_url = request.build_absolute_uri('/billing/checkout/success/') + '?session_id={CHECKOUT_SESSION_ID}'
-    cancel_url = request.build_absolute_uri('/billing/checkout/cancel/')
+    # Ensure subscription exists
+    try:
+        sub = org.subscription
+    except Subscription.DoesNotExist:
+        free_plan = Plan.objects.get(tier='free')
+        sub = Subscription.objects.create(
+            organization=org, plan=free_plan, status='active'
+        )
+
+    currency = request.COOKIES.get('preferred_currency', 'USD')
+    if currency not in SUPPORTED_CURRENCIES:
+        currency = 'USD'
+
+    success_url = request.build_absolute_uri('/billing/checkout/success/')
+    notify_url = request.build_absolute_uri('/billing/webhooks/payu/')
 
     try:
-        from .services import create_checkout_session
-        session = create_checkout_session(
+        from .services import create_payu_order
+        result = create_payu_order(
             organization=org,
             plan=plan,
             billing_cycle=billing_cycle,
+            currency=currency,
             success_url=success_url,
-            cancel_url=cancel_url,
+            notify_url=notify_url,
         )
-        return redirect(session.url)
+        redirect_url = result.get('redirect_url', '')
+        if redirect_url:
+            return redirect(redirect_url)
+        messages.error(request, 'Unable to start checkout. Please try again.')
+        return redirect('pricing')
     except Exception as e:
         messages.error(request, f'Unable to start checkout: {str(e)}')
         return redirect('pricing')
@@ -118,35 +143,8 @@ def billing_manage_view(request):
         'is_owner': is_owner,
         'room_count': room_count,
         'plan_limits': plan_limits,
-        'stripe_enabled': settings.STRIPE_ENABLED,
+        'payu_enabled': settings.PAYU_ENABLED,
     })
-
-
-@login_required
-def customer_portal_view(request):
-    """Redirect to Stripe Customer Portal for payment method management."""
-    if not settings.STRIPE_ENABLED:
-        messages.info(request, 'Billing is not configured.')
-        return redirect('billing_manage')
-
-    org = getattr(request, 'organization', None)
-    if not org:
-        return redirect('billing_manage')
-
-    membership = org.memberships.filter(user=request.user, is_active=True).first()
-    if not membership or membership.role != 'owner':
-        messages.error(request, 'Only the organization owner can manage billing.')
-        return redirect('billing_manage')
-
-    return_url = request.build_absolute_uri('/billing/manage/')
-
-    try:
-        from .services import create_customer_portal_session
-        session = create_customer_portal_session(org, return_url)
-        return redirect(session.url)
-    except Exception as e:
-        messages.error(request, f'Unable to open billing portal: {str(e)}')
-        return redirect('billing_manage')
 
 
 @login_required
@@ -200,3 +198,31 @@ def resume_subscription_view(request):
         messages.error(request, f'Unable to resume: {str(e)}')
 
     return redirect('billing_manage')
+
+
+def currency_rates_api(request):
+    """AJAX endpoint returning converted prices for all plans in the requested currency."""
+    currency = request.GET.get('currency', 'USD')
+    if currency not in SUPPORTED_CURRENCIES:
+        return JsonResponse({'error': 'Unsupported currency'}, status=400)
+
+    plans = Plan.objects.filter(is_active=True).order_by('display_order')
+    symbol, name = SUPPORTED_CURRENCIES[currency]
+
+    plan_prices = {}
+    for plan in plans:
+        monthly_converted = convert_price(plan.monthly_price_cents, currency)
+        annual_converted = convert_price(plan.annual_price_cents, currency)
+        plan_prices[plan.tier] = {
+            'monthly': format_currency(monthly_converted, currency),
+            'annual': format_currency(annual_converted, currency),
+            'monthly_raw': monthly_converted,
+            'annual_raw': annual_converted,
+        }
+
+    return JsonResponse({
+        'currency': currency,
+        'symbol': symbol,
+        'name': name,
+        'plans': plan_prices,
+    })

@@ -20,10 +20,7 @@ class Plan(models.Model):
     annual_price_cents = models.IntegerField(default=0)
     is_per_user = models.BooleanField(default=False)
 
-    # Stripe references
-    stripe_product_id = models.CharField(max_length=100, blank=True, default='')
-    stripe_monthly_price_id = models.CharField(max_length=100, blank=True, default='')
-    stripe_annual_price_id = models.CharField(max_length=100, blank=True, default='')
+    # (No external product IDs needed — PayU uses our tier for identification)
 
     # Feature limits (-1 means unlimited)
     max_rooms = models.IntegerField(default=1)
@@ -67,7 +64,7 @@ class Plan(models.Model):
 
 
 class Subscription(models.Model):
-    """Tracks an organization's subscription. Synced from Stripe via webhooks."""
+    """Tracks an organization's subscription. Updated via PayU webhooks."""
 
     class Status(models.TextChoices):
         ACTIVE = 'active', 'Active'
@@ -93,13 +90,17 @@ class Subscription(models.Model):
         max_length=10, choices=BillingCycle.choices, default=BillingCycle.MONTHLY
     )
 
-    # Stripe references
-    stripe_customer_id = models.CharField(max_length=100, blank=True, default='')
-    stripe_subscription_id = models.CharField(max_length=100, blank=True, default='')
+    # PayU references
+    payu_customer_id = models.CharField(max_length=100, blank=True, default='')
+    payu_card_token = models.CharField(
+        max_length=200, blank=True, default='',
+        help_text='PayU card token (TOKC_*) for recurring charges'
+    )
 
     # Billing dates
     current_period_start = models.DateTimeField(null=True, blank=True)
     current_period_end = models.DateTimeField(null=True, blank=True)
+    next_billing_date = models.DateTimeField(null=True, blank=True)
     cancel_at_period_end = models.BooleanField(default=False)
     canceled_at = models.DateTimeField(null=True, blank=True)
 
@@ -108,7 +109,7 @@ class Subscription(models.Model):
 
     # Admin override
     is_complimentary = models.BooleanField(
-        default=False, help_text='Granted by super admin, bypasses Stripe'
+        default=False, help_text='Granted by super admin, bypasses billing'
     )
     complimentary_note = models.TextField(blank=True, default='')
 
@@ -117,10 +118,10 @@ class Subscription(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['stripe_customer_id']),
-            models.Index(fields=['stripe_subscription_id']),
+            models.Index(fields=['payu_customer_id']),
             models.Index(fields=['status']),
             models.Index(fields=['current_period_end']),
+            models.Index(fields=['next_billing_date']),
         ]
 
     def __str__(self):
@@ -137,7 +138,7 @@ class Subscription(models.Model):
 
 
 class Payment(models.Model):
-    """Payment history record. Synced from Stripe invoices."""
+    """Payment history record. Created from PayU order notifications."""
 
     class Status(models.TextChoices):
         SUCCEEDED = 'succeeded', 'Succeeded'
@@ -150,10 +151,9 @@ class Payment(models.Model):
         Subscription, on_delete=models.CASCADE, related_name='payments'
     )
 
-    # Stripe references
-    stripe_invoice_id = models.CharField(max_length=100, blank=True, default='')
-    stripe_charge_id = models.CharField(max_length=100, blank=True, default='')
-    stripe_payment_intent_id = models.CharField(max_length=100, blank=True, default='')
+    # PayU references
+    payu_order_id = models.CharField(max_length=100, blank=True, default='')
+    payu_transaction_id = models.CharField(max_length=100, blank=True, default='')
 
     amount_cents = models.IntegerField()
     currency = models.CharField(max_length=3, default='usd')
@@ -167,7 +167,7 @@ class Payment(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['stripe_invoice_id']),
+            models.Index(fields=['payu_order_id']),
             models.Index(fields=['subscription', '-created_at']),
         ]
 

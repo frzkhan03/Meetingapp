@@ -12,7 +12,7 @@ django-redis>=5.4  # Redis cache backend for sessions, caching, rate limiting
 boto3>=1.28  # AWS SDK for S3 recording storage
 
 # Payments
-stripe>=7.0  # Stripe billing integration
+requests>=2.31  # HTTP client for PayU API calls
 
 # Security packages
 argon2-cffi>=21.0  # Argon2 password hashing (most secure)

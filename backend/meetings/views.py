@@ -16,6 +16,10 @@ def home_view(request):
     context = {}
     if request.user.is_authenticated:
         context['organization'] = getattr(request, 'organization', None)
+    else:
+        from billing.models import Plan
+        context['plans'] = Plan.objects.filter(is_active=True).order_by('display_order')
+        context['payu_enabled'] = getattr(settings, 'PAYU_ENABLED', False)
     return render(request, 'home.html', context)
 
 

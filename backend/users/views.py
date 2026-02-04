@@ -33,9 +33,20 @@ def register_view(request):
     if request.user.is_authenticated:
         return redirect('home')
 
+    valid_tiers = ('pro', 'business')
+    valid_cycles = ('monthly', 'annual')
+
     if request.method == 'POST':
         form = RegisterForm(request.POST)
         org_name = request.POST.get('organization_name', '').strip()
+
+        # Read plan selection from hidden fields
+        selected_plan = request.POST.get('selected_plan', '').strip()
+        selected_cycle = request.POST.get('selected_cycle', 'monthly').strip()
+        if selected_plan not in valid_tiers:
+            selected_plan = ''
+        if selected_cycle not in valid_cycles:
+            selected_cycle = 'monthly'
 
         if form.is_valid():
             user = form.save()
@@ -60,18 +71,43 @@ def register_view(request):
             profile.current_organization = org
             profile.save(update_fields=['current_organization', 'updated_at'])
 
+            # Set session org so TenantMiddleware picks it up on the next request
+            request.session['current_organization_id'] = str(org.id)
+
             # Create personal room in background (not needed for login)
             setup_user_in_org.delay(user.id, str(org.id))
 
             login(request, user)
             messages.success(request, 'Registration successful!')
+
+            # Redirect to checkout if a paid plan was selected
+            if selected_plan:
+                return redirect('billing_checkout', plan_tier=selected_plan, billing_cycle=selected_cycle)
+
             return redirect('home')
         else:
             messages.error(request, 'Registration failed. Please check the form.')
     else:
         form = RegisterForm()
+        selected_plan = request.GET.get('plan', '').strip()
+        selected_cycle = request.GET.get('cycle', 'monthly').strip()
+        if selected_plan not in valid_tiers:
+            selected_plan = ''
+        if selected_cycle not in valid_cycles:
+            selected_cycle = 'monthly'
 
-    return render(request, 'register.html', {'form': form})
+    # Look up plan details for the banner
+    selected_plan_obj = None
+    if selected_plan:
+        from billing.models import Plan
+        selected_plan_obj = Plan.objects.filter(tier=selected_plan, is_active=True).first()
+
+    return render(request, 'register.html', {
+        'form': form,
+        'selected_plan': selected_plan,
+        'selected_cycle': selected_cycle,
+        'selected_plan_obj': selected_plan_obj,
+    })
 
 
 def login_view(request):

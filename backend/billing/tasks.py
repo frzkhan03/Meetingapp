@@ -1,27 +1,96 @@
 import logging
+from datetime import timedelta
+
 from celery import shared_task
 from django.db.models import Sum
 from django.utils import timezone
-from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=10)
-def sync_subscription_from_stripe_task(self, stripe_subscription_data):
+@shared_task
+def process_recurring_billing():
     """
-    Async wrapper for sync_subscription_from_stripe.
-    Called by webhook handlers that want to offload the sync.
+    Daily task: charge subscriptions where next_billing_date has passed.
+    Uses stored PayU card tokens for server-initiated recurring charges.
+    Retries failed payments for up to 3 days, then cancels after 7 days.
     """
-    try:
-        from .services import sync_subscription_from_stripe
-        result = sync_subscription_from_stripe(stripe_subscription_data)
-        if result:
-            logger.info(f"Synced subscription for org {result.organization.name}")
-        return bool(result)
-    except Exception as e:
-        logger.exception(f"Error syncing subscription from Stripe: {e}")
-        raise self.retry(exc=e)
+    from .models import Plan, Subscription
+    from .plan_limits import invalidate_plan_cache
+    from .services import create_payu_recurring_order
+
+    now = timezone.now()
+
+    # Find active subscriptions due for billing
+    due_subs = Subscription.objects.filter(
+        next_billing_date__lte=now,
+        cancel_at_period_end=False,
+        is_complimentary=False,
+        payu_card_token__gt='',
+        status__in=['active', 'past_due'],
+    ).exclude(plan__tier='free').select_related('plan', 'organization')
+
+    charged = 0
+    failed = 0
+
+    for sub in due_subs:
+        result = create_payu_recurring_order(sub)
+        if result and result.get('order_id'):
+            charged += 1
+            logger.info(
+                'Recurring charge initiated for org %s, order %s',
+                sub.organization.name, result['order_id'],
+            )
+        else:
+            failed += 1
+            logger.warning(
+                'Recurring charge failed for org %s', sub.organization.name,
+            )
+            # Mark past_due after first failure
+            if sub.status == 'active':
+                sub.status = 'past_due'
+                sub.save(update_fields=['status', 'updated_at'])
+
+    # Cancel subscriptions past_due for more than 7 days
+    cutoff = now - timedelta(days=7)
+    stale_subs = Subscription.objects.filter(
+        status='past_due',
+        next_billing_date__lte=cutoff,
+        cancel_at_period_end=False,
+        is_complimentary=False,
+    ).exclude(plan__tier='free').select_related('organization')
+
+    canceled = 0
+    free_plan = Plan.objects.filter(tier='free').first()
+    for sub in stale_subs:
+        sub.status = 'canceled'
+        sub.canceled_at = now
+        if free_plan:
+            sub.plan = free_plan
+        sub.save()
+        invalidate_plan_cache(str(sub.organization_id))
+        canceled += 1
+        logger.info('Canceled stale subscription for org %s', sub.organization.name)
+
+    logger.info(
+        'Recurring billing complete: %d charged, %d failed, %d canceled',
+        charged, failed, canceled,
+    )
+
+
+@shared_task
+def refresh_exchange_rates():
+    """Pre-cache exchange rates from frankfurter.dev every 6 hours."""
+    from .currency import get_exchange_rates, CACHE_KEY
+    from django.core.cache import cache
+
+    # Clear cache to force fresh fetch
+    cache.delete(CACHE_KEY)
+    rates = get_exchange_rates()
+    if rates and len(rates) > 1:
+        logger.info('Exchange rates refreshed: %d currencies', len(rates))
+    else:
+        logger.warning('Exchange rate refresh returned minimal data')
 
 
 @shared_task
@@ -40,8 +109,6 @@ def record_daily_usage():
     created_count = 0
 
     for org in orgs.iterator():
-        org_id = org.id
-
         # Meeting count for yesterday
         meeting_count = Meeting.objects.filter(
             organization=org,
@@ -83,59 +150,4 @@ def record_daily_usage():
             )
             created_count += 1
 
-    logger.info(f"Recorded {created_count} daily usage entries")
-
-
-@shared_task(bind=True, max_retries=2, default_retry_delay=30)
-def update_business_plan_quantities(self):
-    """
-    Sync active member count to Stripe seat quantity for Business plan subscriptions.
-    Intended to run periodically (e.g., hourly) via Celery Beat.
-    """
-    from django.conf import settings
-    from .models import Subscription
-
-    if not getattr(settings, 'STRIPE_ENABLED', False):
-        return
-
-    try:
-        import stripe
-        stripe.api_key = settings.STRIPE_SECRET_KEY
-
-        business_subs = Subscription.objects.filter(
-            plan__tier='business',
-            status__in=['active', 'trialing', 'past_due'],
-            stripe_subscription_id__gt='',
-        ).select_related('organization', 'plan')
-
-        updated = 0
-        for sub in business_subs:
-            active_members = sub.organization.memberships.filter(
-                is_active=True
-            ).count()
-            new_quantity = max(active_members, 1)
-
-            if new_quantity != sub.quantity:
-                # Update Stripe
-                stripe_sub = stripe.Subscription.retrieve(
-                    sub.stripe_subscription_id
-                )
-                if stripe_sub['items']['data']:
-                    stripe.SubscriptionItem.modify(
-                        stripe_sub['items']['data'][0]['id'],
-                        quantity=new_quantity,
-                    )
-
-                sub.quantity = new_quantity
-                sub.save(update_fields=['quantity', 'updated_at'])
-                updated += 1
-                logger.info(
-                    f"Updated seat quantity for {sub.organization.name}: "
-                    f"{sub.quantity} -> {new_quantity}"
-                )
-
-        logger.info(f"Business plan quantity sync complete: {updated} updated")
-
-    except Exception as e:
-        logger.exception(f"Error updating business plan quantities: {e}")
-        raise self.retry(exc=e)
+    logger.info('Recorded %d daily usage entries', created_count)

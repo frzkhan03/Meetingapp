@@ -35,7 +35,7 @@ class PlanLimits:
             'waiting_rooms': False,
         }
 
-        if not getattr(settings, 'STRIPE_ENABLED', False):
+        if not getattr(settings, 'PAYU_ENABLED', False):
             cache.set(cache_key, defaults, 300)
             return defaults
 

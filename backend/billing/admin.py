@@ -17,9 +17,9 @@ class SubscriptionAdmin(admin.ModelAdmin):
     list_display = ['organization', 'plan', 'status', 'billing_cycle',
                     'current_period_end', 'is_complimentary', 'cancel_at_period_end', 'quantity']
     list_filter = ['status', 'plan', 'billing_cycle', 'is_complimentary']
-    search_fields = ['organization__name', 'stripe_customer_id', 'stripe_subscription_id']
-    readonly_fields = ['id', 'created_at', 'updated_at', 'stripe_customer_id',
-                       'stripe_subscription_id']
+    search_fields = ['organization__name', 'payu_customer_id']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'payu_customer_id',
+                       'payu_card_token']
     actions = ['grant_complimentary', 'revoke_complimentary']
 
     def grant_complimentary(self, request, queryset):
@@ -41,7 +41,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
 class PaymentAdmin(admin.ModelAdmin):
     list_display = ['subscription', 'amount', 'currency', 'status', 'created_at']
     list_filter = ['status', 'currency', 'created_at']
-    search_fields = ['stripe_invoice_id', 'stripe_charge_id',
+    search_fields = ['payu_order_id', 'payu_transaction_id',
                      'subscription__organization__name']
     readonly_fields = ['id', 'created_at']
 

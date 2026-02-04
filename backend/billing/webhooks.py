@@ -1,174 +1,192 @@
+import json
 import logging
+from datetime import timedelta
 
-import stripe
 from django.conf import settings
 from django.http import HttpResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+
+from .services import verify_payu_signature
 
 logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
 @require_POST
-def stripe_webhook_view(request):
-    """Handle Stripe webhook events."""
-    if not settings.STRIPE_ENABLED:
+def payu_webhook_view(request):
+    """Handle PayU order notification webhooks."""
+    if not settings.PAYU_ENABLED:
         return HttpResponse(status=200)
 
-    payload = request.body
-    sig_header = request.META.get('HTTP_STRIPE_SIGNATURE', '')
+    body = request.body
+    sig_header = request.META.get('HTTP_OPENPAYU_SIGNATURE', '')
 
-    try:
-        stripe.api_key = settings.STRIPE_SECRET_KEY
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
-        )
-    except (ValueError, stripe.error.SignatureVerificationError) as e:
-        logger.warning(f"Stripe webhook signature verification failed: {e}")
+    if not verify_payu_signature(body, sig_header):
+        logger.warning('PayU webhook signature verification failed')
         return HttpResponse(status=400)
 
-    handlers = {
-        'checkout.session.completed': handle_checkout_completed,
-        'customer.subscription.created': handle_subscription_changed,
-        'customer.subscription.updated': handle_subscription_changed,
-        'customer.subscription.deleted': handle_subscription_deleted,
-        'invoice.paid': handle_invoice_paid,
-        'invoice.payment_failed': handle_invoice_payment_failed,
-    }
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        logger.warning('PayU webhook: invalid JSON body')
+        return HttpResponse(status=400)
 
-    handler = handlers.get(event['type'])
-    if handler:
-        try:
-            handler(event['data']['object'])
-        except Exception as e:
-            logger.exception(f"Error handling webhook {event['type']}: {e}")
-            return HttpResponse(status=500)
-    else:
-        logger.debug(f"Unhandled Stripe event type: {event['type']}")
+    order = data.get('order', {})
+    order_id = order.get('orderId', '')
+    status_code = order.get('status', '')
+    ext_order_id = order.get('extOrderId', '')
+
+    logger.info('PayU webhook: order=%s status=%s ext=%s', order_id, status_code, ext_order_id)
+
+    try:
+        if status_code == 'COMPLETED':
+            handle_order_completed(order, data)
+        elif status_code in ('CANCELED', 'REJECTED'):
+            handle_order_failed(order)
+        elif status_code == 'PENDING':
+            logger.info('PayU order %s is pending', order_id)
+        else:
+            logger.debug('Unhandled PayU order status: %s', status_code)
+    except Exception:
+        logger.exception('Error handling PayU webhook for order %s', order_id)
+        return HttpResponse(status=500)
 
     return HttpResponse(status=200)
 
 
-def handle_checkout_completed(session):
-    """Checkout session completed - retrieve and sync the subscription."""
-    from .services import get_stripe, sync_subscription_from_stripe
-
-    subscription_id = session.get('subscription')
-    if not subscription_id:
-        return
-
-    s = get_stripe()
-    subscription = s.Subscription.retrieve(subscription_id)
-    sync_subscription_from_stripe(subscription)
-
-    logger.info(f"Checkout completed for subscription {subscription_id}")
-
-
-def handle_subscription_changed(subscription):
-    """Subscription created or updated."""
-    from .services import sync_subscription_from_stripe
-    sync_subscription_from_stripe(subscription)
-    logger.info(f"Subscription {subscription.get('id')} synced (status: {subscription.get('status')})")
-
-
-def handle_subscription_deleted(subscription):
-    """Subscription canceled or expired - downgrade to free."""
-    from .models import Plan, Subscription as SubModel
+def handle_order_completed(order, full_data):
+    """Payment succeeded — update subscription and create Payment record."""
+    from .models import Payment, Plan, Subscription
     from .plan_limits import invalidate_plan_cache
 
-    org_id = subscription.get('metadata', {}).get('organization_id')
-    customer_id = subscription.get('customer')
+    ext_order_id = order.get('extOrderId', '')
+    order_id = order.get('orderId', '')
 
-    sub = None
-    if org_id:
-        try:
-            sub = SubModel.objects.get(organization_id=org_id)
-        except SubModel.DoesNotExist:
-            pass
-
-    if not sub and customer_id:
-        try:
-            sub = SubModel.objects.get(stripe_customer_id=customer_id)
-        except SubModel.DoesNotExist:
-            pass
-
-    if sub:
-        free_plan = Plan.objects.filter(tier='free').first()
-        if free_plan:
-            sub.plan = free_plan
-        sub.status = 'canceled'
-        sub.canceled_at = None  # Will be set by Stripe timestamp if available
-        sub.stripe_subscription_id = ''
-        sub.save()
-        invalidate_plan_cache(str(sub.organization_id))
-        logger.info(f"Subscription deleted for org {sub.organization.name}, downgraded to free")
-
-
-def handle_invoice_paid(invoice):
-    """Successful payment - create Payment record."""
-    from .models import Payment, Subscription as SubModel
-
-    subscription_id = invoice.get('subscription')
-    if not subscription_id:
+    # Parse extOrderId: {org_id}-{tier}-{cycle}[-recurring]
+    parts = ext_order_id.split('-')
+    if len(parts) < 3:
+        logger.warning('Cannot parse extOrderId: %s', ext_order_id)
         return
 
+    # UUID is first 5 parts (8-4-4-4-12), then tier, then cycle
+    # Format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx-pro-monthly[-recurring]
+    # UUID has 5 parts separated by dashes, so org_id is parts[0:5]
+    org_id = '-'.join(parts[:5])
+    tier = parts[5] if len(parts) > 5 else ''
+    billing_cycle = parts[6] if len(parts) > 6 else 'monthly'
+    is_recurring = len(parts) > 7 and parts[7] == 'recurring'
+
     try:
-        sub = SubModel.objects.get(stripe_subscription_id=subscription_id)
-    except SubModel.DoesNotExist:
-        # Try customer lookup
-        customer_id = invoice.get('customer')
-        try:
-            sub = SubModel.objects.get(stripe_customer_id=customer_id)
-        except SubModel.DoesNotExist:
-            logger.warning(f"No subscription found for invoice {invoice.get('id')}")
-            return
-
-    Payment.objects.update_or_create(
-        stripe_invoice_id=invoice.get('id', ''),
-        defaults={
-            'subscription': sub,
-            'amount_cents': invoice.get('amount_paid', 0),
-            'currency': invoice.get('currency', 'usd'),
-            'status': 'succeeded',
-            'description': invoice.get('description', '') or f"Invoice {invoice.get('number', '')}",
-            'stripe_charge_id': invoice.get('charge', '') or '',
-            'stripe_payment_intent_id': invoice.get('payment_intent', '') or '',
-            'invoice_pdf_url': invoice.get('invoice_pdf', '') or '',
-        }
-    )
-
-    logger.info(f"Payment recorded for invoice {invoice.get('id')}")
-
-
-def handle_invoice_payment_failed(invoice):
-    """Failed payment - create Payment record."""
-    from .models import Payment, Subscription as SubModel
-
-    subscription_id = invoice.get('subscription')
-    if not subscription_id:
+        sub = Subscription.objects.select_related('plan', 'organization').get(
+            organization_id=org_id
+        )
+    except Subscription.DoesNotExist:
+        logger.warning('No subscription found for org %s', org_id)
         return
 
-    try:
-        sub = SubModel.objects.get(stripe_subscription_id=subscription_id)
-    except SubModel.DoesNotExist:
-        customer_id = invoice.get('customer')
-        try:
-            sub = SubModel.objects.get(stripe_customer_id=customer_id)
-        except SubModel.DoesNotExist:
-            return
+    plan = Plan.objects.filter(tier=tier, is_active=True).first()
+    if not plan:
+        logger.warning('Plan not found for tier: %s', tier)
+        return
 
-    Payment.objects.update_or_create(
-        stripe_invoice_id=invoice.get('id', ''),
-        defaults={
-            'subscription': sub,
-            'amount_cents': invoice.get('amount_due', 0),
-            'currency': invoice.get('currency', 'usd'),
-            'status': 'failed',
-            'description': f"Failed: {invoice.get('description', '') or invoice.get('number', '')}",
-            'stripe_charge_id': invoice.get('charge', '') or '',
-            'stripe_payment_intent_id': invoice.get('payment_intent', '') or '',
-        }
+    # Extract card token from first recurring payment
+    properties = full_data.get('properties', [])
+    for prop in properties:
+        if prop.get('name') == 'PAYMENT_ID':
+            pass  # useful for logging
+    # PayU returns payMethod with card token in the order
+    pay_method = order.get('payMethod', {})
+    card_token = pay_method.get('value', '')
+
+    # Extract transaction ID from properties
+    payu_transaction_id = ''
+    if isinstance(properties, list):
+        for prop in properties:
+            if prop.get('name') == 'PAYMENT_ID':
+                payu_transaction_id = str(prop.get('value', ''))
+
+    # Update subscription
+    now = timezone.now()
+    if billing_cycle == 'annual':
+        next_billing = now + timedelta(days=365)
+    else:
+        next_billing = now + timedelta(days=30)
+
+    sub.plan = plan
+    sub.status = 'active'
+    sub.billing_cycle = billing_cycle.replace('-recurring', '')
+    sub.current_period_start = now
+    sub.current_period_end = next_billing
+    sub.next_billing_date = next_billing
+    sub.cancel_at_period_end = False
+    sub.canceled_at = None
+
+    if card_token and card_token.startswith('TOKC_'):
+        sub.payu_card_token = card_token
+
+    # Set customer ID from buyer
+    buyer = order.get('buyer', {})
+    if buyer.get('customerId'):
+        sub.payu_customer_id = buyer['customerId']
+
+    sub.save()
+    invalidate_plan_cache(org_id)
+
+    # Create Payment record
+    amount = int(order.get('totalAmount', 0))
+    currency = order.get('currencyCode', 'USD')
+
+    Payment.objects.create(
+        subscription=sub,
+        payu_order_id=order_id,
+        payu_transaction_id=payu_transaction_id,
+        amount_cents=amount,
+        currency=currency.lower(),
+        status='succeeded',
+        description=order.get('description', ''),
     )
 
-    logger.info(f"Failed payment recorded for invoice {invoice.get('id')}")
+    logger.info(
+        'Payment completed: org=%s plan=%s cycle=%s amount=%s %s recurring=%s',
+        org_id, tier, billing_cycle, amount, currency, is_recurring,
+    )
+
+
+def handle_order_failed(order):
+    """Payment failed or canceled — record and update subscription if recurring."""
+    from .models import Payment, Subscription
+
+    ext_order_id = order.get('extOrderId', '')
+    order_id = order.get('orderId', '')
+    status = order.get('status', '')
+
+    parts = ext_order_id.split('-')
+    if len(parts) < 3:
+        return
+
+    org_id = '-'.join(parts[:5])
+    is_recurring = 'recurring' in ext_order_id
+
+    try:
+        sub = Subscription.objects.get(organization_id=org_id)
+    except Subscription.DoesNotExist:
+        return
+
+    # Record failed payment
+    Payment.objects.create(
+        subscription=sub,
+        payu_order_id=order_id,
+        amount_cents=int(order.get('totalAmount', 0)),
+        currency=order.get('currencyCode', 'USD').lower(),
+        status='failed',
+        description=f'{status}: {order.get("description", "")}',
+    )
+
+    # If this was a recurring charge, mark subscription as past_due
+    if is_recurring and sub.status == 'active':
+        sub.status = 'past_due'
+        sub.save(update_fields=['status', 'updated_at'])
+
+    logger.warning('Payment failed: org=%s order=%s status=%s', org_id, order_id, status)
