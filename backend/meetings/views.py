@@ -115,6 +115,17 @@ def meeting_details_view(request, room_id):
     })
 
 
+def _get_plan_context(request):
+    """Build plan-related context for room.html template."""
+    plan_limits = getattr(request, 'plan_limits', None)
+    return {
+        'max_participants': plan_limits.get_participant_limit() if plan_limits else 100,
+        'duration_limit_seconds': plan_limits.get_duration_limit_seconds() if plan_limits else None,
+        'recording_allowed': plan_limits.can_record() if plan_limits else True,
+        'plan_tier': getattr(request, 'plan_tier', 'free'),
+    }
+
+
 @login_required
 def start_meeting_view(request, room_id):
     meeting = get_object_or_404(Meeting.objects.select_related('organization', 'author'), room_id=room_id)
@@ -139,6 +150,7 @@ def start_meeting_view(request, room_id):
             'is_moderator': True,
             'author_id': str(meeting.author.id),
             'recording_to_s3': org.recording_to_s3 if org else False,
+            **_get_plan_context(request),
         })
 
     # Check if user has been approved (has a packet)
@@ -157,6 +169,7 @@ def start_meeting_view(request, room_id):
             'is_moderator': False,
             'author_id': str(meeting.author.id),
             'recording_to_s3': org.recording_to_s3 if org else False,
+            **_get_plan_context(request),
         })
 
     # Check if meeting requires approval
@@ -170,6 +183,7 @@ def start_meeting_view(request, room_id):
             'is_moderator': False,
             'author_id': str(meeting.author.id),
             'recording_to_s3': org.recording_to_s3 if org else False,
+            **_get_plan_context(request),
         })
 
     # User needs approval - store room info in session and redirect to pending
@@ -236,6 +250,20 @@ def organization_meetings_view(request):
 @require_organization
 def my_room_view(request):
     """View user's personal room with links"""
+    # Check room creation limit for new rooms
+    existing = PersonalRoom.objects.filter(
+        user=request.user, organization=request.organization
+    ).first()
+    if not existing:
+        plan_limits = getattr(request, 'plan_limits', None)
+        if plan_limits and not plan_limits.can_create_room():
+            messages.warning(
+                request,
+                f'Your plan allows a maximum of {plan_limits.max_rooms} room(s). '
+                f'Please upgrade to create more rooms.'
+            )
+            return redirect('pricing')
+
     personal_room, created = PersonalRoom.objects.get_or_create(
         user=request.user,
         organization=request.organization
@@ -356,6 +384,7 @@ def join_personal_room_view(request, room_id):
         'organization': personal_room.organization,
         'is_locked': personal_room.is_locked,
         'recording_to_s3': personal_room.organization.recording_to_s3,
+        **_get_plan_context(request),
     })
 
 
@@ -463,6 +492,11 @@ def upload_recording_view(request):
         org = getattr(request, 'organization', None)
         if not org:
             return JsonResponse({'error': 'No organization context'}, status=400)
+
+        # Check plan allows recording
+        plan_limits = getattr(request, 'plan_limits', None)
+        if plan_limits and not plan_limits.can_record():
+            return JsonResponse({'error': 'Recording requires a Pro plan or higher.'}, status=403)
 
         if not org.recording_to_s3:
             return JsonResponse({'error': 'Cloud recording is not enabled for this organization'}, status=400)

@@ -89,6 +89,14 @@
                                     </svg>
                                     New Organization
                                 </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{% url 'billing_manage' %}">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                        <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                                        <line x1="1" y1="10" x2="23" y2="10"/>
+                                    </svg>
+                                    Billing
+                                </a></li>
                             </ul>
                         </li>
                         <li class="nav-item">
@@ -99,6 +107,9 @@
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'schedule_meeting' %}">New Meeting</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'pricing' %}">Pricing</a>
                         </li>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">

@@ -1,13 +1,16 @@
 import json
+import time
+import asyncio
 import logging
+from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 logger = logging.getLogger(__name__)
 
 # Maximum message size in bytes (64 KB)
 MAX_MESSAGE_SIZE = 65536
-# Maximum connections per room
-MAX_ROOM_CONNECTIONS = 500
+# Fallback maximum connections per room (when plan lookup fails)
+MAX_ROOM_CONNECTIONS_FALLBACK = 500
 
 
 class RoomConsumer(AsyncWebsocketConsumer):
@@ -21,8 +24,10 @@ class RoomConsumer(AsyncWebsocketConsumer):
             'user_id',
             str(self.scope['user'].id) if self.scope['user'].is_authenticated else None
         )
+        self._duration_task = None
 
-        # Enforce per-room connection limit via Redis cache
+        # Enforce plan-based participant limit via Redis cache
+        max_participants = await self._get_room_participant_limit()
         room_count_key = f'ws:room:count:{self.room_id}'
         try:
             from django.core.cache import cache
@@ -32,9 +37,9 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 cache.set(room_count_key, 1, 7200)  # 2h TTL
                 count = 1
 
-            if count > MAX_ROOM_CONNECTIONS:
+            if count > max_participants:
                 cache.decr(room_count_key)
-                logger.warning(f"Room {self.room_id} at capacity ({MAX_ROOM_CONNECTIONS})")
+                logger.warning(f"Room {self.room_id} at plan capacity ({max_participants})")
                 await self.close(code=4029)
                 return
         except Exception:
@@ -48,7 +53,112 @@ class RoomConsumer(AsyncWebsocketConsumer):
 
         await self.accept()
 
+        # Start duration limit enforcement if applicable
+        duration_limit = await self._get_duration_limit()
+        if duration_limit:
+            try:
+                from django.core.cache import cache
+                start_key = f'ws:room:start:{self.room_id}'
+                if not cache.get(start_key):
+                    cache.set(start_key, time.time(), duration_limit + 300)
+                self._duration_task = asyncio.ensure_future(
+                    self._check_duration_limit(duration_limit)
+                )
+            except Exception:
+                pass
+
+    @database_sync_to_async
+    def _get_room_participant_limit(self):
+        """Look up the plan's max_participants for this room's org."""
+        from meetings.models import Meeting, PersonalRoom
+        try:
+            from billing.plan_limits import get_plan_limits
+        except ImportError:
+            return MAX_ROOM_CONNECTIONS_FALLBACK
+
+        org = None
+        try:
+            meeting = Meeting.objects.select_related('organization').get(room_id=self.room_id)
+            org = meeting.organization
+        except Meeting.DoesNotExist:
+            try:
+                room = PersonalRoom.objects.select_related('organization').get(room_id=self.room_id)
+                org = room.organization
+            except PersonalRoom.DoesNotExist:
+                pass
+
+        if org:
+            limits = get_plan_limits(org)
+            return limits.max_participants
+        return MAX_ROOM_CONNECTIONS_FALLBACK
+
+    @database_sync_to_async
+    def _get_duration_limit(self):
+        """Returns duration limit in seconds, or None for unlimited."""
+        from meetings.models import Meeting, PersonalRoom
+        try:
+            from billing.plan_limits import get_plan_limits
+        except ImportError:
+            return None
+
+        org = None
+        try:
+            meeting = Meeting.objects.select_related('organization').get(room_id=self.room_id)
+            org = meeting.organization
+        except Meeting.DoesNotExist:
+            try:
+                room = PersonalRoom.objects.select_related('organization').get(room_id=self.room_id)
+                org = room.organization
+            except PersonalRoom.DoesNotExist:
+                pass
+
+        if org:
+            limits = get_plan_limits(org)
+            return limits.get_duration_limit_seconds()
+        return None
+
+    async def _check_duration_limit(self, limit_seconds):
+        """Periodically check if meeting has exceeded duration limit."""
+        try:
+            while True:
+                await asyncio.sleep(60)
+                from django.core.cache import cache
+                start_key = f'ws:room:start:{self.room_id}'
+                start_time = cache.get(start_key)
+                if not start_time:
+                    break
+
+                elapsed = time.time() - start_time
+                remaining = limit_seconds - elapsed
+
+                if 240 < remaining <= 300:
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'duration_warning',
+                            'minutes_remaining': int(remaining / 60),
+                        }
+                    )
+
+                if elapsed >= limit_seconds:
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'meeting_duration_exceeded',
+                            'message': 'Meeting duration limit reached for your plan.',
+                        }
+                    )
+                    break
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.exception(f"Error in duration check for room {self.room_id}: {e}")
+
     async def disconnect(self, close_code):
+        # Cancel duration check if running
+        if hasattr(self, '_duration_task') and self._duration_task:
+            self._duration_task.cancel()
+
         # Decrement room connection count
         room_count_key = f'ws:room:count:{self.room_id}'
         try:
@@ -460,6 +570,18 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 'type': 'meeting-ended',
                 'moderator_id': event['moderator_id']
             }))
+
+    async def duration_warning(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'duration-warning',
+            'minutes_remaining': event['minutes_remaining']
+        }))
+
+    async def meeting_duration_exceeded(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'meeting-duration-exceeded',
+            'message': event['message']
+        }))
 
 
 class UserConsumer(AsyncWebsocketConsumer):

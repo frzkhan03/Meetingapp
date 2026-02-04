@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load billing_tags %}
+
+{% block title %}Pricing - PyTalk{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/billing.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="text-center mb-5">
+        <h1 class="fw-bold mb-3">Simple, transparent pricing</h1>
+        <p class="text-muted fs-5">Choose the plan that fits your team</p>
+
+        <!-- Billing Toggle -->
+        <div class="billing-toggle mt-4">
+            <span class="toggle-label" id="monthlyLabel">Monthly</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="billingToggle">
+                <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label" id="annualLabel">Annual <span class="save-badge">Save 20%</span></span>
+        </div>
+    </div>
+
+    <div class="row g-4 justify-content-center">
+        {% for plan in plans %}
+        <div class="col-md-4">
+            <div class="plan-card {% if plan.tier == current_tier %}plan-current{% endif %} {% if plan.tier == 'pro' %}plan-featured{% endif %}">
+                {% if plan.tier == 'pro' %}
+                <div class="plan-badge">Most Popular</div>
+                {% endif %}
+
+                <div class="plan-header">
+                    <h3 class="plan-name">{{ plan.name }}</h3>
+                    <div class="plan-price">
+                        <span class="price-amount monthly-price">${{ plan.monthly_price|floatformat:2 }}</span>
+                        <span class="price-amount annual-price" style="display:none;">${{ plan.annual_price|floatformat:2 }}</span>
+                        {% if plan.tier != 'free' %}
+                        <span class="price-period monthly-period">/month{% if plan.is_per_user %}/user{% endif %}</span>
+                        <span class="price-period annual-period" style="display:none;">/year{% if plan.is_per_user %}/user{% endif %}</span>
+                        {% else %}
+                        <span class="price-period">forever</span>
+                        {% endif %}
+                    </div>
+                    <p class="plan-description">{{ plan.description }}</p>
+                </div>
+
+                <ul class="plan-features">
+                    <li class="feature-item">
+                        <span class="feature-check">&#10003;</span>
+                        {% if plan.has_unlimited_rooms %}Unlimited rooms{% else %}{{ plan.max_rooms }} room{{ plan.max_rooms|pluralize }}{% endif %}
+                    </li>
+                    <li class="feature-item">
+                        <span class="feature-check">&#10003;</span>
+                        Up to {{ plan.max_participants }} participants
+                    </li>
+                    <li class="feature-item">
+                        <span class="feature-check">&#10003;</span>
+                        {% if plan.has_unlimited_duration %}Unlimited meeting duration{% else %}{{ plan.max_meeting_duration_minutes }}-minute meetings{% endif %}
+                    </li>
+                    <li class="feature-item {% if not plan.recording_enabled %}feature-disabled{% endif %}">
+                        <span class="feature-check">{% if plan.recording_enabled %}&#10003;{% else %}&#10007;{% endif %}</span>
+                        Meeting recording
+                    </li>
+                    <li class="feature-item {% if not plan.custom_branding %}feature-disabled{% endif %}">
+                        <span class="feature-check">{% if plan.custom_branding %}&#10003;{% else %}&#10007;{% endif %}</span>
+                        Custom branding
+                    </li>
+                    {% if plan.tier == 'business' %}
+                    <li class="feature-item">
+                        <span class="feature-check">&#10003;</span>
+                        Custom subdomain
+                    </li>
+                    <li class="feature-item">
+                        <span class="feature-check">&#10003;</span>
+                        Breakout rooms
+                    </li>
+                    <li class="feature-item">
+                        <span class="feature-check">&#10003;</span>
+                        Waiting rooms
+                    </li>
+                    {% endif %}
+                </ul>
+
+                <div class="plan-action">
+                    {% if plan.tier == current_tier %}
+                        <button class="btn btn-outline-secondary w-100" disabled>Current Plan</button>
+                    {% elif plan.tier == 'free' %}
+                        <button class="btn btn-outline-secondary w-100" disabled>Free</button>
+                    {% elif stripe_enabled %}
+                        <a href="{% url 'billing_checkout' plan.tier 'monthly' %}" class="btn btn-primary w-100 checkout-btn" data-tier="{{ plan.tier }}">
+                            {% if current_tier == 'free' %}Upgrade{% else %}Switch{% endif %} to {{ plan.name }}
+                        </a>
+                    {% else %}
+                        <button class="btn btn-secondary w-100" disabled>Billing not configured</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+(function() {
+    var toggle = document.getElementById('billingToggle');
+    if (!toggle) return;
+
+    toggle.addEventListener('change', function() {
+        var isAnnual = this.checked;
+        document.querySelectorAll('.monthly-price').forEach(function(el) { el.style.display = isAnnual ? 'none' : ''; });
+        document.querySelectorAll('.annual-price').forEach(function(el) { el.style.display = isAnnual ? '' : 'none'; });
+        document.querySelectorAll('.monthly-period').forEach(function(el) { el.style.display = isAnnual ? 'none' : ''; });
+        document.querySelectorAll('.annual-period').forEach(function(el) { el.style.display = isAnnual ? '' : 'none'; });
+
+        // Update checkout links
+        document.querySelectorAll('.checkout-btn').forEach(function(btn) {
+            var tier = btn.getAttribute('data-tier');
+            var cycle = isAnnual ? 'annual' : 'monthly';
+            btn.href = '/billing/checkout/' + tier + '/' + cycle + '/';
+        });
+
+        document.getElementById('monthlyLabel').classList.toggle('active', !isAnnual);
+        document.getElementById('annualLabel').classList.toggle('active', isAnnual);
+    });
+
+    document.getElementById('monthlyLabel').classList.add('active');
+})();
+</script>
+{% endblock %}

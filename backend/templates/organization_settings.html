@@ -281,6 +281,15 @@
                         <span class="badge bg-secondary ms-2">{{ total_members }}</span>
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="billing-tab" data-bs-toggle="tab" data-bs-target="#billing" type="button" role="tab">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                            <line x1="1" y1="10" x2="23" y2="10"/>
+                        </svg>
+                        Billing
+                    </button>
+                </li>
             </ul>
 
             <!-- Tab Content -->
@@ -512,6 +521,26 @@
                             </div>
                             {% endif %}
                             {% include 'includes/pagination.html' with page_obj=page_obj %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Billing Tab -->
+                <div class="tab-pane fade" id="billing" role="tabpanel">
+                    <div class="p-4">
+                        <h5 class="mb-3">Subscription</h5>
+                        <div class="d-flex justify-content-between align-items-center p-3 rounded" style="background: var(--bg-primary);">
+                            <div>
+                                <strong>{{ request.plan_tier|default:"free"|title }} Plan</strong>
+                                <p class="text-muted mb-0 small">
+                                    {% if request.plan_tier == 'free' or not request.plan_tier %}
+                                        Upgrade to unlock more rooms, participants, and recording.
+                                    {% else %}
+                                        Your team is on a paid plan with enhanced features.
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <a href="{% url 'billing_manage' %}" class="btn btn-primary btn-sm">Manage Billing</a>
                         </div>
                     </div>
                 </div>

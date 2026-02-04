@@ -11,6 +11,9 @@ django-redis>=5.4  # Redis cache backend for sessions, caching, rate limiting
 # AWS
 boto3>=1.28  # AWS SDK for S3 recording storage
 
+# Payments
+stripe>=7.0  # Stripe billing integration
+
 # Security packages
 argon2-cffi>=21.0  # Argon2 password hashing (most secure)
 cryptography>=41.0  # Encryption library for data at rest

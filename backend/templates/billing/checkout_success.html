@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block title %}Subscription Activated - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container py-5 text-center">
+    <div style="max-width: 500px; margin: 0 auto;">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" style="margin-bottom: 24px;">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        <h2 class="fw-bold mb-3">Subscription Activated!</h2>
+        <p class="text-muted mb-4">
+            Your organization <strong>{{ organization.name }}</strong> has been upgraded successfully.
+            Your new features are available immediately.
+        </p>
+        <div class="d-flex gap-3 justify-content-center">
+            <a href="{% url 'billing_manage' %}" class="btn btn-outline-primary">View Billing</a>
+            <a href="{% url 'my_room' %}" class="btn btn-primary">Go to My Room</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

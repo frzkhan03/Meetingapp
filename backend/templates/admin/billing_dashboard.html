@@ -1,0 +1,195 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Billing Dashboard{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    .metric-card {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+    }
+    .metric-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #417690;
+    }
+    .metric-label {
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 4px;
+    }
+    .chart-container {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 24px;
+    }
+    .chart-container h3 {
+        margin-top: 0;
+        font-size: 1.1rem;
+        color: #333;
+    }
+    .section-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin: 24px 0 12px 0;
+        color: #333;
+    }
+    .plan-breakdown {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 24px;
+    }
+    .plan-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #eee;
+    }
+    .plan-row:last-child { border-bottom: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Billing Dashboard</h1>
+
+<!-- Revenue Metrics -->
+<div class="section-title">Revenue</div>
+<div class="dashboard-grid">
+    <div class="metric-card">
+        <div class="metric-value">${{ mrr|floatformat:2 }}</div>
+        <div class="metric-label">Monthly Recurring Revenue</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">${{ arr|floatformat:2 }}</div>
+        <div class="metric-label">Annual Recurring Revenue</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">${{ total_revenue_30d|floatformat:2 }}</div>
+        <div class="metric-label">Revenue (Last 30 Days)</div>
+    </div>
+</div>
+
+<!-- Revenue Trend Chart -->
+{% if monthly_revenue %}
+<div class="chart-container">
+    <h3>Monthly Revenue Trend</h3>
+    <canvas id="revenueChart" height="80"></canvas>
+</div>
+{% endif %}
+
+<!-- Subscription Analytics -->
+<div class="section-title">Subscriptions</div>
+<div class="dashboard-grid">
+    <div class="metric-card">
+        <div class="metric-value">{{ total_orgs }}</div>
+        <div class="metric-label">Total Organizations</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ new_subs_30d }}</div>
+        <div class="metric-label">New Paid Subs (30d)</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ churned_30d }}</div>
+        <div class="metric-label">Churned (30d)</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ complimentary_count }}</div>
+        <div class="metric-label">Complimentary</div>
+    </div>
+</div>
+
+{% if orgs_by_plan %}
+<div class="plan-breakdown">
+    <h3 style="margin-top:0;">Organizations by Plan</h3>
+    {% for item in orgs_by_plan %}
+    <div class="plan-row">
+        <span>{{ item.plan__name }}</span>
+        <strong>{{ item.count }}</strong>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Payment Health -->
+<div class="section-title">Payment Health</div>
+<div class="dashboard-grid">
+    <div class="metric-card">
+        <div class="metric-value" style="color: #22c55e;">{{ successful_payments }}</div>
+        <div class="metric-label">Successful Payments (30d)</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value" style="color: #ef4444;">{{ failed_payments }}</div>
+        <div class="metric-label">Failed Payments (30d)</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ upcoming_renewals }}</div>
+        <div class="metric-label">Renewals (Next 7d)</div>
+    </div>
+</div>
+
+<!-- Usage Metrics -->
+<div class="section-title">Usage</div>
+<div class="dashboard-grid">
+    <div class="metric-card">
+        <div class="metric-value">{{ meetings_last_30 }}</div>
+        <div class="metric-label">Meetings (Last 30d)</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ active_users }}</div>
+        <div class="metric-label">Active Users</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">{{ total_storage_gb }} GB</div>
+        <div class="metric-label">Recording Storage</div>
+    </div>
+</div>
+
+{% if monthly_revenue %}
+<script>
+(function() {
+    var data = {{ monthly_revenue|safe }};
+    var labels = data.map(function(r) { return r.month; });
+    var values = data.map(function(r) { return r.total; });
+
+    new Chart(document.getElementById('revenueChart'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Revenue ($)',
+                data: values,
+                borderColor: '#417690',
+                backgroundColor: 'rgba(65, 118, 144, 0.1)',
+                fill: true,
+                tension: 0.3,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { callback: function(v) { return '$' + v; } } }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+
+{% endblock %}

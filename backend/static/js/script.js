@@ -1781,6 +1781,39 @@ socketWrapper.on('meeting-ended', (data) => {
     showMeetingEndedOverlay();
 });
 
+// Duration limit events
+socketWrapper.on('duration-warning', (data) => {
+    var mins = data.minutes_remaining || 5;
+    var toast = document.createElement('div');
+    toast.className = 'alert alert-warning';
+    toast.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:10000;padding:12px 24px;border-radius:8px;font-weight:600;animation:fadeIn 0.3s;';
+    toast.textContent = 'Meeting ends in ' + mins + ' minute(s). Upgrade your plan for unlimited meetings.';
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.remove(); }, 15000);
+});
+
+socketWrapper.on('meeting-duration-exceeded', (data) => {
+    // Stop all media
+    if (VideoDetails.myVideoStream) {
+        VideoDetails.myVideoStream.getTracks().forEach(function(track) { track.stop(); });
+    }
+    if (VideoDetails.myScreenStream) {
+        VideoDetails.myScreenStream.getTracks().forEach(function(track) { track.stop(); });
+    }
+    if (myPeer) myPeer.destroy();
+    if (myPeer2) myPeer2.destroy();
+
+    var overlay = document.createElement('div');
+    overlay.className = 'kicked-overlay';
+    overlay.innerHTML = '<svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="margin-bottom:20px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
+        '<h2>Meeting Duration Limit Reached</h2>' +
+        '<p>' + (data.message || 'Your plan has a 30-minute meeting limit.') + '</p>' +
+        '<p>Upgrade to Pro or Business for unlimited meetings.</p>' +
+        '<a href="/billing/pricing/">View Plans</a>&nbsp;&nbsp;' +
+        '<a href="/">Return to Home</a>';
+    document.body.appendChild(overlay);
+});
+
 function showMeetingEndedOverlay() {
     // Stop all media
     if (VideoDetails.myVideoStream) {

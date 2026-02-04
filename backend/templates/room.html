@@ -173,12 +173,14 @@
 
         <div class="control-divider"></div>
 
+        {% if recording_allowed %}
         <button class="control-btn" id="recordButton" title="Record Meeting">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"/>
                 <circle cx="12" cy="12" r="4" fill="#ef4444" stroke="none"/>
             </svg>
         </button>
+        {% endif %}
         {% endif %}
 
         <button class="control-btn" id="chat" onclick="toggleChat()" title="Toggle Chat (C)">
@@ -318,6 +320,10 @@
         var IS_ROOM_LOCKED = {% if is_locked %}true{% else %}false{% endif %};
         var MODERATOR_TOKEN = new URLSearchParams(window.location.search).get('token') || '';
         var RECORDING_TO_S3 = {% if recording_to_s3 %}true{% else %}false{% endif %};
+        var RECORDING_ALLOWED = {% if recording_allowed %}true{% else %}false{% endif %};
+        var MAX_PARTICIPANTS = {{ max_participants|default:100 }};
+        var DURATION_LIMIT = {% if duration_limit_seconds %}{{ duration_limit_seconds }}{% else %}null{% endif %};
+        var PLAN_TIER = "{{ plan_tier|default:'free' }}";
 
         // HTML escape utility to prevent XSS
         function escapeHtml(text) {

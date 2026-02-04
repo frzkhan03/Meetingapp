@@ -12,6 +12,7 @@ urlpatterns = [
     path('', home_view, name='home'),
     path('user/', include('users.urls')),
     path('meeting/', include('meetings.urls')),
+    path('billing/', include('billing.urls')),
     path('pendingroom/', pending_room_view, name='pending_room'),
 ]
 

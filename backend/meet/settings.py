@@ -87,6 +87,7 @@ INSTALLED_APPS = [
     'channels',
     'users',
     'meetings',
+    'billing',
 ]
 
 MIDDLEWARE = [
@@ -102,6 +103,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'users.middleware.TenantMiddleware',
+    'billing.middleware.SubscriptionMiddleware',  # Plan limits injection
     'meet.middleware.SecurityLoggingMiddleware',  # Security logging
 ]
 
@@ -357,6 +359,12 @@ CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30  # Hard limit: 30 seconds per task
 CELERY_TASK_SOFT_TIME_LIMIT = 25  # Soft limit: raise SoftTimeLimitExceeded
+
+# ==================== STRIPE BILLING ====================
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
+STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+STRIPE_ENABLED = bool(STRIPE_SECRET_KEY)
 
 # ==================== WEBSOCKET SECURITY ====================
 WEBSOCKET_ALLOWED_ORIGINS = os.getenv(

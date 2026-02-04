@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load billing_tags %}
+
+{% block title %}Billing - {{ organization.name }} - PyTalk{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/billing.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h2 class="mb-4">Billing & Subscription</h2>
+
+    <!-- Current Plan -->
+    <div class="card mb-4" style="background: var(--card-bg); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h5 class="card-title mb-1">
+                        Current Plan: <strong>{{ subscription.plan.name|default:"Free" }}</strong>
+                        {% if subscription.is_complimentary %}
+                        <span class="badge bg-info ms-2">Complimentary</span>
+                        {% endif %}
+                    </h5>
+                    <p class="text-muted mb-2">
+                        {% if subscription.plan.tier == 'free' %}
+                            Free forever
+                        {% elif subscription.billing_cycle == 'annual' %}
+                            ${{ subscription.plan.annual_price|floatformat:2 }}/year{% if subscription.plan.is_per_user %}/user{% endif %}
+                        {% else %}
+                            ${{ subscription.plan.monthly_price|floatformat:2 }}/month{% if subscription.plan.is_per_user %}/user{% endif %}
+                        {% endif %}
+                    </p>
+
+                    {% if subscription.cancel_at_period_end %}
+                    <div class="alert alert-warning py-2 px-3 d-inline-block">
+                        Subscription will cancel on {{ subscription.current_period_end|date:"M d, Y" }}
+                    </div>
+                    {% elif subscription.current_period_end and subscription.plan.tier != 'free' %}
+                    <p class="text-muted small mb-0">Next billing date: {{ subscription.current_period_end|date:"M d, Y" }}</p>
+                    {% endif %}
+                </div>
+
+                {% if is_owner %}
+                <div class="d-flex gap-2">
+                    {% if subscription.cancel_at_period_end %}
+                    <form method="post" action="{% url 'billing_resume' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm">Resume Subscription</button>
+                    </form>
+                    {% endif %}
+                    <a href="{% url 'pricing' %}" class="btn btn-primary btn-sm">
+                        {% if subscription.plan.tier == 'free' %}Upgrade{% else %}Change Plan{% endif %}
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Usage -->
+    {% if plan_limits %}
+    <div class="card mb-4" style="background: var(--card-bg); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h5 class="card-title mb-3">Usage</h5>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="usage-item">
+                        <span class="usage-label">Rooms</span>
+                        <span class="usage-value">
+                            {{ room_count }} / {% if plan_limits.has_unlimited_rooms %}Unlimited{% else %}{{ plan_limits.max_rooms }}{% endif %}
+                        </span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="usage-item">
+                        <span class="usage-label">Max Participants</span>
+                        <span class="usage-value">{{ plan_limits.max_participants }} per meeting</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="usage-item">
+                        <span class="usage-label">Meeting Duration</span>
+                        <span class="usage-value">
+                            {% if plan_limits.has_unlimited_duration %}Unlimited{% else %}{{ plan_limits.max_meeting_duration_minutes }} min{% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Actions -->
+    {% if is_owner and subscription.plan.tier != 'free' and stripe_enabled %}
+    <div class="card mb-4" style="background: var(--card-bg); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h5 class="card-title mb-3">Manage</h5>
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="{% url 'billing_portal' %}" class="btn btn-outline-primary btn-sm">
+                    Manage Payment Method
+                </a>
+                {% if not subscription.cancel_at_period_end %}
+                <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal">
+                    Cancel Subscription
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Payment History -->
+    {% if payments %}
+    <div class="card" style="background: var(--card-bg); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h5 class="card-title mb-3">Payment History</h5>
+            <div class="table-responsive">
+                <table class="table table-sm" style="color: var(--text-primary);">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Invoice</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payments %}
+                        <tr>
+                            <td>{{ payment.created_at|date:"M d, Y" }}</td>
+                            <td>${{ payment.amount|floatformat:2 }}</td>
+                            <td>
+                                <span class="badge {% if payment.status == 'succeeded' %}bg-success{% elif payment.status == 'failed' %}bg-danger{% else %}bg-warning{% endif %}">
+                                    {{ payment.status }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if payment.invoice_pdf_url %}
+                                <a href="{{ payment.invoice_pdf_url }}" target="_blank" class="text-decoration-none">Download</a>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Cancel Modal -->
+{% if is_owner and subscription.plan.tier != 'free' %}
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background: var(--card-bg); color: var(--text-primary);">
+            <div class="modal-header border-0">
+                <h5 class="modal-title">Cancel Subscription</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to cancel your <strong>{{ subscription.plan.name }}</strong> plan?</p>
+                <p class="text-muted">Your subscription will remain active until {{ subscription.current_period_end|date:"M d, Y" }}. After that, you'll be downgraded to the Free plan.</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep Plan</button>
+                <form method="post" action="{% url 'billing_cancel' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Cancel Subscription</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
