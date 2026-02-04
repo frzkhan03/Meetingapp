@@ -281,6 +281,28 @@
             }
         }
 
+        // Show/hide controls on mouse movement (Google Meet style)
+        let controlsTimeout;
+        const topBar = document.querySelector('.top-bar');
+        const controlBar = document.querySelector('.allbuttons');
+
+        function showControls() {
+            topBar.classList.add('visible');
+            controlBar.classList.add('visible');
+            clearTimeout(controlsTimeout);
+            controlsTimeout = setTimeout(hideControls, 3000);
+        }
+
+        function hideControls() {
+            if (document.querySelector('#sidebar.active')) return;
+            topBar.classList.remove('visible');
+            controlBar.classList.remove('visible');
+        }
+
+        document.addEventListener('mousemove', showControls);
+        document.addEventListener('touchstart', showControls);
+        showControls();
+
         // Theme toggle
         document.getElementById('themeToggleRoom').addEventListener('click', function() {
             const html = document.documentElement;

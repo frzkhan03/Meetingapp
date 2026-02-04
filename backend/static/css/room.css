@@ -65,14 +65,21 @@ body {
     left: 0;
     right: 0;
     height: 60px;
-    background: var(--bg-glass);
+    background: transparent;
     backdrop-filter: blur(20px);
-    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 24px;
     z-index: 100;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.top-bar:hover,
+.top-bar.visible {
+    opacity: 1;
+    background: var(--bg-glass);
 }
 
 .top-bar-left {
@@ -176,18 +183,19 @@ body {
 /* ===== MAIN VIDEO AREA ===== */
 #video-area {
     position: fixed;
-    top: 60px;
+    top: 0;
     left: 0;
     right: 0;
-    bottom: 90px;
+    bottom: 0;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
     align-content: center;
-    gap: 16px;
-    padding: 24px;
+    gap: 12px;
+    padding: 16px;
     overflow-y: auto;
+    background: var(--bg-primary);
 }
 
 .innervideo {
@@ -202,26 +210,26 @@ body {
 
 /* Dynamic sizing based on participant count */
 #video-area .innervideo {
-    width: calc(50% - 12px);
-    max-width: 640px;
+    width: calc(50% - 8px);
+    max-width: 800px;
     aspect-ratio: 16/9;
 }
 
 #video-area:has(.innervideo:only-child) .innervideo {
-    width: 80%;
-    max-width: 960px;
+    width: 90%;
+    max-width: 1200px;
 }
 
 #video-area:has(.innervideo:nth-child(3)) .innervideo,
 #video-area:has(.innervideo:nth-child(4)) .innervideo {
-    width: calc(50% - 12px);
-    max-width: 480px;
+    width: calc(50% - 8px);
+    max-width: 640px;
 }
 
 #video-area:has(.innervideo:nth-child(5)) .innervideo,
 #video-area:has(.innervideo:nth-child(6)) .innervideo {
-    width: calc(33.333% - 12px);
-    max-width: 400px;
+    width: calc(33.333% - 8px);
+    max-width: 500px;
 }
 
 .innervideo:hover {
@@ -310,13 +318,20 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 20px;
+    padding: 10px 16px;
     background: var(--bg-glass);
     backdrop-filter: blur(20px);
     border: 1px solid var(--border-light);
     border-radius: 16px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     z-index: 200;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.allbuttons:hover,
+.allbuttons.visible {
+    opacity: 1;
 }
 
 .control-btn {
@@ -463,9 +478,9 @@ body {
 /* ===== CHAT SIDEBAR ===== */
 #sidebar {
     position: fixed;
-    top: 60px;
+    top: 0;
     right: 0;
-    bottom: 90px;
+    bottom: 0;
     width: 0;
     background: var(--bg-secondary);
     border-left: 1px solid var(--border);
