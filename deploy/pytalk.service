@@ -1,0 +1,45 @@
+# PyTalk Daphne Service
+# Place this file at: /etc/systemd/system/pytalk.service
+
+[Unit]
+Description=PyTalk ASGI Server (Daphne)
+After=network.target redis.service postgresql.service
+Requires=redis.service
+
+[Service]
+Type=simple
+User=pytalk
+Group=pytalk
+WorkingDirectory=/opt/pytalk/backend
+Environment="PATH=/opt/pytalk/venv/bin"
+EnvironmentFile=/opt/pytalk/backend/.env
+
+# Daphne ASGI server
+# -b: bind address
+# -p: port
+# --access-log: log file for access logs
+# For t3.micro (1GB RAM), we use minimal settings
+ExecStart=/opt/pytalk/venv/bin/daphne \
+    -b 127.0.0.1 \
+    -p 8001 \
+    --access-log /var/log/pytalk/daphne_access.log \
+    meet.asgi:application
+
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/pytalk/daphne.log
+StandardError=append:/var/log/pytalk/daphne_error.log
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/pytalk/backend/logs /var/log/pytalk
+
+# Resource limits for t3.micro (1GB RAM)
+MemoryMax=400M
+CPUQuota=80%
+
+[Install]
+WantedBy=multi-user.target

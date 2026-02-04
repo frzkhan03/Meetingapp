@@ -200,8 +200,20 @@ let currentLayout = 'grid'; // 'grid', 'spotlight', or 'sidebar'
 let pinnedVideoId = null;
 let layoutBeforeScreenShare = null; // saved layout to restore when screen share ends
 
-// PeerJS Setup
-const myPeer = new Peer(undefined);
+// PeerJS Setup with ICE servers for production
+const iceConfig = {
+    config: {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:stun.relay.metered.ca:80' },
+        ]
+    }
+};
+const myPeer = new Peer(undefined, iceConfig);
 var myPeer2;
 
 myPeer.on('open', async function(id) {
@@ -216,7 +228,7 @@ myPeer.on('open', async function(id) {
     console.log('My peer Id is:', id);
     ActiveUsers[id] = 1;
 
-    myPeer2 = new Peer(USER_ID + 'ScreenShare');
+    myPeer2 = new Peer(USER_ID + 'ScreenShare', iceConfig);
     myPeer2.on('open', async (id) => {
         console.log('My other Peer id is:', id);
     });

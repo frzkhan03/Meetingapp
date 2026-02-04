@@ -1,0 +1,27 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /opt/pytalk
+            sudo -u pytalk git pull origin main
+            sudo -u pytalk /opt/pytalk/venv/bin/pip install -r backend/requirements.txt
+            cd backend
+            sudo -u pytalk /opt/pytalk/venv/bin/python manage.py migrate --noinput
+            sudo -u pytalk /opt/pytalk/venv/bin/python manage.py collectstatic --noinput
+            sudo systemctl restart pytalk pytalk-celery
+            echo "Deployment complete!"
