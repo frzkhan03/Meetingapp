@@ -319,6 +319,7 @@ socketWrapper.on('newuserjoined', async (data) => {
     }
 
     displayNewUser(userId);
+    playJoinSound();
     ActiveUsers[userId] = 1;
     ConnecttonewUser(userId, VideoDetails.myVideoStream);
     ConnecttonewUser(userId, VideoDetails.myScreenStream, 1);
@@ -392,6 +393,26 @@ document.getElementById('chatbox').addEventListener('keypress', (e) => {
         submit.click();
     }
 });
+
+function playJoinSound() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const notes = [523.25, 659.25, 783.99]; // C5, E5, G5 chord
+        notes.forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.08);
+            gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + i * 0.08 + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.08 + 0.4);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(ctx.currentTime + i * 0.08);
+            osc.stop(ctx.currentTime + i * 0.08 + 0.4);
+        });
+    } catch (e) {}
+}
 
 function displayNewUser(userId) {
     const message = document.createElement('div');
