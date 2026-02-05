@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import uuid
 
 import requests
 from django.conf import settings
@@ -83,13 +84,7 @@ def create_payu_order(organization, plan, billing_cycle, currency, success_url, 
             'unitPrice': str(convert_price(price_cents_usd, currency)),
             'quantity': str(quantity),
         }],
-        'extOrderId': f'{organization.id}-{plan.tier}-{billing_cycle}',
-        'payMethods': {
-            'payMethod': {
-                'type': 'PBL',
-            }
-        },
-        'recurring': 'FIRST',
+        'extOrderId': f'{organization.id}-{plan.tier}-{billing_cycle}-{uuid.uuid4().hex[:8]}',
     }
 
     url = f'{settings.PAYU_BASE_URL}/api/v2_1/orders'
@@ -115,7 +110,10 @@ def create_payu_order(organization, plan, billing_cycle, currency, success_url, 
             'status': data.get('status', {}).get('statusCode', ''),
         }
 
-    logger.error('PayU order creation failed: %s %s', resp.status_code, resp.text)
+    logger.error(
+        'PayU order creation failed: status=%s body=%s payload=%s',
+        resp.status_code, resp.text, {k: v for k, v in order_payload.items() if k != 'buyer'}
+    )
     resp.raise_for_status()
 
 
