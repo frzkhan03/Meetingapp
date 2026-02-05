@@ -1977,6 +1977,7 @@ let bgEffectState = {
     originalStream: null,
     processedStream: null,
     isProcessing: false,
+    streamSwapped: false,
 };
 
 // Toggle popup
@@ -2094,6 +2095,7 @@ async function initSegmenter() {
     if (bgEffectState.segmenter) return bgEffectState.segmenter;
 
     if (typeof SelfieSegmentation === 'undefined') {
+        console.error('SelfieSegmentation class not found');
         showNotification('Background effects not available. MediaPipe not loaded.');
         return null;
     }
@@ -2109,11 +2111,20 @@ async function initSegmenter() {
 
         segmenter.onResults(onSegmentationResults);
 
+        // Force WASM/model initialization by sending a test frame
+        const testCanvas = document.createElement('canvas');
+        testCanvas.width = 64;
+        testCanvas.height = 64;
+        const testCtx = testCanvas.getContext('2d');
+        testCtx.fillRect(0, 0, 64, 64);
+        await segmenter.send({ image: testCanvas });
+
+        console.log('MediaPipe SelfieSegmentation initialized successfully');
         bgEffectState.segmenter = segmenter;
         return segmenter;
     } catch (err) {
         console.error('Failed to initialize segmenter:', err);
-        showNotification('Background effects failed to initialize.');
+        showNotification('Background effects failed to initialize. Check browser console.');
         return null;
     }
 }
@@ -2150,6 +2161,34 @@ function onSegmentationResults(results) {
     }
 
     ctx.restore();
+
+    // Swap to canvas stream only after first successful frame render
+    if (!bgEffectState.streamSwapped && bgEffectState.currentEffect !== 'none') {
+        bgEffectState.streamSwapped = true;
+        swapToCanvasStream();
+    }
+}
+
+function swapToCanvasStream() {
+    if (!bgEffectState.canvas || !bgEffectState.originalStream) return;
+
+    const canvasStream = bgEffectState.canvas.captureStream(30);
+    const processedVideoTrack = canvasStream.getVideoTracks()[0];
+
+    const originalAudioTracks = bgEffectState.originalStream.getAudioTracks();
+    const newStream = new MediaStream();
+    newStream.addTrack(processedVideoTrack);
+    originalAudioTracks.forEach(t => newStream.addTrack(t));
+
+    bgEffectState.processedStream = newStream;
+    VideoDetails.myVideoStream = newStream;
+
+    if (VideoDetails.myVideo) {
+        VideoDetails.myVideo.srcObject = newStream;
+    }
+
+    replaceVideoTrackInPeers(processedVideoTrack);
+    console.log('Background effect stream swapped successfully');
 }
 
 async function enableBgEffect(effect) {
@@ -2157,6 +2196,8 @@ async function enableBgEffect(effect) {
 
     // Save to localStorage
     localStorage.setItem('bgEffect', effect);
+
+    showNotification('Loading background effect...');
 
     const segmenter = await initSegmenter();
     if (!segmenter) return;
@@ -2176,32 +2217,14 @@ async function enableBgEffect(effect) {
         bgEffectState.ctx = bgEffectState.canvas.getContext('2d');
     }
 
+    // Reset swap flag so stream gets swapped on next successful frame
+    bgEffectState.streamSwapped = false;
+
     // Start processing loop if not already running
     if (!bgEffectState.isProcessing) {
         bgEffectState.isProcessing = true;
         processBgFrame();
     }
-
-    // Replace video track with canvas stream
-    const canvasStream = bgEffectState.canvas.captureStream(30);
-    const processedVideoTrack = canvasStream.getVideoTracks()[0];
-
-    // Create new stream with processed video + original audio
-    const originalAudioTracks = bgEffectState.originalStream.getAudioTracks();
-    const newStream = new MediaStream();
-    newStream.addTrack(processedVideoTrack);
-    originalAudioTracks.forEach(t => newStream.addTrack(t));
-
-    bgEffectState.processedStream = newStream;
-    VideoDetails.myVideoStream = newStream;
-
-    // Update local video display
-    if (VideoDetails.myVideo) {
-        VideoDetails.myVideo.srcObject = newStream;
-    }
-
-    // Replace track in all active peer connections
-    replaceVideoTrackInPeers(processedVideoTrack);
 
     // Update button state
     if (bgEffectBtn) bgEffectBtn.classList.add('active');
@@ -2222,8 +2245,10 @@ async function processBgFrame() {
                 srcVideo.playsInline = true;
                 srcVideo.srcObject = bgEffectState.originalStream;
                 srcVideo.muted = true;
-                try { await srcVideo.play(); } catch (e) { /* autoplay blocked */ }
                 document.body.appendChild(srcVideo);
+                try { await srcVideo.play(); } catch (e) {
+                    console.error('Hidden video play failed:', e);
+                }
             }
 
             if (srcVideo.readyState >= 2) {
@@ -2245,6 +2270,7 @@ async function processBgFrame() {
 function disableBgEffect() {
     bgEffectState.currentEffect = 'none';
     bgEffectState.isProcessing = false;
+    bgEffectState.streamSwapped = false;
     localStorage.removeItem('bgEffect');
 
     if (bgEffectState.animFrameId) {
