@@ -35,10 +35,14 @@ def get_payu_access_token():
 
 def create_payu_order(organization, plan, billing_cycle, currency, success_url, notify_url):
     """
-    Create a PayU order (first recurring payment).
+    Create a PayU order.
     Returns the redirect URL where the user completes payment.
+    Currency is overridden to match the POS configuration.
     """
     token = get_payu_access_token()
+
+    # PayU POS is tied to a single currency — override user selection
+    pos_currency = settings.PAYU_CURRENCY
 
     price_cents_usd = (
         plan.monthly_price_cents if billing_cycle == 'monthly'
@@ -53,7 +57,7 @@ def create_payu_order(organization, plan, billing_cycle, currency, success_url, 
         quantity = 1
 
     total_usd_cents = price_cents_usd * quantity
-    total_local = convert_price(total_usd_cents, currency)
+    total_local = convert_price(total_usd_cents, pos_currency)
 
     # PayU expects amount as string in smallest currency unit
     description = f'{plan.name} plan ({billing_cycle}) for {organization.name}'
@@ -71,7 +75,7 @@ def create_payu_order(organization, plan, billing_cycle, currency, success_url, 
         'customerIp': '127.0.0.1',
         'merchantPosId': settings.PAYU_POS_ID,
         'description': description,
-        'currencyCode': currency,
+        'currencyCode': pos_currency,
         'totalAmount': str(total_local),
         'buyer': {
             'email': buyer_email,
@@ -81,7 +85,7 @@ def create_payu_order(organization, plan, billing_cycle, currency, success_url, 
         },
         'products': [{
             'name': f'{plan.name} ({billing_cycle})',
-            'unitPrice': str(convert_price(price_cents_usd, currency)),
+            'unitPrice': str(convert_price(price_cents_usd, pos_currency)),
             'quantity': str(quantity),
         }],
         'extOrderId': f'{organization.id}-{plan.tier}-{billing_cycle}-{uuid.uuid4().hex[:8]}',

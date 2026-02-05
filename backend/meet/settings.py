@@ -382,6 +382,7 @@ PAYU_CLIENT_SECRET = os.getenv('PAYU_CLIENT_SECRET', '')
 PAYU_SECOND_KEY = os.getenv('PAYU_SECOND_KEY', '')
 PAYU_SANDBOX = os.getenv('PAYU_SANDBOX', 'True').lower() == 'true'
 PAYU_BASE_URL = 'https://secure.snd.payu.com' if PAYU_SANDBOX else 'https://secure.payu.com'
+PAYU_CURRENCY = os.getenv('PAYU_CURRENCY', 'PLN')  # Must match POS currency config
 PAYU_ENABLED = bool(PAYU_POS_ID)
 SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000')
 
