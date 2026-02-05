@@ -2098,19 +2098,24 @@ async function initSegmenter() {
         return null;
     }
 
-    const segmenter = new SelfieSegmentation({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-    });
+    try {
+        const segmenter = new SelfieSegmentation({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/${file}`
+        });
 
-    segmenter.setOptions({
-        modelSelection: 1, // 1 = landscape (faster), 0 = general
-        selfieMode: true,
-    });
+        segmenter.setOptions({
+            modelSelection: 1, // 1 = landscape (faster), 0 = general
+        });
 
-    segmenter.onResults(onSegmentationResults);
+        segmenter.onResults(onSegmentationResults);
 
-    bgEffectState.segmenter = segmenter;
-    return segmenter;
+        bgEffectState.segmenter = segmenter;
+        return segmenter;
+    } catch (err) {
+        console.error('Failed to initialize segmenter:', err);
+        showNotification('Background effects failed to initialize.');
+        return null;
+    }
 }
 
 function onSegmentationResults(results) {
@@ -2214,14 +2219,22 @@ async function processBgFrame() {
                 srcVideo = document.createElement('video');
                 srcVideo.id = 'bg-src-video';
                 srcVideo.style.display = 'none';
+                srcVideo.playsInline = true;
                 srcVideo.srcObject = bgEffectState.originalStream;
                 srcVideo.muted = true;
-                srcVideo.play();
+                try { await srcVideo.play(); } catch (e) { /* autoplay blocked */ }
                 document.body.appendChild(srcVideo);
             }
 
             if (srcVideo.readyState >= 2) {
-                await bgEffectState.segmenter.send({ image: srcVideo });
+                try {
+                    await bgEffectState.segmenter.send({ image: srcVideo });
+                } catch (err) {
+                    console.error('Segmenter send failed:', err);
+                    disableBgEffect();
+                    showNotification('Background effect failed. Please try again.');
+                    return;
+                }
             }
         }
     }
