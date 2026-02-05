@@ -837,8 +837,16 @@ function initializeRecordingCanvas() {
     RecordingDetails.canvasContext.fillRect(0, 0, 1280, 720);
 }
 
-function drawVideosToCanvas() {
+function drawVideosToCanvas(timestamp) {
     if (!RecordingDetails.isRecording) return;
+
+    // Throttle to ~30fps
+    if (!RecordingDetails._lastDrawTime) RecordingDetails._lastDrawTime = 0;
+    if (timestamp && timestamp - RecordingDetails._lastDrawTime < 33) {
+        RecordingDetails.animationFrameId = requestAnimationFrame(drawVideosToCanvas);
+        return;
+    }
+    RecordingDetails._lastDrawTime = timestamp;
 
     const ctx = RecordingDetails.canvasContext;
     const canvas = RecordingDetails.recordingCanvas;
@@ -846,7 +854,8 @@ function drawVideosToCanvas() {
     ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const videoElements = document.querySelectorAll('#video-area video');
+    const videoArea = document.getElementById('video-area');
+    const videoElements = videoArea ? videoArea.querySelectorAll('video') : [];
     const videoCount = videoElements.length;
 
     if (videoCount === 0) {
@@ -2230,8 +2239,16 @@ async function enableBgEffect(effect) {
     if (bgEffectBtn) bgEffectBtn.classList.add('active');
 }
 
-async function processBgFrame() {
+async function processBgFrame(timestamp) {
     if (!bgEffectState.isProcessing || bgEffectState.currentEffect === 'none') return;
+
+    // Throttle to ~30fps
+    if (!bgEffectState._lastFrameTime) bgEffectState._lastFrameTime = 0;
+    if (timestamp && timestamp - bgEffectState._lastFrameTime < 33) {
+        bgEffectState.animFrameId = requestAnimationFrame(processBgFrame);
+        return;
+    }
+    bgEffectState._lastFrameTime = timestamp;
 
     if (bgEffectState.originalStream && bgEffectState.segmenter) {
         const videoTrack = bgEffectState.originalStream.getVideoTracks()[0];

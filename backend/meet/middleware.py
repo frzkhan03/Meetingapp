@@ -35,6 +35,8 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
             "connect-src " + ' '.join(getattr(settings, 'CSP_CONNECT_SRC', default_self)),
             "media-src " + ' '.join(getattr(settings, 'CSP_MEDIA_SRC', default_self)),
             "frame-ancestors " + ' '.join(getattr(settings, 'CSP_FRAME_ANCESTORS', default_none)),
+            "worker-src " + ' '.join(getattr(settings, 'CSP_WORKER_SRC', default_self)),
+            "child-src " + ' '.join(getattr(settings, 'CSP_CHILD_SRC', default_self)),
         ]
         response['Content-Security-Policy'] = '; '.join(csp_directives)
 

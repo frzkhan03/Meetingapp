@@ -67,13 +67,15 @@ SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
 # Content Security Policy
 CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "https://unpkg.com", "https://cdn.jsdelivr.net")
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'wasm-unsafe-eval'", "blob:", "https://unpkg.com", "https://cdn.jsdelivr.net")
 CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://fonts.googleapis.com")
 CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net")
 CSP_IMG_SRC = ("'self'", "data:", "blob:")
 CSP_CONNECT_SRC = ("'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://*.peerjs.com", "https://0.peerjs.com", "https://storage.googleapis.com")
 CSP_MEDIA_SRC = ("'self'", "blob:")
 CSP_FRAME_ANCESTORS = ("'none'",)
+CSP_WORKER_SRC = ("'self'", "blob:")
+CSP_CHILD_SRC = ("'self'", "blob:")
 
 # Application definition
 INSTALLED_APPS = [
@@ -109,11 +111,15 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'meet.urls'
 
+_TEMPLATE_LOADERS = [
+    'django.template.loaders.filesystem.Loader',
+    'django.template.loaders.app_directories.Loader',
+]
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [BASE_DIR / 'templates'],
-        'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
@@ -121,6 +127,9 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
             ],
+            'loaders': [
+                ('django.template.loaders.cached.Loader', _TEMPLATE_LOADERS),
+            ] if PRODUCTION else _TEMPLATE_LOADERS,
         },
     },
 ]
@@ -165,6 +174,8 @@ if PRODUCTION:
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
                 "hosts": [(os.getenv('REDIS_HOST', 'localhost'), int(os.getenv('REDIS_PORT', 6379)))],
+                "capacity": 1500,
+                "expiry": 10,
             },
         },
     }
