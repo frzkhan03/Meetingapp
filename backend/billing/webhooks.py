@@ -43,6 +43,10 @@ def payu_webhook_view(request):
     try:
         if status_code == 'COMPLETED':
             handle_order_completed(order, data)
+        elif status_code == 'WAITING_FOR_CONFIRMATION':
+            from .services import capture_payu_order
+            logger.info('PayU order %s waiting for confirmation, auto-capturing', order_id)
+            capture_payu_order(order_id)
         elif status_code in ('CANCELED', 'REJECTED'):
             handle_order_failed(order)
         elif status_code == 'PENDING':

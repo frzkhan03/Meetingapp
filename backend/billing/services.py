@@ -193,6 +193,29 @@ def create_payu_recurring_order(subscription):
     return None
 
 
+def capture_payu_order(order_id):
+    """Auto-capture/confirm a WAITING_FOR_CONFIRMATION order."""
+    token = get_payu_access_token()
+    url = f'{settings.PAYU_BASE_URL}/api/v2_1/orders/{order_id}/status'
+    resp = requests.put(
+        url,
+        json={
+            'orderId': order_id,
+            'orderStatus': 'COMPLETED',
+        },
+        headers={
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json',
+        },
+        timeout=15,
+    )
+    if resp.status_code in (200, 201):
+        logger.info('PayU order %s captured successfully', order_id)
+        return True
+    logger.error('PayU order capture failed: %s %s', resp.status_code, resp.text)
+    return False
+
+
 def verify_payu_signature(body_bytes, signature_header, second_key=None):
     """
     Verify PayU webhook signature.
