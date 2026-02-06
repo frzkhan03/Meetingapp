@@ -8,8 +8,8 @@ Requires=redis.service
 
 [Service]
 Type=simple
-User=pytalk
-Group=pytalk
+User=ubuntu
+Group=ubuntu
 WorkingDirectory=/opt/pytalk/backend
 Environment="PATH=/opt/pytalk/venv/bin"
 EnvironmentFile=/opt/pytalk/backend/.env
