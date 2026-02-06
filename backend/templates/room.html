@@ -18,12 +18,32 @@
             document.documentElement.setAttribute('data-theme', savedTheme);
         })();
     </script>
+    {% if organization.primary_color or organization.secondary_color %}
+    <style>
+        :root {
+            {% if organization.primary_color %}--brand-primary: {{ organization.primary_color }};{% endif %}
+            {% if organization.secondary_color %}--brand-secondary: {{ organization.secondary_color }};{% endif %}
+        }
+        {% if organization.primary_color %}
+        .control-btn.active, .control-btn:hover {
+            background: {{ organization.primary_color }} !important;
+        }
+        .btn-primary, .chat-header {
+            background: {{ organization.primary_color }} !important;
+        }
+        {% endif %}
+    </style>
+    {% endif %}
 </head>
 <body>
     <!-- Top Bar -->
     <div class="top-bar">
         <div class="top-bar-left">
-            <span class="logo">PyTalk</span>
+            {% if organization.logo %}
+            <img src="{{ organization.logo }}" alt="{{ organization.name }}" class="logo-img" style="height: 28px; max-width: 120px; object-fit: contain;">
+            {% else %}
+            <span class="logo">{% if organization.name %}{{ organization.name|truncatechars:15 }}{% else %}PyTalk{% endif %}</span>
+            {% endif %}
             <div class="room-info">
                 <span class="status-dot"></span>
                 <span>{{ room_id|truncatechars:12 }}</span>
@@ -288,6 +308,17 @@
                 <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
             </svg>
         </button>
+
+        {% if breakout_rooms_allowed %}
+        <button class="control-btn moderator-btn" id="breakoutBtn" onclick="toggleBreakoutPanel()" title="Breakout Rooms">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="2" width="8" height="8" rx="1"/>
+                <rect x="14" y="2" width="8" height="8" rx="1"/>
+                <rect x="2" y="14" width="8" height="8" rx="1"/>
+                <rect x="14" y="14" width="8" height="8" rx="1"/>
+            </svg>
+        </button>
+        {% endif %}
         {% endif %}
 
         <div class="control-divider"></div>
@@ -314,6 +345,61 @@
         </div>
         <div id="participants-list"></div>
     </div>
+
+    <!-- Breakout Rooms Panel (Moderator Only, Business Plan) -->
+    {% if breakout_rooms_allowed %}
+    <div id="breakout-panel" class="participants-panel" style="display: none;">
+        <div class="panel-header">
+            <h4>Breakout Rooms</h4>
+            <button class="close-btn" onclick="toggleBreakoutPanel()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="breakout-content">
+            <!-- Create Breakout Rooms Section -->
+            <div id="breakout-create-section">
+                <p class="text-muted small mb-3">Create separate rooms for smaller group discussions.</p>
+                <div class="mb-3">
+                    <label class="form-label small">Number of rooms:</label>
+                    <input type="number" id="breakoutRoomCount" class="form-control form-control-sm" value="2" min="2" max="10" style="width: 80px;">
+                </div>
+                <button class="btn btn-primary btn-sm w-100" onclick="createBreakoutRooms()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    Create Rooms
+                </button>
+            </div>
+
+            <!-- Active Breakout Rooms Section (hidden by default) -->
+            <div id="breakout-active-section" style="display: none;">
+                <div id="breakout-rooms-list"></div>
+                <hr style="border-color: var(--border-color);">
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary btn-sm flex-grow-1" onclick="broadcastToBreakouts()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                            <polyline points="2 17 12 22 22 17"/>
+                            <polyline points="2 12 12 17 22 12"/>
+                        </svg>
+                        Broadcast
+                    </button>
+                    <button class="btn btn-danger btn-sm flex-grow-1" onclick="closeAllBreakouts()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                            <line x1="18" y1="6" x2="6" y2="18"/>
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                        Close All
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     {% endif %}
 
     <script>
@@ -330,6 +416,12 @@
         var MAX_PARTICIPANTS = {{ max_participants|default:100 }};
         var DURATION_LIMIT = {% if duration_limit_seconds %}{{ duration_limit_seconds }}{% else %}null{% endif %};
         var PLAN_TIER = "{{ plan_tier|default:'free' }}";
+        var BREAKOUT_ROOMS_ALLOWED = {% if breakout_rooms_allowed %}true{% else %}false{% endif %};
+
+        // Breakout rooms state
+        var breakoutRooms = [];
+        var currentBreakoutId = null;
+        var breakoutAssignments = {}; // userId -> breakoutId
 
         // HTML escape utility to prevent XSS
         function escapeHtml(text) {
@@ -551,6 +643,214 @@
 
                 list.appendChild(item);
             });
+        }
+
+        // ========== Breakout Rooms Functions ==========
+        function toggleBreakoutPanel() {
+            const panel = document.getElementById('breakout-panel');
+            if (panel) {
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        function createBreakoutRooms() {
+            const count = parseInt(document.getElementById('breakoutRoomCount').value) || 2;
+            const roomNames = [];
+            for (let i = 1; i <= count; i++) {
+                roomNames.push('Room ' + i);
+            }
+
+            // Send via WebSocket
+            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'create-breakout',
+                    data: {
+                        rooms: roomNames,
+                        moderator_id: USER_ID
+                    }
+                }));
+            }
+        }
+
+        function handleBreakoutRoomsCreated(data) {
+            breakoutRooms = data.rooms || [];
+            document.getElementById('breakout-create-section').style.display = 'none';
+            document.getElementById('breakout-active-section').style.display = 'block';
+            renderBreakoutRoomsList();
+        }
+
+        function renderBreakoutRoomsList() {
+            const list = document.getElementById('breakout-rooms-list');
+            if (!list) return;
+
+            list.innerHTML = '';
+
+            breakoutRooms.forEach(function(room) {
+                const roomDiv = document.createElement('div');
+                roomDiv.className = 'breakout-room-item mb-3 p-2';
+                roomDiv.style.cssText = 'background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);';
+
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'd-flex justify-content-between align-items-center mb-2';
+                headerDiv.innerHTML = '<strong>' + escapeHtml(room.name) + '</strong>';
+                roomDiv.appendChild(headerDiv);
+
+                // List assigned participants
+                const assignedDiv = document.createElement('div');
+                assignedDiv.className = 'breakout-assigned small';
+                assignedDiv.style.cssText = 'color: var(--text-muted);';
+
+                let assignedUsers = [];
+                for (let userId in breakoutAssignments) {
+                    if (breakoutAssignments[userId] === room.breakout_id) {
+                        const p = participants.find(function(x) { return x.id === userId; });
+                        assignedUsers.push(p ? p.username : userId);
+                    }
+                }
+                assignedDiv.textContent = assignedUsers.length > 0 ? assignedUsers.join(', ') : 'No participants assigned';
+                roomDiv.appendChild(assignedDiv);
+
+                // Assign dropdown
+                const selectDiv = document.createElement('div');
+                selectDiv.className = 'mt-2';
+                const select = document.createElement('select');
+                select.className = 'form-select form-select-sm';
+                select.innerHTML = '<option value="">+ Assign participant</option>';
+                participants.forEach(function(p) {
+                    if (p.id !== USER_ID && !breakoutAssignments[p.id]) {
+                        const opt = document.createElement('option');
+                        opt.value = p.id;
+                        opt.textContent = p.username;
+                        select.appendChild(opt);
+                    }
+                });
+                select.addEventListener('change', function() {
+                    if (this.value) {
+                        assignToBreakout(this.value, room.breakout_id, room.name);
+                        this.value = '';
+                    }
+                });
+                selectDiv.appendChild(select);
+                roomDiv.appendChild(selectDiv);
+
+                list.appendChild(roomDiv);
+            });
+        }
+
+        function assignToBreakout(userId, breakoutId, breakoutName) {
+            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'assign-to-breakout',
+                    data: {
+                        user_id: userId,
+                        breakout_id: breakoutId,
+                        breakout_name: breakoutName,
+                        moderator_id: USER_ID
+                    }
+                }));
+            }
+            breakoutAssignments[userId] = breakoutId;
+            renderBreakoutRoomsList();
+        }
+
+        function handleUserAssignedBreakout(data) {
+            breakoutAssignments[data.user_id] = data.breakout_id;
+            renderBreakoutRoomsList();
+        }
+
+        function handleBreakoutAssigned(data) {
+            // Non-moderator receives their assignment
+            currentBreakoutId = data.breakout_id;
+            showBreakoutNotification(data.breakout_name);
+        }
+
+        function showBreakoutNotification(roomName) {
+            const toast = document.createElement('div');
+            toast.className = 'breakout-notification';
+            toast.style.cssText = 'position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--accent-primary); border-radius: 12px; padding: 16px 24px; z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.4);';
+            toast.innerHTML = '<div style="text-align:center;"><strong>You have been assigned to ' + escapeHtml(roomName) + '</strong><br><button class="btn btn-primary btn-sm mt-2" onclick="joinBreakoutRoom()">Join Room</button></div>';
+            document.body.appendChild(toast);
+        }
+
+        function joinBreakoutRoom() {
+            if (!currentBreakoutId) return;
+            // Remove notification
+            const notif = document.querySelector('.breakout-notification');
+            if (notif) notif.remove();
+
+            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'join-breakout',
+                    data: {
+                        breakout_id: currentBreakoutId,
+                        user_id: USER_ID,
+                        username: username
+                    }
+                }));
+            }
+        }
+
+        function returnToMainRoom() {
+            if (!currentBreakoutId) return;
+
+            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'return-to-main',
+                    data: {
+                        breakout_id: currentBreakoutId,
+                        user_id: USER_ID,
+                        username: username
+                    }
+                }));
+            }
+            currentBreakoutId = null;
+        }
+
+        function broadcastToBreakouts() {
+            const message = prompt('Message to broadcast to all breakout rooms:');
+            if (!message) return;
+
+            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'broadcast-to-breakouts',
+                    data: {
+                        message: message,
+                        moderator_id: USER_ID
+                    }
+                }));
+            }
+        }
+
+        function closeAllBreakouts() {
+            if (!confirm('Close all breakout rooms? Participants will return to the main room.')) return;
+
+            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'close-breakouts',
+                    data: {
+                        moderator_id: USER_ID
+                    }
+                }));
+            }
+        }
+
+        function handleBreakoutsClosed(data) {
+            breakoutRooms = [];
+            breakoutAssignments = {};
+            currentBreakoutId = null;
+
+            // Reset UI
+            const createSection = document.getElementById('breakout-create-section');
+            const activeSection = document.getElementById('breakout-active-section');
+            if (createSection) createSection.style.display = 'block';
+            if (activeSection) activeSection.style.display = 'none';
+
+            // Show notification
+            alert('Breakout rooms have been closed.');
+        }
+
+        function handleBreakoutBroadcast(data) {
+            alert('Message from moderator: ' + data.message);
         }
     </script>
     <!-- MediaPipe Selfie Segmentation for background effects -->

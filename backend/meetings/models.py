@@ -207,3 +207,47 @@ class MeetingRecording(models.Model):
     def __str__(self):
         name = self.recording_name or self.s3_key or self.file_path
         return f"Recording - {name} - {self.created_at}"
+
+
+class BreakoutRoom(models.Model):
+    """Breakout room within a meeting (Business plan feature)"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    parent_room = models.ForeignKey(
+        PersonalRoom,
+        on_delete=models.CASCADE,
+        related_name='breakout_rooms',
+        null=True,
+        blank=True
+    )
+    parent_meeting = models.ForeignKey(
+        Meeting,
+        on_delete=models.CASCADE,
+        related_name='breakout_rooms',
+        null=True,
+        blank=True
+    )
+    name = models.CharField(max_length=100)  # e.g., "Room 1", "Team A"
+    room_id = models.CharField(max_length=30, unique=True)  # For WebSocket group
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['parent_room', 'is_active']),
+            models.Index(fields=['parent_meeting', 'is_active']),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.room_id:
+            # Generate a breakout-specific room ID
+            base_id = self.parent_room.room_id if self.parent_room else (
+                self.parent_meeting.room_id if self.parent_meeting else 'unknown'
+            )
+            self.room_id = f"{base_id}-br-{uuid.uuid4().hex[:6]}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        parent = self.parent_room or self.parent_meeting
+        return f"Breakout: {self.name} ({parent})"

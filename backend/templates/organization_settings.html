@@ -282,6 +282,16 @@
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="branding-tab" data-bs-toggle="tab" data-bs-target="#branding" type="button" role="tab">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                            <path d="M2 17l10 5 10-5"/>
+                            <path d="M2 12l10 5 10-5"/>
+                        </svg>
+                        Branding
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
                     <button class="nav-link" id="billing-tab" data-bs-toggle="tab" data-bs-target="#billing" type="button" role="tab">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
                             <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
@@ -521,6 +531,148 @@
                             </div>
                             {% endif %}
                             {% include 'includes/pagination.html' with page_obj=page_obj %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Branding Tab -->
+                <div class="tab-pane fade" id="branding" role="tabpanel">
+                    <div class="card">
+                        <div class="card-body">
+                            {% if can_use_branding %}
+                            <h5 class="mb-4">Custom Branding</h5>
+                            <p class="text-muted mb-4">Customize your meeting rooms with your organization's logo and brand colors.</p>
+
+                            <!-- Logo Upload -->
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Organization Logo</label>
+                                <p class="text-muted small mb-3">Appears in meeting rooms and invitations. Max 2MB, PNG/JPG/SVG recommended.</p>
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="logo-preview" style="width: 80px; height: 80px; border: 2px dashed var(--border-color); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg-primary);">
+                                        {% if organization.logo %}
+                                        <img src="{{ organization.logo }}" alt="Logo" style="max-width: 100%; max-height: 100%; object-fit: contain;" id="logoPreviewImg">
+                                        {% else %}
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--text-muted);" id="logoPlaceholder">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                                            <polyline points="21 15 16 10 5 21"/>
+                                        </svg>
+                                        <img src="" alt="Logo" style="max-width: 100%; max-height: 100%; object-fit: contain; display: none;" id="logoPreviewImg">
+                                        {% endif %}
+                                    </div>
+                                    <div>
+                                        <input type="file" id="logoFileInput" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" style="display: none;">
+                                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('logoFileInput').click()">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                                <polyline points="17 8 12 3 7 8"/>
+                                                <line x1="12" y1="3" x2="12" y2="15"/>
+                                            </svg>
+                                            Upload Logo
+                                        </button>
+                                        {% if organization.logo %}
+                                        <button type="button" class="btn btn-outline-danger btn-sm ms-2" onclick="removeLogo()">Remove</button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Brand Colors -->
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Brand Colors</label>
+                                <p class="text-muted small mb-3">Customize the colors used in your meeting rooms.</p>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label for="primaryColor" class="form-label small">Primary Color</label>
+                                        <div class="input-group">
+                                            <input type="color" class="form-control form-control-color" id="primaryColorPicker" value="{{ organization.primary_color|default:'#7C3AED' }}" style="width: 50px;">
+                                            <input type="text" class="form-control" id="primaryColor" value="{{ organization.primary_color }}" placeholder="#7C3AED" pattern="^#[0-9A-Fa-f]{6}$">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="secondaryColor" class="form-label small">Secondary Color</label>
+                                        <div class="input-group">
+                                            <input type="color" class="form-control form-control-color" id="secondaryColorPicker" value="{{ organization.secondary_color|default:'#EC4899' }}" style="width: 50px;">
+                                            <input type="text" class="form-control" id="secondaryColor" value="{{ organization.secondary_color }}" placeholder="#EC4899" pattern="^#[0-9A-Fa-f]{6}$">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Preview -->
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Preview</label>
+                                <div class="p-3 rounded" style="background: var(--bg-primary); border: 1px solid var(--border-color);">
+                                    <div class="d-flex align-items-center gap-2 mb-2">
+                                        <div id="previewLogo" style="width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                                            {% if organization.logo %}
+                                            <img src="{{ organization.logo }}" style="max-width: 100%; max-height: 100%;">
+                                            {% else %}
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="previewLogoSvg">
+                                                <polygon points="23 7 16 12 23 17 23 7"/>
+                                                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                                            </svg>
+                                            {% endif %}
+                                        </div>
+                                        <span style="font-weight: 600;">{{ organization.name }}</span>
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-sm" id="previewPrimaryBtn" style="background: {{ organization.primary_color|default:'#7C3AED' }}; color: white;">Join Meeting</button>
+                                        <button class="btn btn-sm" id="previewSecondaryBtn" style="background: {{ organization.secondary_color|default:'#EC4899' }}; color: white;">Share</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="button" class="btn btn-primary" onclick="saveBranding()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                    <polyline points="17 21 17 13 7 13 7 21"/>
+                                    <polyline points="7 3 7 8 15 8"/>
+                                </svg>
+                                Save Branding
+                            </button>
+
+                            {% if can_use_subdomain %}
+                            <!-- Custom Subdomain Section -->
+                            <hr class="my-4" style="border-color: var(--border-color);">
+                            <h5 class="mb-4">Custom Subdomain</h5>
+                            <p class="text-muted mb-3">Access your organization's meeting rooms at a custom URL.</p>
+                            <div class="mb-3">
+                                <label class="form-label small">Your Organization URL</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" value="{{ organization.slug }}.pytalk.veriright.com" readonly style="background: var(--bg-primary);">
+                                    <button class="btn btn-outline-primary" type="button" onclick="copySubdomainUrl()">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="alert alert-info mb-0" style="font-size: 0.85rem;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <line x1="12" y1="16" x2="12" y2="12"/>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"/>
+                                </svg>
+                                Share this URL with your team. Your branding will appear when they access meetings via this subdomain.
+                            </div>
+                            {% endif %}
+                            {% else %}
+                            <!-- Upgrade prompt for non-Business plans -->
+                            <div class="text-center py-5">
+                                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="color: var(--text-muted); margin-bottom: 1rem;">
+                                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                    <path d="M2 17l10 5 10-5"/>
+                                    <path d="M2 12l10 5 10-5"/>
+                                </svg>
+                                <h5 class="mb-2">Custom Branding</h5>
+                                <p class="text-muted mb-4">Upload your logo and customize brand colors in meeting rooms.</p>
+                                <span class="badge bg-secondary mb-3">Business Plan Feature</span>
+                                <br>
+                                <a href="{% url 'pricing' %}" class="btn btn-primary">Upgrade to Business</a>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -920,5 +1072,178 @@ document.getElementById('memberSearchInput').addEventListener('input', function(
         noResults.style.display = 'none';
     }
 });
+
+// ========== Branding Tab Functions ==========
+var ORG_ID = '{{ organization.id }}';
+
+// Logo upload
+var logoInput = document.getElementById('logoFileInput');
+if (logoInput) {
+    logoInput.addEventListener('change', function() {
+        if (!this.files || !this.files[0]) return;
+
+        var file = this.files[0];
+        if (file.size > 2 * 1024 * 1024) {
+            alert('Logo file too large. Max 2MB.');
+            return;
+        }
+
+        var formData = new FormData();
+        formData.append('logo', file);
+
+        fetch('/user/organizations/' + ORG_ID + '/upload-logo/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: formData
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                alert(data.error);
+            } else {
+                // Update preview
+                var img = document.getElementById('logoPreviewImg');
+                var placeholder = document.getElementById('logoPlaceholder');
+                if (img) {
+                    img.src = data.logo_url;
+                    img.style.display = '';
+                }
+                if (placeholder) placeholder.style.display = 'none';
+
+                // Update preview section
+                var previewLogo = document.getElementById('previewLogo');
+                if (previewLogo) {
+                    previewLogo.innerHTML = '<img src="' + data.logo_url + '" style="max-width: 100%; max-height: 100%;">';
+                }
+
+                // Reload to show remove button
+                window.location.hash = 'branding';
+                window.location.reload();
+            }
+        })
+        .catch(function() {
+            alert('Upload failed. Please try again.');
+        });
+    });
+}
+
+function removeLogo() {
+    if (!confirm('Remove organization logo?')) return;
+
+    fetch('/user/organizations/' + ORG_ID + '/remove-logo/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+        }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            alert(data.error);
+        } else {
+            window.location.hash = 'branding';
+            window.location.reload();
+        }
+    });
+}
+
+// Color pickers
+var primaryPicker = document.getElementById('primaryColorPicker');
+var primaryInput = document.getElementById('primaryColor');
+var secondaryPicker = document.getElementById('secondaryColorPicker');
+var secondaryInput = document.getElementById('secondaryColor');
+
+if (primaryPicker && primaryInput) {
+    primaryPicker.addEventListener('input', function() {
+        primaryInput.value = this.value;
+        updateColorPreview();
+    });
+    primaryInput.addEventListener('input', function() {
+        if (/^#[0-9A-Fa-f]{6}$/.test(this.value)) {
+            primaryPicker.value = this.value;
+            updateColorPreview();
+        }
+    });
+}
+
+if (secondaryPicker && secondaryInput) {
+    secondaryPicker.addEventListener('input', function() {
+        secondaryInput.value = this.value;
+        updateColorPreview();
+    });
+    secondaryInput.addEventListener('input', function() {
+        if (/^#[0-9A-Fa-f]{6}$/.test(this.value)) {
+            secondaryPicker.value = this.value;
+            updateColorPreview();
+        }
+    });
+}
+
+function updateColorPreview() {
+    var primary = primaryInput ? primaryInput.value : '#7C3AED';
+    var secondary = secondaryInput ? secondaryInput.value : '#EC4899';
+
+    var previewPrimaryBtn = document.getElementById('previewPrimaryBtn');
+    var previewSecondaryBtn = document.getElementById('previewSecondaryBtn');
+
+    if (previewPrimaryBtn && primary) previewPrimaryBtn.style.background = primary;
+    if (previewSecondaryBtn && secondary) previewSecondaryBtn.style.background = secondary;
+}
+
+function saveBranding() {
+    var primary = primaryInput ? primaryInput.value.trim() : '';
+    var secondary = secondaryInput ? secondaryInput.value.trim() : '';
+
+    // Validate
+    var hexPattern = /^#[0-9A-Fa-f]{6}$/;
+    if (primary && !hexPattern.test(primary)) {
+        alert('Invalid primary color format. Use #RRGGBB.');
+        return;
+    }
+    if (secondary && !hexPattern.test(secondary)) {
+        alert('Invalid secondary color format. Use #RRGGBB.');
+        return;
+    }
+
+    fetch('/user/organizations/' + ORG_ID + '/save-branding/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+        },
+        body: JSON.stringify({
+            primary_color: primary,
+            secondary_color: secondary
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            alert(data.error);
+        } else {
+            alert('Branding saved successfully!');
+        }
+    })
+    .catch(function() {
+        alert('Failed to save branding. Please try again.');
+    });
+}
+
+function copySubdomainUrl() {
+    var url = '{{ organization.slug }}.pytalk.veriright.com';
+    navigator.clipboard.writeText('https://' + url).then(function() {
+        alert('Subdomain URL copied to clipboard!');
+    });
+}
+
+// Auto-activate Branding tab when hash is #branding
+if (window.location.hash === '#branding') {
+    var brandingTab = document.getElementById('branding-tab');
+    if (brandingTab) {
+        new bootstrap.Tab(brandingTab).show();
+    }
+}
 </script>
 {% endblock %}

@@ -15,4 +15,9 @@ urlpatterns = [
     path('organizations/<uuid:org_id>/reset-password/<int:user_id>/', views.reset_member_password_view, name='reset_member_password'),
     path('organizations/<uuid:org_id>/deactivate-member/<int:user_id>/', views.deactivate_member_view, name='deactivate_member'),
     path('organizations/<uuid:org_id>/delete-member/<int:user_id>/', views.delete_member_view, name='delete_member'),
+
+    # Branding
+    path('organizations/<uuid:org_id>/upload-logo/', views.upload_organization_logo, name='upload_organization_logo'),
+    path('organizations/<uuid:org_id>/save-branding/', views.save_organization_branding, name='save_organization_branding'),
+    path('organizations/<uuid:org_id>/remove-logo/', views.remove_organization_logo, name='remove_organization_logo'),
 ]

@@ -231,6 +231,19 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 await self.handle_request_info(payload)
             elif event_type == 'end-meeting':
                 await self.handle_end_meeting(payload)
+            # Breakout room events
+            elif event_type == 'create-breakout':
+                await self.handle_create_breakout(payload)
+            elif event_type == 'assign-to-breakout':
+                await self.handle_assign_to_breakout(payload)
+            elif event_type == 'join-breakout':
+                await self.handle_join_breakout(payload)
+            elif event_type == 'return-to-main':
+                await self.handle_return_to_main(payload)
+            elif event_type == 'close-breakouts':
+                await self.handle_close_breakouts(payload)
+            elif event_type == 'broadcast-to-breakouts':
+                await self.handle_broadcast_to_breakouts(payload)
 
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON received from {self.user_id}")
@@ -448,6 +461,259 @@ class RoomConsumer(AsyncWebsocketConsumer):
             }
         )
 
+    # ========== Breakout Room Handlers ==========
+
+    @database_sync_to_async
+    def _can_use_breakout_rooms(self):
+        """Check if the organization's plan allows breakout rooms."""
+        from meetings.models import Meeting, PersonalRoom
+        try:
+            from billing.plan_limits import get_plan_limits
+        except ImportError:
+            return False
+
+        org = None
+        try:
+            meeting = Meeting.objects.select_related('organization').get(room_id=self.room_id)
+            org = meeting.organization
+        except Meeting.DoesNotExist:
+            try:
+                room = PersonalRoom.objects.select_related('organization').get(room_id=self.room_id)
+                org = room.organization
+            except PersonalRoom.DoesNotExist:
+                pass
+
+        if org:
+            limits = get_plan_limits(org)
+            return limits.can_use_breakout_rooms()
+        return False
+
+    @database_sync_to_async
+    def _create_breakout_room_db(self, name):
+        """Create breakout room in database and return its ID."""
+        from meetings.models import BreakoutRoom, PersonalRoom, Meeting
+
+        parent_room = None
+        parent_meeting = None
+        try:
+            parent_room = PersonalRoom.objects.get(room_id=self.room_id)
+        except PersonalRoom.DoesNotExist:
+            try:
+                parent_meeting = Meeting.objects.get(room_id=self.room_id)
+            except Meeting.DoesNotExist:
+                return None
+
+        breakout = BreakoutRoom.objects.create(
+            parent_room=parent_room,
+            parent_meeting=parent_meeting,
+            name=name,
+        )
+        return str(breakout.room_id)
+
+    @database_sync_to_async
+    def _close_breakout_rooms_db(self):
+        """Close all active breakout rooms for the current meeting."""
+        from meetings.models import BreakoutRoom, PersonalRoom, Meeting
+        from django.utils import timezone
+
+        try:
+            parent_room = PersonalRoom.objects.get(room_id=self.room_id)
+            BreakoutRoom.objects.filter(parent_room=parent_room, is_active=True).update(
+                is_active=False, closed_at=timezone.now()
+            )
+        except PersonalRoom.DoesNotExist:
+            try:
+                parent_meeting = Meeting.objects.get(room_id=self.room_id)
+                BreakoutRoom.objects.filter(parent_meeting=parent_meeting, is_active=True).update(
+                    is_active=False, closed_at=timezone.now()
+                )
+            except Meeting.DoesNotExist:
+                pass
+
+    async def handle_create_breakout(self, payload):
+        """Moderator creates breakout rooms."""
+        if not await self._can_use_breakout_rooms():
+            await self.send(text_data=json.dumps({
+                'type': 'breakout-error',
+                'message': 'Breakout rooms require a Business plan.'
+            }))
+            return
+
+        rooms = payload.get('rooms', [])  # List of room names like ["Room 1", "Room 2"]
+        moderator_id = payload.get('moderator_id')
+
+        created_rooms = []
+        for room_name in rooms:
+            breakout_room_id = await self._create_breakout_room_db(room_name)
+            if breakout_room_id:
+                created_rooms.append({
+                    'name': room_name,
+                    'breakout_id': breakout_room_id
+                })
+                # Store in Redis for quick lookup
+                from django.core.cache import cache
+                cache.set(f'breakout:rooms:{self.room_id}:{breakout_room_id}', room_name, 7200)
+
+        logger.info(f"Created {len(created_rooms)} breakout rooms for {self.room_id}")
+
+        # Broadcast to all participants that breakout rooms are available
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'breakout_rooms_created',
+                'rooms': created_rooms,
+                'moderator_id': moderator_id,
+                'sender_channel': self.channel_name
+            }
+        )
+
+    async def handle_assign_to_breakout(self, payload):
+        """Moderator assigns a participant to a breakout room."""
+        target_user_id = payload.get('user_id')
+        breakout_id = payload.get('breakout_id')
+        breakout_name = payload.get('breakout_name', '')
+        moderator_id = payload.get('moderator_id')
+
+        # Store assignment in Redis
+        from django.core.cache import cache
+        cache.set(f'breakout:assignment:{self.room_id}:{target_user_id}', breakout_id, 7200)
+
+        logger.info(f"Assigned {target_user_id} to breakout {breakout_id} in room {self.room_id}")
+
+        # Notify the assigned user
+        await self.channel_layer.group_send(
+            f'user_{target_user_id}',
+            {
+                'type': 'breakout_assigned',
+                'breakout_id': breakout_id,
+                'breakout_name': breakout_name,
+                'main_room_id': self.room_id,
+            }
+        )
+
+        # Also broadcast to main room so UI updates
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'user_assigned_breakout',
+                'user_id': target_user_id,
+                'breakout_id': breakout_id,
+                'breakout_name': breakout_name,
+                'sender_channel': self.channel_name
+            }
+        )
+
+    async def handle_join_breakout(self, payload):
+        """User joins their assigned breakout room."""
+        breakout_id = payload.get('breakout_id')
+        user_id = payload.get('user_id', self.user_id)
+        username = payload.get('username', '')
+
+        # Join breakout group
+        breakout_group = f'breakout_{breakout_id}'
+        await self.channel_layer.group_add(breakout_group, self.channel_name)
+
+        logger.info(f"User {user_id} joined breakout {breakout_id}")
+
+        # Notify breakout room
+        await self.channel_layer.group_send(
+            breakout_group,
+            {
+                'type': 'breakout_user_joined',
+                'user_id': user_id,
+                'username': username,
+                'breakout_id': breakout_id,
+                'sender_channel': self.channel_name
+            }
+        )
+
+        # Notify main room that user moved
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'user_moved_to_breakout',
+                'user_id': user_id,
+                'breakout_id': breakout_id,
+                'sender_channel': self.channel_name
+            }
+        )
+
+    async def handle_return_to_main(self, payload):
+        """User returns from breakout room to main room."""
+        breakout_id = payload.get('breakout_id')
+        user_id = payload.get('user_id', self.user_id)
+        username = payload.get('username', '')
+
+        # Leave breakout group
+        breakout_group = f'breakout_{breakout_id}'
+        await self.channel_layer.group_discard(breakout_group, self.channel_name)
+
+        # Clear assignment from Redis
+        from django.core.cache import cache
+        cache.delete(f'breakout:assignment:{self.room_id}:{user_id}')
+
+        logger.info(f"User {user_id} returned to main room from breakout {breakout_id}")
+
+        # Notify breakout room
+        await self.channel_layer.group_send(
+            breakout_group,
+            {
+                'type': 'breakout_user_left',
+                'user_id': user_id,
+                'breakout_id': breakout_id,
+            }
+        )
+
+        # Notify main room that user returned
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'user_returned_from_breakout',
+                'user_id': user_id,
+                'username': username,
+                'breakout_id': breakout_id,
+                'sender_channel': self.channel_name
+            }
+        )
+
+    async def handle_close_breakouts(self, payload):
+        """Moderator closes all breakout rooms."""
+        moderator_id = payload.get('moderator_id')
+
+        await self._close_breakout_rooms_db()
+
+        logger.info(f"Breakout rooms closed for {self.room_id} by {moderator_id}")
+
+        # Broadcast to everyone to return to main
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'breakouts_closed',
+                'moderator_id': moderator_id,
+                'sender_channel': self.channel_name
+            }
+        )
+
+    async def handle_broadcast_to_breakouts(self, payload):
+        """Moderator broadcasts a message to all breakout rooms."""
+        message = payload.get('message', '')
+        moderator_id = payload.get('moderator_id')
+
+        # Get all active breakout room IDs from Redis/DB
+        from django.core.cache import cache
+        import re
+
+        # Broadcast to main room (this will include breakout participants still connected)
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'breakout_broadcast',
+                'message': message,
+                'moderator_id': moderator_id,
+                'sender_channel': self.channel_name
+            }
+        )
+
     # Message senders (called by channel_layer.group_send)
     async def new_user_joined(self, event):
         if self.channel_name != event['sender_channel']:
@@ -583,6 +849,74 @@ class RoomConsumer(AsyncWebsocketConsumer):
             'message': event['message']
         }))
 
+    # Breakout room message senders
+    async def breakout_rooms_created(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'breakout-rooms-created',
+            'rooms': event['rooms'],
+            'moderator_id': event['moderator_id']
+        }))
+
+    async def breakout_assigned(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'breakout-assigned',
+            'breakout_id': event['breakout_id'],
+            'breakout_name': event['breakout_name'],
+            'main_room_id': event['main_room_id']
+        }))
+
+    async def user_assigned_breakout(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'user-assigned-breakout',
+            'user_id': event['user_id'],
+            'breakout_id': event['breakout_id'],
+            'breakout_name': event['breakout_name']
+        }))
+
+    async def breakout_user_joined(self, event):
+        if self.channel_name != event.get('sender_channel'):
+            await self.send(text_data=json.dumps({
+                'type': 'breakout-user-joined',
+                'user_id': event['user_id'],
+                'username': event['username'],
+                'breakout_id': event['breakout_id']
+            }))
+
+    async def user_moved_to_breakout(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'user-moved-to-breakout',
+            'user_id': event['user_id'],
+            'breakout_id': event['breakout_id']
+        }))
+
+    async def breakout_user_left(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'breakout-user-left',
+            'user_id': event['user_id'],
+            'breakout_id': event['breakout_id']
+        }))
+
+    async def user_returned_from_breakout(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'user-returned-from-breakout',
+            'user_id': event['user_id'],
+            'username': event['username'],
+            'breakout_id': event['breakout_id']
+        }))
+
+    async def breakouts_closed(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'breakouts-closed',
+            'moderator_id': event['moderator_id']
+        }))
+
+    async def breakout_broadcast(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'breakout-broadcast',
+            'message': event['message'],
+            'moderator_id': event['moderator_id']
+        }))
+
 
 class UserConsumer(AsyncWebsocketConsumer):
     """Consumer for user-specific notifications (like host approval alerts)"""
@@ -665,4 +999,13 @@ class UserConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'kicked',
             'moderator_id': event['moderator_id']
+        }))
+
+    async def breakout_assigned(self, event):
+        """Forward breakout room assignment to the user"""
+        await self.send(text_data=json.dumps({
+            'type': 'breakout-assigned',
+            'breakout_id': event['breakout_id'],
+            'breakout_name': event['breakout_name'],
+            'main_room_id': event['main_room_id']
         }))

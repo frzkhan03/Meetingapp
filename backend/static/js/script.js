@@ -1823,6 +1823,47 @@ socketWrapper.on('meeting-duration-exceeded', (data) => {
     document.body.appendChild(overlay);
 });
 
+// ========== Breakout Rooms Event Handlers ==========
+socketWrapper.on('breakout-rooms-created', (data) => {
+    if (typeof handleBreakoutRoomsCreated === 'function') {
+        handleBreakoutRoomsCreated(data);
+    }
+});
+
+socketWrapper.on('user-assigned-breakout', (data) => {
+    if (typeof handleUserAssignedBreakout === 'function') {
+        handleUserAssignedBreakout(data);
+    }
+});
+
+socketWrapper.on('breakout-assigned', (data) => {
+    if (typeof handleBreakoutAssigned === 'function') {
+        handleBreakoutAssigned(data);
+    }
+});
+
+socketWrapper.on('breakouts-closed', (data) => {
+    if (typeof handleBreakoutsClosed === 'function') {
+        handleBreakoutsClosed(data);
+    }
+});
+
+socketWrapper.on('breakout-broadcast', (data) => {
+    if (typeof handleBreakoutBroadcast === 'function') {
+        handleBreakoutBroadcast(data);
+    }
+});
+
+socketWrapper.on('user-moved-to-breakout', (data) => {
+    // Update UI to show user moved to breakout room
+    console.log('User ' + data.user_id + ' moved to breakout ' + data.breakout_id);
+});
+
+socketWrapper.on('user-returned-from-breakout', (data) => {
+    // Update UI to show user returned to main room
+    console.log('User ' + data.user_id + ' returned from breakout');
+});
+
 function showMeetingEndedOverlay() {
     // Stop all media
     if (VideoDetails.myVideoStream) {

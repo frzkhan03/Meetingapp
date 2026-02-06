@@ -30,6 +30,8 @@ SECRET_KEY = get_secret_key()
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 PRODUCTION = os.getenv('PRODUCTION', 'False') == 'True'
 
+# For custom subdomain support, add '.pytalk.veriright.com' to ALLOWED_HOSTS in env
+# Example: ALLOWED_HOSTS=pytalk.veriright.com,.pytalk.veriright.com,localhost
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 # ==================== SSL/HTTPS SECURITY ====================
@@ -70,7 +72,7 @@ CSP_DEFAULT_SRC = ("'self'",)
 CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'wasm-unsafe-eval'", "blob:", "https://unpkg.com", "https://cdn.jsdelivr.net")
 CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://fonts.googleapis.com")
 CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net")
-CSP_IMG_SRC = ("'self'", "data:", "blob:")
+CSP_IMG_SRC = ("'self'", "data:", "blob:", "https://*.s3.*.amazonaws.com")
 CSP_CONNECT_SRC = ("'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://*.peerjs.com", "https://0.peerjs.com", "https://storage.googleapis.com")
 CSP_MEDIA_SRC = ("'self'", "blob:")
 CSP_FRAME_ANCESTORS = ("'none'",)

@@ -7,14 +7,31 @@ class TenantMiddleware(MiddlewareMixin):
     """
     Middleware to set the current organization (tenant) context for each request.
     Uses Redis caching to avoid hitting the database on every request.
+    Supports custom subdomains (e.g., acme.pytalk.veriright.com).
     """
+
+    # Main domain - subdomains of this are checked for org resolution
+    MAIN_DOMAIN = 'pytalk.veriright.com'
 
     def process_request(self, request):
         request.organization = None
+        request.subdomain_org = None  # Org from subdomain (for branding even when not logged in)
 
-        # Skip for unauthenticated users
+        # Check for custom subdomain first (works for both authenticated and anonymous users)
+        subdomain_org = self._get_org_from_subdomain(request)
+        if subdomain_org:
+            request.subdomain_org = subdomain_org
+
+        # Skip further processing for unauthenticated users
         if not request.user.is_authenticated:
             return
+
+        # If subdomain org exists and user is a member, use it
+        if subdomain_org:
+            if self._is_member_cached(request.user.id, str(subdomain_org.id)):
+                request.organization = subdomain_org
+                request.session['current_organization_id'] = str(subdomain_org.id)
+                return
 
         # Try to get organization from session first
         org_id = request.session.get('current_organization_id')
@@ -76,6 +93,50 @@ class TenantMiddleware(MiddlewareMixin):
             ).exists()
             cache.set(cache_key, result, 300)
         return result
+
+    def _get_org_from_subdomain(self, request):
+        """
+        Extract subdomain from host and resolve to Organization.
+        Returns Organization if subdomain matches and org has Business plan.
+        """
+        host = request.get_host().split(':')[0]  # Remove port if present
+
+        # Check if host is a subdomain of the main domain
+        if not host.endswith('.' + self.MAIN_DOMAIN):
+            return None
+
+        # Extract subdomain
+        subdomain = host[:-len('.' + self.MAIN_DOMAIN)]
+        if not subdomain or '.' in subdomain:  # Ignore multi-level subdomains
+            return None
+
+        # Look up organization by subdomain (or slug as fallback)
+        cache_key = f'org:subdomain:{subdomain}'
+        org = cache.get(cache_key)
+        if org is None:
+            try:
+                # Try subdomain field first, then fall back to slug
+                org = Organization.objects.get(subdomain=subdomain, is_active=True)
+            except Organization.DoesNotExist:
+                try:
+                    org = Organization.objects.get(slug=subdomain, is_active=True)
+                except Organization.DoesNotExist:
+                    cache.set(cache_key, False, 300)  # Cache miss
+                    return None
+            cache.set(cache_key, org, 300)
+        elif org is False:  # Cached miss
+            return None
+
+        # Check if org has Business plan (subdomain feature)
+        try:
+            from billing.plan_limits import get_plan_limits
+            limits = get_plan_limits(org)
+            if not limits.can_use_custom_subdomain():
+                return None
+        except ImportError:
+            return None
+
+        return org
 
 
 def get_current_organization(request):

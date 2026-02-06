@@ -249,6 +249,11 @@ def organization_settings_view(request, org_id):
             m.moderator_link = ''
             m.attendee_link = ''
 
+    # Get plan limits for branding gating
+    plan_limits = getattr(request, 'plan_limits', None)
+    can_use_branding = plan_limits.can_use_custom_branding() if plan_limits else False
+    can_use_subdomain = plan_limits.can_use_custom_subdomain() if plan_limits else False
+
     return render(request, 'organization_settings.html', {
         'organization': org,
         'members': page_obj,
@@ -257,6 +262,8 @@ def organization_settings_view(request, org_id):
         'search_query': search_query,
         'is_owner': membership.role == 'owner',
         'is_admin': membership.role in ['owner', 'admin'],
+        'can_use_branding': can_use_branding,
+        'can_use_subdomain': can_use_subdomain,
     })
 
 
@@ -409,3 +416,142 @@ def delete_member_view(request, org_id, user_id):
     target_user.delete()
 
     return JsonResponse({'status': 'deleted', 'username': username})
+
+
+@login_required
+@require_POST
+def upload_organization_logo(request, org_id):
+    """Upload organization logo to S3 (Business plan only)"""
+    import re
+    import uuid as uuid_module
+    from django.conf import settings
+
+    org = get_object_or_404(Organization, id=org_id, is_active=True)
+
+    # Check if user is owner/admin
+    membership = org.memberships.filter(user=request.user, is_active=True).first()
+    if not membership or membership.role not in ['owner', 'admin']:
+        return JsonResponse({'error': 'Permission denied.'}, status=403)
+
+    # Check plan allows custom branding
+    plan_limits = getattr(request, 'plan_limits', None)
+    if plan_limits and not plan_limits.can_use_custom_branding():
+        return JsonResponse({'error': 'Custom branding requires a Business plan.'}, status=403)
+
+    logo_file = request.FILES.get('logo')
+    if not logo_file:
+        return JsonResponse({'error': 'No logo file provided.'}, status=400)
+
+    # Validate file type
+    allowed_types = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+    if logo_file.content_type not in allowed_types:
+        return JsonResponse({'error': 'Invalid file type. Allowed: PNG, JPG, GIF, WebP, SVG'}, status=400)
+
+    # Limit file size (2MB)
+    if logo_file.size > 2 * 1024 * 1024:
+        return JsonResponse({'error': 'Logo file too large. Max 2MB.'}, status=400)
+
+    # Check AWS config
+    if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
+        return JsonResponse({'error': 'S3 storage is not configured.'}, status=500)
+
+    try:
+        import boto3
+
+        # Determine file extension from content type
+        ext_map = {
+            'image/png': 'png',
+            'image/jpeg': 'jpg',
+            'image/gif': 'gif',
+            'image/webp': 'webp',
+            'image/svg+xml': 'svg',
+        }
+        ext = ext_map.get(logo_file.content_type, 'png')
+
+        s3_key = f"organizations/{org.id}/branding/logo.{ext}"
+
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_S3_REGION,
+        )
+
+        s3_client.upload_fileobj(
+            logo_file,
+            settings.AWS_S3_BUCKET_NAME,
+            s3_key,
+            ExtraArgs={'ContentType': logo_file.content_type}
+        )
+
+        # Build the public URL
+        logo_url = f"https://{settings.AWS_S3_BUCKET_NAME}.s3.{settings.AWS_S3_REGION}.amazonaws.com/{s3_key}"
+
+        # Save to organization
+        org.logo = logo_url
+        org.save(update_fields=['logo', 'updated_at'])
+
+        return JsonResponse({'success': True, 'logo_url': logo_url})
+
+    except Exception as e:
+        return JsonResponse({'error': f'Upload failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_POST
+def save_organization_branding(request, org_id):
+    """Save organization branding colors (Business plan only)"""
+    import re
+    import json
+
+    org = get_object_or_404(Organization, id=org_id, is_active=True)
+
+    # Check if user is owner/admin
+    membership = org.memberships.filter(user=request.user, is_active=True).first()
+    if not membership or membership.role not in ['owner', 'admin']:
+        return JsonResponse({'error': 'Permission denied.'}, status=403)
+
+    # Check plan allows custom branding
+    plan_limits = getattr(request, 'plan_limits', None)
+    if plan_limits and not plan_limits.can_use_custom_branding():
+        return JsonResponse({'error': 'Custom branding requires a Business plan.'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON.'}, status=400)
+
+    primary_color = data.get('primary_color', '').strip()
+    secondary_color = data.get('secondary_color', '').strip()
+
+    # Validate hex color format
+    hex_pattern = re.compile(r'^#[0-9A-Fa-f]{6}$')
+
+    if primary_color and not hex_pattern.match(primary_color):
+        return JsonResponse({'error': 'Invalid primary color format. Use #RRGGBB.'}, status=400)
+
+    if secondary_color and not hex_pattern.match(secondary_color):
+        return JsonResponse({'error': 'Invalid secondary color format. Use #RRGGBB.'}, status=400)
+
+    org.primary_color = primary_color
+    org.secondary_color = secondary_color
+    org.save(update_fields=['primary_color', 'secondary_color', 'updated_at'])
+
+    return JsonResponse({'success': True})
+
+
+@login_required
+@require_POST
+def remove_organization_logo(request, org_id):
+    """Remove organization logo"""
+    org = get_object_or_404(Organization, id=org_id, is_active=True)
+
+    # Check if user is owner/admin
+    membership = org.memberships.filter(user=request.user, is_active=True).first()
+    if not membership or membership.role not in ['owner', 'admin']:
+        return JsonResponse({'error': 'Permission denied.'}, status=403)
+
+    org.logo = None
+    org.save(update_fields=['logo', 'updated_at'])
+
+    return JsonResponse({'success': True})

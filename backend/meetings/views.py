@@ -127,6 +127,7 @@ def _get_plan_context(request):
         'duration_limit_seconds': plan_limits.get_duration_limit_seconds() if plan_limits else None,
         'recording_allowed': plan_limits.can_record() if plan_limits else True,
         'can_use_waiting_room': plan_limits.can_use_waiting_room() if plan_limits else False,
+        'breakout_rooms_allowed': plan_limits.can_use_breakout_rooms() if plan_limits else False,
         'plan_tier': getattr(request, 'plan_tier', 'free'),
     }
 

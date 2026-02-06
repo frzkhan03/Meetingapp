@@ -108,6 +108,15 @@ class PlanLimits:
     def can_use_waiting_room(self):
         return self._limits['waiting_rooms']
 
+    def can_use_custom_branding(self):
+        return self._limits['custom_branding']
+
+    def can_use_custom_subdomain(self):
+        return self._limits['custom_subdomain']
+
+    def can_use_breakout_rooms(self):
+        return self._limits['breakout_rooms']
+
     def get_participant_limit(self):
         return self.max_participants
 
