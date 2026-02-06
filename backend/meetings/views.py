@@ -126,6 +126,7 @@ def _get_plan_context(request):
         'max_participants': plan_limits.get_participant_limit() if plan_limits else 100,
         'duration_limit_seconds': plan_limits.get_duration_limit_seconds() if plan_limits else None,
         'recording_allowed': plan_limits.can_record() if plan_limits else True,
+        'can_use_waiting_room': plan_limits.can_use_waiting_room() if plan_limits else False,
         'plan_tier': getattr(request, 'plan_tier', 'free'),
     }
 
@@ -273,6 +274,12 @@ def my_room_view(request):
         organization=request.organization
     )
 
+    # Set is_locked based on plan (only Business can use waiting rooms)
+    if created:
+        can_use_waiting_room = plan_limits and plan_limits.can_use_waiting_room()
+        personal_room.is_locked = can_use_waiting_room
+        personal_room.save(update_fields=['is_locked'])
+
     # Build full URLs
     base_url = request.build_absolute_uri('/')[:-1]  # Remove trailing slash
     moderator_link = f"{base_url}{personal_room.get_moderator_link()}"
@@ -282,7 +289,8 @@ def my_room_view(request):
         'room': personal_room,
         'moderator_link': moderator_link,
         'attendee_link': attendee_link,
-        'organization': request.organization
+        'organization': request.organization,
+        'can_use_waiting_room': plan_limits.can_use_waiting_room() if plan_limits else False,
     })
 
 
@@ -431,6 +439,18 @@ def toggle_room_lock_view(request, room_id):
         # Verify the request is from the moderator
         if token != personal_room.moderator_token:
             return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+        # Check if organization has waiting room feature
+        if is_locked:
+            from billing.plan_limits import get_plan_limits
+            org = personal_room.organization
+            if org:
+                limits = get_plan_limits(org)
+                if not limits.can_use_waiting_room():
+                    return JsonResponse({
+                        'error': 'Waiting room feature requires a Business plan',
+                        'upgrade_required': True
+                    }, status=403)
 
         personal_room.is_locked = is_locked
         personal_room.save()

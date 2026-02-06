@@ -75,19 +75,7 @@
                         <span class="feature-check">{% if plan.recording_enabled %}&#10003;{% else %}&#10007;{% endif %}</span>
                         Meeting recording
                     </li>
-                    <li class="feature-item {% if not plan.custom_branding %}feature-disabled{% endif %}">
-                        <span class="feature-check">{% if plan.custom_branding %}&#10003;{% else %}&#10007;{% endif %}</span>
-                        Custom branding
-                    </li>
                     {% if plan.tier == 'business' %}
-                    <li class="feature-item">
-                        <span class="feature-check">&#10003;</span>
-                        Custom subdomain
-                    </li>
-                    <li class="feature-item">
-                        <span class="feature-check">&#10003;</span>
-                        Breakout rooms
-                    </li>
                     <li class="feature-item">
                         <span class="feature-check">&#10003;</span>
                         Waiting rooms

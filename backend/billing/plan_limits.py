@@ -105,6 +105,9 @@ class PlanLimits:
     def can_record(self):
         return self.recording_enabled
 
+    def can_use_waiting_room(self):
+        return self._limits['waiting_rooms']
+
     def get_participant_limit(self):
         return self.max_participants
 
