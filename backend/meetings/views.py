@@ -256,12 +256,13 @@ def organization_meetings_view(request):
 @require_organization
 def my_room_view(request):
     """View user's personal room with links"""
+    plan_limits = getattr(request, 'plan_limits', None)
+
     # Check room creation limit for new rooms
     existing = PersonalRoom.objects.filter(
         user=request.user, organization=request.organization
     ).first()
     if not existing:
-        plan_limits = getattr(request, 'plan_limits', None)
         if plan_limits and not plan_limits.can_create_room():
             messages.warning(
                 request,
