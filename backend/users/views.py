@@ -555,3 +555,62 @@ def remove_organization_logo(request, org_id):
     org.save(update_fields=['logo', 'updated_at'])
 
     return JsonResponse({'success': True})
+
+
+@login_required
+@require_POST
+def save_organization_subdomain(request, org_id):
+    """Save custom subdomain for organization (Business plan only)"""
+    import re
+    import json
+
+    org = get_object_or_404(Organization, id=org_id, is_active=True)
+
+    # Check if user is owner/admin
+    membership = org.memberships.filter(user=request.user, is_active=True).first()
+    if not membership or membership.role not in ['owner', 'admin']:
+        return JsonResponse({'error': 'Permission denied.'}, status=403)
+
+    # Check plan allows custom subdomain
+    plan_limits = getattr(request, 'plan_limits', None)
+    if plan_limits and not plan_limits.can_use_custom_subdomain():
+        return JsonResponse({'error': 'Custom subdomain requires a Business plan.'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON.'}, status=400)
+
+    subdomain = data.get('subdomain', '').strip().lower()
+
+    # Validate subdomain
+    if not subdomain:
+        return JsonResponse({'error': 'Subdomain cannot be empty.'}, status=400)
+
+    if len(subdomain) < 2 or len(subdomain) > 63:
+        return JsonResponse({'error': 'Subdomain must be 2-63 characters.'}, status=400)
+
+    # Only lowercase alphanumeric and hyphens, must start/end with alphanumeric
+    subdomain_pattern = re.compile(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
+    if not subdomain_pattern.match(subdomain):
+        return JsonResponse({'error': 'Only lowercase letters, numbers, and hyphens allowed. Must start and end with a letter or number.'}, status=400)
+
+    # No consecutive hyphens
+    if '--' in subdomain:
+        return JsonResponse({'error': 'Cannot have consecutive hyphens.'}, status=400)
+
+    # Reserved subdomains
+    reserved = ['www', 'api', 'admin', 'mail', 'ftp', 'smtp', 'pop', 'imap',
+                'test', 'dev', 'staging', 'production', 'app', 'static',
+                'assets', 'cdn', 'ns1', 'ns2', 'pytalk', 'support', 'help']
+    if subdomain in reserved:
+        return JsonResponse({'error': f'"{subdomain}" is a reserved subdomain. Please choose another.'}, status=400)
+
+    # Check uniqueness (excluding current org)
+    if Organization.objects.filter(subdomain=subdomain).exclude(id=org_id).exists():
+        return JsonResponse({'error': 'This subdomain is already taken. Please choose another.'}, status=400)
+
+    org.subdomain = subdomain
+    org.save(update_fields=['subdomain', 'updated_at'])
+
+    return JsonResponse({'success': True, 'subdomain': subdomain})

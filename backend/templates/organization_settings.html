@@ -638,9 +638,12 @@
                             <h5 class="mb-4">Custom Subdomain</h5>
                             <p class="text-muted mb-3">Access your organization's meeting rooms at a custom URL.</p>
                             <div class="mb-3">
-                                <label class="form-label small">Your Organization URL</label>
+                                <label class="form-label small">Your Custom Subdomain</label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" value="{{ organization.slug }}.pytalk.veriright.com" readonly style="background: var(--bg-primary);">
+                                    <span class="input-group-text" style="background: var(--bg-primary); border-color: var(--border-color); color: var(--text-muted);">https://</span>
+                                    <input type="text" class="form-control" id="subdomainInput" value="{{ organization.subdomain }}" placeholder="your-subdomain" pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$" style="max-width: 200px;">
+                                    <span class="input-group-text" style="background: var(--bg-primary); border-color: var(--border-color); color: var(--text-muted);">.pytalk.veriright.com</span>
+                                    <button class="btn btn-primary" type="button" onclick="saveSubdomain()">Save</button>
                                     <button class="btn btn-outline-primary" type="button" onclick="copySubdomainUrl()">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -648,6 +651,9 @@
                                         </svg>
                                     </button>
                                 </div>
+                                <div class="form-text text-muted">Only lowercase letters, numbers, and hyphens allowed. Must start and end with a letter or number.</div>
+                                <div id="subdomainError" class="text-danger mt-1" style="display: none; font-size: 0.85rem;"></div>
+                                <div id="subdomainSuccess" class="text-success mt-1" style="display: none; font-size: 0.85rem;">Subdomain saved successfully!</div>
                             </div>
                             <div class="alert alert-info mb-0" style="font-size: 0.85rem;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
@@ -1232,9 +1238,71 @@ function saveBranding() {
 }
 
 function copySubdomainUrl() {
-    var url = '{{ organization.slug }}.pytalk.veriright.com';
+    var subdomainInput = document.getElementById('subdomainInput');
+    var subdomain = subdomainInput ? subdomainInput.value.trim() : '{{ organization.subdomain }}';
+    var url = subdomain + '.pytalk.veriright.com';
     navigator.clipboard.writeText('https://' + url).then(function() {
         alert('Subdomain URL copied to clipboard!');
+    });
+}
+
+function saveSubdomain() {
+    var subdomainInput = document.getElementById('subdomainInput');
+    var errorEl = document.getElementById('subdomainError');
+    var successEl = document.getElementById('subdomainSuccess');
+    var subdomain = subdomainInput.value.trim().toLowerCase();
+
+    // Reset messages
+    errorEl.style.display = 'none';
+    successEl.style.display = 'none';
+
+    // Validate
+    if (!subdomain) {
+        errorEl.textContent = 'Subdomain cannot be empty.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (subdomain.length < 2 || subdomain.length > 63) {
+        errorEl.textContent = 'Subdomain must be 2-63 characters.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(subdomain) && !/^[a-z0-9]$/.test(subdomain)) {
+        errorEl.textContent = 'Only lowercase letters, numbers, and hyphens allowed. Must start and end with a letter or number.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (/--/.test(subdomain)) {
+        errorEl.textContent = 'Cannot have consecutive hyphens.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    // Save
+    fetch('/user/organizations/' + ORG_ID + '/save-subdomain/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+        },
+        body: JSON.stringify({ subdomain: subdomain })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            errorEl.textContent = data.error;
+            errorEl.style.display = 'block';
+        } else {
+            successEl.style.display = 'block';
+            subdomainInput.value = data.subdomain;
+        }
+    })
+    .catch(function() {
+        errorEl.textContent = 'Failed to save. Please try again.';
+        errorEl.style.display = 'block';
     });
 }
 

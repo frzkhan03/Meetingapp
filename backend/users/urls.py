@@ -20,4 +20,5 @@ urlpatterns = [
     path('organizations/<uuid:org_id>/upload-logo/', views.upload_organization_logo, name='upload_organization_logo'),
     path('organizations/<uuid:org_id>/save-branding/', views.save_organization_branding, name='save_organization_branding'),
     path('organizations/<uuid:org_id>/remove-logo/', views.remove_organization_logo, name='remove_organization_logo'),
+    path('organizations/<uuid:org_id>/save-subdomain/', views.save_organization_subdomain, name='save_organization_subdomain'),
 ]
