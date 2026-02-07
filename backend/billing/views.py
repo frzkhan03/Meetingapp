@@ -386,11 +386,49 @@ def invoice_download_view(request, invoice_id):
 
     invoice = get_object_or_404(Invoice, id=invoice_id, organization=org)
 
-    # If PDF URL exists, redirect to it
+    # If PDF URL exists, generate a pre-signed URL for secure access
     if invoice.pdf_url:
-        return redirect(invoice.pdf_url)
+        try:
+            import boto3
+            from botocore.config import Config
+            from urllib.parse import urlparse
 
-    # Otherwise generate PDF on the fly
+            # Parse the S3 URL to get bucket and key
+            parsed = urlparse(invoice.pdf_url)
+            # URL format: https://bucket.s3.region.amazonaws.com/key
+            # or https://s3.region.amazonaws.com/bucket/key
+            if '.s3.' in parsed.netloc:
+                # Format: bucket.s3.region.amazonaws.com
+                bucket = parsed.netloc.split('.s3.')[0]
+                key = parsed.path.lstrip('/')
+            else:
+                # Format: s3.region.amazonaws.com/bucket/key
+                path_parts = parsed.path.lstrip('/').split('/', 1)
+                bucket = path_parts[0]
+                key = path_parts[1] if len(path_parts) > 1 else ''
+
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                region_name=settings.AWS_S3_REGION,
+                config=Config(signature_version='s3v4')
+            )
+
+            # Generate pre-signed URL valid for 5 minutes
+            presigned_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket, 'Key': key},
+                ExpiresIn=300  # 5 minutes
+            )
+
+            return redirect(presigned_url)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception('Failed to generate pre-signed URL: %s', e)
+            # Fall through to generate PDF on the fly
+
+    # Generate PDF on the fly if no URL or pre-signed URL failed
     try:
         from .invoice_generator import generate_invoice_pdf
         pdf_bytes = generate_invoice_pdf(invoice)
