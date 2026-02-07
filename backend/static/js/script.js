@@ -1954,6 +1954,22 @@ document.addEventListener('keydown', (e) => {
 
 // ================== S3 RECORDING UPLOAD ==================
 
+// Helper function to get CSRF token from cookies
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
 async function uploadRecordingToS3(blob, duration) {
     // Show upload progress notification
     const notification = document.createElement('div');
