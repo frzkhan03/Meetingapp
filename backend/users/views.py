@@ -30,15 +30,19 @@ def _create_unique_slug(base_name):
 
 
 def register_view(request):
+    import re
+
     if request.user.is_authenticated:
         return redirect('home')
 
     valid_tiers = ('pro', 'business')
     valid_cycles = ('monthly', 'annual')
+    subdomain_error = None
 
     if request.method == 'POST':
         form = RegisterForm(request.POST)
         org_name = request.POST.get('organization_name', '').strip()
+        subdomain = request.POST.get('subdomain', '').strip().lower()
 
         # Read plan selection from hidden fields
         selected_plan = request.POST.get('selected_plan', '').strip()
@@ -48,7 +52,25 @@ def register_view(request):
         if selected_cycle not in valid_cycles:
             selected_cycle = 'monthly'
 
-        if form.is_valid():
+        # Validate subdomain if org name is provided
+        if org_name and subdomain:
+            subdomain_pattern = re.compile(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
+            reserved = ['www', 'api', 'admin', 'mail', 'ftp', 'smtp', 'pop', 'imap',
+                        'test', 'dev', 'staging', 'production', 'app', 'static',
+                        'assets', 'cdn', 'ns1', 'ns2', 'pytalk', 'support', 'help']
+
+            if len(subdomain) < 2 or len(subdomain) > 63:
+                subdomain_error = 'Subdomain must be 2-63 characters.'
+            elif not subdomain_pattern.match(subdomain):
+                subdomain_error = 'Only lowercase letters, numbers, and hyphens allowed.'
+            elif '--' in subdomain:
+                subdomain_error = 'Cannot have consecutive hyphens.'
+            elif subdomain in reserved:
+                subdomain_error = f'"{subdomain}" is reserved. Please choose another.'
+            elif Organization.objects.filter(subdomain=subdomain).exists():
+                subdomain_error = 'This subdomain is already taken.'
+
+        if form.is_valid() and not subdomain_error:
             user = form.save()
 
             # Create profile for user
@@ -57,7 +79,9 @@ def register_view(request):
             # Create or join organization
             if org_name:
                 slug = _create_unique_slug(org_name)
-                org = Organization.objects.create(name=org_name, slug=slug)
+                # Use provided subdomain or fall back to slug
+                final_subdomain = subdomain if subdomain else slug
+                org = Organization.objects.create(name=org_name, slug=slug, subdomain=final_subdomain)
             else:
                 slug = _create_unique_slug(f"{user.username}-org")
                 org = Organization.objects.create(
@@ -80,13 +104,23 @@ def register_view(request):
             login(request, user)
             messages.success(request, 'Registration successful!')
 
+            # Build redirect URL - use subdomain if org has one
+            if org.subdomain:
+                redirect_url = f'https://{org.subdomain}.pytalk.veriright.com'
+                if selected_plan:
+                    redirect_url += f'/billing/checkout/{selected_plan}/{selected_cycle}/'
+                else:
+                    redirect_url += '/'
+                return redirect(redirect_url)
+
             # Redirect to checkout if a paid plan was selected
             if selected_plan:
                 return redirect('billing_checkout', plan_tier=selected_plan, billing_cycle=selected_cycle)
 
             return redirect('home')
         else:
-            messages.error(request, 'Registration failed. Please check the form.')
+            if not subdomain_error:
+                messages.error(request, 'Registration failed. Please check the form.')
     else:
         form = RegisterForm()
         selected_plan = request.GET.get('plan', '').strip()
@@ -107,6 +141,7 @@ def register_view(request):
         'selected_plan': selected_plan,
         'selected_cycle': selected_cycle,
         'selected_plan_obj': selected_plan_obj,
+        'subdomain_error': subdomain_error,
     })
 
 

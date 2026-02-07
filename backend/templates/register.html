@@ -60,12 +60,62 @@
                             {% endif %}
                         </div>
                         <hr class="my-4">
-                        <div class="mb-4">
+                        <div class="mb-3">
                             <label for="organization_name" class="form-label">Organization Name <span class="text-muted">(optional)</span></label>
                             <input type="text" class="form-control" id="organization_name" name="organization_name"
-                                   placeholder="e.g., Acme Inc.">
+                                   placeholder="e.g., Acme Inc." value="{{ request.POST.organization_name }}">
                             <div class="form-text">Create a new organization or leave blank for a personal workspace.</div>
                         </div>
+                        <div class="mb-4" id="subdomainField" style="display: none;">
+                            <label for="subdomain" class="form-label">Your Subdomain</label>
+                            <div class="input-group">
+                                <span class="input-group-text" style="background: var(--bg-primary); border-color: var(--border-color); color: var(--text-muted); font-size: 0.9rem;">https://</span>
+                                <input type="text" class="form-control" id="subdomain" name="subdomain"
+                                       placeholder="acme" pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$" value="{{ request.POST.subdomain }}">
+                                <span class="input-group-text" style="background: var(--bg-primary); border-color: var(--border-color); color: var(--text-muted); font-size: 0.9rem;">.pytalk.veriright.com</span>
+                            </div>
+                            <div class="form-text">Your team will access meetings at this URL. Only lowercase letters, numbers, and hyphens.</div>
+                            {% if subdomain_error %}
+                            <small class="text-danger">{{ subdomain_error }}</small>
+                            {% endif %}
+                        </div>
+                        <script>
+                        (function() {
+                            var orgInput = document.getElementById('organization_name');
+                            var subdomainField = document.getElementById('subdomainField');
+                            var subdomainInput = document.getElementById('subdomain');
+
+                            function generateSlug(name) {
+                                return name.toLowerCase()
+                                    .replace(/[^a-z0-9\s-]/g, '')
+                                    .replace(/\s+/g, '-')
+                                    .replace(/-+/g, '-')
+                                    .replace(/^-|-$/g, '')
+                                    .substring(0, 30);
+                            }
+
+                            function updateSubdomain() {
+                                var name = orgInput.value.trim();
+                                if (name) {
+                                    subdomainField.style.display = 'block';
+                                    if (!subdomainInput.dataset.userEdited) {
+                                        subdomainInput.value = generateSlug(name);
+                                    }
+                                } else {
+                                    subdomainField.style.display = 'none';
+                                }
+                            }
+
+                            orgInput.addEventListener('input', updateSubdomain);
+                            subdomainInput.addEventListener('input', function() {
+                                this.dataset.userEdited = 'true';
+                                this.value = this.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+                            });
+
+                            // Show on page load if org name exists
+                            updateSubdomain();
+                        })();
+                        </script>
                         <div class="d-grid mb-4">
                             <button type="submit" class="btn btn-primary btn-lg">Create Account</button>
                         </div>
