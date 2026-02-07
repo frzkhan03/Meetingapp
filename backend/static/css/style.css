@@ -196,11 +196,67 @@ strong, b, .fw-bold {
     padding: 0.5rem 1rem !important;
     border-radius: var(--radius-sm);
     transition: all 0.2s ease;
+    background: transparent !important;
 }
 
 .nav-link:hover {
     color: var(--text-primary) !important;
-    background: var(--bg-hover);
+    background: var(--bg-hover) !important;
+}
+
+.nav-link.active {
+    color: var(--accent-primary) !important;
+    background: transparent !important;
+}
+
+/* Tab styling */
+.nav-tabs {
+    border-bottom-color: var(--border-color) !important;
+}
+
+.nav-tabs .nav-link {
+    color: var(--text-secondary) !important;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+}
+
+.nav-tabs .nav-link:hover {
+    color: var(--text-primary) !important;
+    background: transparent !important;
+    border-color: transparent !important;
+    border-bottom-color: var(--border-color) !important;
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--accent-primary) !important;
+    background: transparent !important;
+    border-color: transparent !important;
+    border-bottom-color: var(--accent-primary) !important;
+}
+
+.nav-pills .nav-link {
+    color: var(--text-secondary) !important;
+    background: transparent !important;
+}
+
+.nav-pills .nav-link:hover {
+    color: var(--text-primary) !important;
+    background: var(--bg-hover) !important;
+}
+
+.nav-pills .nav-link.active {
+    color: #fff !important;
+    background: var(--accent-primary) !important;
+}
+
+.tab-content {
+    color: var(--text-primary);
+}
+
+.tab-pane {
+    color: var(--text-primary);
 }
 
 .navbar-toggler {
