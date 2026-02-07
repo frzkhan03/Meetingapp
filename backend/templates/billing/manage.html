@@ -232,8 +232,8 @@
                                         </span>
                                     </td>
                                     <td>
-                                        {% if payment.invoice_pdf_url %}
-                                        <a href="{{ payment.invoice_pdf_url }}" target="_blank" class="text-decoration-none">Download</a>
+                                        {% if payment.invoice %}
+                                        <a href="{% url 'invoice_download' payment.invoice.id %}" target="_blank" class="text-decoration-none">Download</a>
                                         {% else %}
                                         -
                                         {% endif %}
@@ -363,8 +363,7 @@
                                 <span class="badge {% if invoice.status == 'paid' %}bg-success{% elif invoice.status == 'issued' %}bg-warning{% else %}bg-secondary{% endif %}">
                                     {{ invoice.status|title }}
                                 </span>
-                                {% if invoice.pdf_url %}
-                                <a href="{{ invoice.pdf_url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                                <a href="{% url 'invoice_download' invoice.id %}" target="_blank" class="btn btn-outline-primary btn-sm">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                         <polyline points="7 10 12 15 17 10"/>
@@ -372,16 +371,6 @@
                                     </svg>
                                     Download
                                 </a>
-                                {% else %}
-                                <a href="{% url 'invoice_download' invoice.id %}" class="btn btn-outline-primary btn-sm">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
-                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                        <polyline points="7 10 12 15 17 10"/>
-                                        <line x1="12" y1="15" x2="12" y2="3"/>
-                                    </svg>
-                                    Download
-                                </a>
-                                {% endif %}
                             </div>
                         </div>
                         {% endfor %}
