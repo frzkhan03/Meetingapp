@@ -31,6 +31,12 @@ class Organization(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        # Auto-populate subdomain from slug if not set
+        if not self.subdomain and self.slug:
+            self.subdomain = self.slug
+        super().save(*args, **kwargs)
+
 
 class OrganizationMembership(models.Model):
     """Membership linking users to organizations with roles"""
