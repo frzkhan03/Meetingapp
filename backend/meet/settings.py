@@ -55,10 +55,15 @@ SESSION_COOKIE_AGE = 3600  # 1 hour session timeout
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_SAVE_EVERY_REQUEST = False  # Only save when modified (was True — caused DB write on every request)
 
+# Cookie domain for subdomain support - set to .pytalk.veriright.com in production
+# This allows cookies to be shared across subdomains (e.g., acme.pytalk.veriright.com)
+SESSION_COOKIE_DOMAIN = os.getenv('SESSION_COOKIE_DOMAIN', None)  # None = default to current domain
+
 CSRF_COOKIE_SECURE = PRODUCTION  # Only send CSRF cookie over HTTPS in production
 CSRF_COOKIE_HTTPONLY = False  # Must be False for JavaScript AJAX to read the token
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_USE_SESSIONS = False  # Don't use sessions - use cookie for AJAX compatibility
+CSRF_COOKIE_DOMAIN = os.getenv('CSRF_COOKIE_DOMAIN', None)  # Must match SESSION_COOKIE_DOMAIN
 CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,http://127.0.0.1:8000').split(',')
 
 # ==================== SECURITY HEADERS ====================

@@ -104,17 +104,12 @@ def register_view(request):
             login(request, user)
             messages.success(request, 'Registration successful!')
 
-            # Build redirect URL - use subdomain if org has one
-            if org.subdomain:
-                redirect_url = f'https://{org.subdomain}.pytalk.veriright.com'
-                if selected_plan:
-                    redirect_url += f'/billing/checkout/{selected_plan}/{selected_cycle}/'
-                else:
-                    redirect_url += '/'
-                return redirect(redirect_url)
-
             # Redirect to checkout if a paid plan was selected
-            if selected_plan:
+            # Only redirect to subdomain URL if user selected Business plan (which enables subdomain feature)
+            if selected_plan == 'business' and org.subdomain:
+                redirect_url = f'https://{org.subdomain}.pytalk.veriright.com/billing/checkout/{selected_plan}/{selected_cycle}/'
+                return redirect(redirect_url)
+            elif selected_plan:
                 return redirect('billing_checkout', plan_tier=selected_plan, billing_cycle=selected_cycle)
 
             return redirect('home')
@@ -142,6 +137,8 @@ def register_view(request):
         'selected_cycle': selected_cycle,
         'selected_plan_obj': selected_plan_obj,
         'subdomain_error': subdomain_error,
+        'organization_name_value': request.POST.get('organization_name', '') if request.method == 'POST' else '',
+        'subdomain_value': request.POST.get('subdomain', '') if request.method == 'POST' else '',
     })
 
 
@@ -470,7 +467,7 @@ def upload_organization_logo(request, org_id):
 
     # Check plan allows custom branding
     plan_limits = getattr(request, 'plan_limits', None)
-    if plan_limits and not plan_limits.can_use_custom_branding():
+    if not plan_limits or not plan_limits.can_use_custom_branding():
         return JsonResponse({'error': 'Custom branding requires a Business plan.'}, status=403)
 
     logo_file = request.FILES.get('logo')
@@ -548,7 +545,7 @@ def save_organization_branding(request, org_id):
 
     # Check plan allows custom branding
     plan_limits = getattr(request, 'plan_limits', None)
-    if plan_limits and not plan_limits.can_use_custom_branding():
+    if not plan_limits or not plan_limits.can_use_custom_branding():
         return JsonResponse({'error': 'Custom branding requires a Business plan.'}, status=403)
 
     try:
@@ -578,13 +575,18 @@ def save_organization_branding(request, org_id):
 @login_required
 @require_POST
 def remove_organization_logo(request, org_id):
-    """Remove organization logo"""
+    """Remove organization logo (Business plan only)"""
     org = get_object_or_404(Organization, id=org_id, is_active=True)
 
     # Check if user is owner/admin
     membership = org.memberships.filter(user=request.user, is_active=True).first()
     if not membership or membership.role not in ['owner', 'admin']:
         return JsonResponse({'error': 'Permission denied.'}, status=403)
+
+    # Check plan allows custom branding (for consistency with upload)
+    plan_limits = getattr(request, 'plan_limits', None)
+    if not plan_limits or not plan_limits.can_use_custom_branding():
+        return JsonResponse({'error': 'Custom branding requires a Business plan.'}, status=403)
 
     org.logo = None
     org.save(update_fields=['logo', 'updated_at'])
@@ -608,7 +610,7 @@ def save_organization_subdomain(request, org_id):
 
     # Check plan allows custom subdomain
     plan_limits = getattr(request, 'plan_limits', None)
-    if plan_limits and not plan_limits.can_use_custom_subdomain():
+    if not plan_limits or not plan_limits.can_use_custom_subdomain():
         return JsonResponse({'error': 'Custom subdomain requires a Business plan.'}, status=403)
 
     try:

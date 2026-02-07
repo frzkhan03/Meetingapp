@@ -34,12 +34,15 @@ class TenantMiddleware(MiddlewareMixin):
         if not request.user.is_authenticated:
             return
 
-        # If subdomain org exists and user is a member, use it
+        # If subdomain org exists, user MUST be a member to access
         if request.subdomain_org:
             if self._is_member_cached(request.user.id, str(request.subdomain_org.id)):
                 request.organization = request.subdomain_org
                 request.session['current_organization_id'] = str(request.subdomain_org.id)
                 return
+            else:
+                # Authenticated user accessing subdomain they don't belong to - deny access
+                raise Http404("Organization not found")
 
         # Try to get organization from session first
         org_id = request.session.get('current_organization_id')

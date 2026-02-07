@@ -464,6 +464,30 @@ class RoomConsumer(AsyncWebsocketConsumer):
     # ========== Breakout Room Handlers ==========
 
     @database_sync_to_async
+    def _is_moderator(self, user_id):
+        """Check if the given user_id is a moderator for this room."""
+        from meetings.models import Meeting, PersonalRoom
+
+        if not user_id:
+            return False
+
+        try:
+            # For PersonalRoom, the owner is the moderator
+            room = PersonalRoom.objects.select_related('user').get(room_id=self.room_id)
+            return str(room.user_id) == str(user_id)
+        except PersonalRoom.DoesNotExist:
+            pass
+
+        try:
+            # For Meeting, the author is the moderator
+            meeting = Meeting.objects.get(room_id=self.room_id)
+            return str(meeting.author_id) == str(user_id)
+        except Meeting.DoesNotExist:
+            pass
+
+        return False
+
+    @database_sync_to_async
     def _can_use_breakout_rooms(self):
         """Check if the organization's plan allows breakout rooms."""
         from meetings.models import Meeting, PersonalRoom
@@ -532,6 +556,16 @@ class RoomConsumer(AsyncWebsocketConsumer):
 
     async def handle_create_breakout(self, payload):
         """Moderator creates breakout rooms."""
+        moderator_id = payload.get('moderator_id')
+
+        # Verify the sender is actually a moderator
+        if not await self._is_moderator(moderator_id):
+            await self.send(text_data=json.dumps({
+                'type': 'breakout-error',
+                'message': 'Only moderators can create breakout rooms.'
+            }))
+            return
+
         if not await self._can_use_breakout_rooms():
             await self.send(text_data=json.dumps({
                 'type': 'breakout-error',
@@ -540,7 +574,6 @@ class RoomConsumer(AsyncWebsocketConsumer):
             return
 
         rooms = payload.get('rooms', [])  # List of room names like ["Room 1", "Room 2"]
-        moderator_id = payload.get('moderator_id')
 
         created_rooms = []
         for room_name in rooms:
@@ -569,10 +602,19 @@ class RoomConsumer(AsyncWebsocketConsumer):
 
     async def handle_assign_to_breakout(self, payload):
         """Moderator assigns a participant to a breakout room."""
+        moderator_id = payload.get('moderator_id')
+
+        # Verify the sender is actually a moderator
+        if not await self._is_moderator(moderator_id):
+            await self.send(text_data=json.dumps({
+                'type': 'breakout-error',
+                'message': 'Only moderators can assign participants to breakout rooms.'
+            }))
+            return
+
         target_user_id = payload.get('user_id')
         breakout_id = payload.get('breakout_id')
         breakout_name = payload.get('breakout_name', '')
-        moderator_id = payload.get('moderator_id')
 
         # Store assignment in Redis
         from django.core.cache import cache
@@ -605,9 +647,27 @@ class RoomConsumer(AsyncWebsocketConsumer):
 
     async def handle_join_breakout(self, payload):
         """User joins their assigned breakout room."""
+        # Verify plan allows breakout rooms
+        if not await self._can_use_breakout_rooms():
+            await self.send(text_data=json.dumps({
+                'type': 'breakout-error',
+                'message': 'Breakout rooms require a Business plan.'
+            }))
+            return
+
         breakout_id = payload.get('breakout_id')
         user_id = payload.get('user_id', self.user_id)
         username = payload.get('username', '')
+
+        # Verify user was actually assigned to this breakout room
+        from django.core.cache import cache
+        assigned_breakout = cache.get(f'breakout:assignment:{self.room_id}:{user_id}')
+        if assigned_breakout != breakout_id:
+            await self.send(text_data=json.dumps({
+                'type': 'breakout-error',
+                'message': 'You are not assigned to this breakout room.'
+            }))
+            return
 
         # Join breakout group
         breakout_group = f'breakout_{breakout_id}'
@@ -680,6 +740,14 @@ class RoomConsumer(AsyncWebsocketConsumer):
         """Moderator closes all breakout rooms."""
         moderator_id = payload.get('moderator_id')
 
+        # Verify the sender is actually a moderator
+        if not await self._is_moderator(moderator_id):
+            await self.send(text_data=json.dumps({
+                'type': 'breakout-error',
+                'message': 'Only moderators can close breakout rooms.'
+            }))
+            return
+
         await self._close_breakout_rooms_db()
 
         logger.info(f"Breakout rooms closed for {self.room_id} by {moderator_id}")
@@ -696,12 +764,17 @@ class RoomConsumer(AsyncWebsocketConsumer):
 
     async def handle_broadcast_to_breakouts(self, payload):
         """Moderator broadcasts a message to all breakout rooms."""
-        message = payload.get('message', '')
         moderator_id = payload.get('moderator_id')
 
-        # Get all active breakout room IDs from Redis/DB
-        from django.core.cache import cache
-        import re
+        # Verify the sender is actually a moderator
+        if not await self._is_moderator(moderator_id):
+            await self.send(text_data=json.dumps({
+                'type': 'breakout-error',
+                'message': 'Only moderators can broadcast to breakout rooms.'
+            }))
+            return
+
+        message = payload.get('message', '')
 
         # Broadcast to main room (this will include breakout participants still connected)
         await self.channel_layer.group_send(
