@@ -355,15 +355,26 @@ strong, b, .fw-bold {
 }
 
 .btn-primary {
-    background: var(--accent-gradient);
-    color: white;
+    background: var(--accent-gradient) !important;
+    color: #ffffff !important;
     box-shadow: 0 4px 15px var(--accent-glow);
 }
 
-.btn-primary:hover {
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
     transform: translateY(-2px);
     box-shadow: 0 6px 25px var(--accent-glow);
-    background: var(--accent-gradient);
+    background: var(--accent-gradient) !important;
+    color: #ffffff !important;
+}
+
+/* Ensure btn-primary text is always white in light mode */
+[data-theme="light"] .btn-primary,
+[data-theme="light"] .btn-primary:hover,
+[data-theme="light"] .btn-primary:focus,
+[data-theme="light"] .btn-primary:active {
+    color: #ffffff !important;
 }
 
 .btn-outline-primary {
