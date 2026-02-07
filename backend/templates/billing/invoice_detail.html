@@ -1,0 +1,234 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load billing_tags %}
+
+{% block title %}Invoice {{ invoice.invoice_number }} - PyTalk{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/billing.css' %}">
+<style>
+    .invoice-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    .invoice-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 2rem;
+    }
+    .invoice-card {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 2rem;
+    }
+    .invoice-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--accent-primary);
+    }
+    .invoice-number-badge {
+        font-size: 1.25rem;
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+    .invoice-meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        margin-bottom: 2rem;
+        padding-bottom: 2rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .meta-section h5 {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .meta-section p {
+        margin-bottom: 0.25rem;
+        color: var(--text-primary);
+    }
+    .line-items-table {
+        width: 100%;
+        margin-bottom: 1.5rem;
+    }
+    .line-items-table th {
+        background: var(--bg-secondary);
+        padding: 0.75rem 1rem;
+        text-align: left;
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--border-color);
+    }
+    .line-items-table td {
+        padding: 1rem;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border-color);
+    }
+    .line-items-table .text-right {
+        text-align: right;
+    }
+    .totals-section {
+        display: flex;
+        justify-content: flex-end;
+    }
+    .totals-table {
+        min-width: 250px;
+    }
+    .totals-table tr td {
+        padding: 0.5rem 0;
+    }
+    .totals-table tr td:first-child {
+        color: var(--text-muted);
+        padding-right: 2rem;
+    }
+    .totals-table tr td:last-child {
+        text-align: right;
+        color: var(--text-primary);
+    }
+    .totals-table .total-row td {
+        font-weight: 600;
+        font-size: 1.125rem;
+        padding-top: 1rem;
+        border-top: 2px solid var(--accent-primary);
+    }
+    .totals-table .total-row td:last-child {
+        color: var(--accent-primary);
+    }
+    .status-paid {
+        background: #dcfce7;
+        color: #166534;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        text-align: center;
+        margin-top: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="invoice-container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <a href="{% url 'invoice_list' %}" class="btn btn-outline-secondary btn-sm">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+                Back to Invoices
+            </a>
+            <a href="{% url 'invoice_download' invoice.id %}" target="_blank" class="btn btn-primary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Download PDF
+            </a>
+        </div>
+
+        <div class="invoice-card">
+            <div class="invoice-header">
+                <div>
+                    <h1 class="invoice-title">PyTalk</h1>
+                    <p class="text-muted mb-0">Video Conferencing Platform</p>
+                </div>
+                <div class="text-end">
+                    <div class="invoice-number-badge">{{ invoice.invoice_number }}</div>
+                    <span class="badge {% if invoice.status == 'paid' %}bg-success{% elif invoice.status == 'issued' %}bg-warning{% else %}bg-secondary{% endif %} mt-2">
+                        {{ invoice.status|upper }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="invoice-meta">
+                <div class="meta-section">
+                    <h5>Invoice Details</h5>
+                    <p><strong>Date:</strong> {{ invoice.issued_date|date:"F d, Y"|default:"--" }}</p>
+                    {% if invoice.due_date %}
+                    <p><strong>Due:</strong> {{ invoice.due_date|date:"F d, Y" }}</p>
+                    {% endif %}
+                    {% if invoice.paid_date %}
+                    <p><strong>Paid:</strong> {{ invoice.paid_date|date:"F d, Y" }}</p>
+                    {% endif %}
+                </div>
+                <div class="meta-section">
+                    <h5>Bill To</h5>
+                    <p><strong>{{ invoice.billing_name|default:invoice.organization.name }}</strong></p>
+                    {% if invoice.billing_address %}
+                    {% for line in invoice.billing_address.splitlines %}
+                    <p>{{ line }}</p>
+                    {% endfor %}
+                    {% endif %}
+                    {% if invoice.tax_id %}
+                    <p><strong>{{ invoice.tax_type|default:"Tax ID" }}:</strong> {{ invoice.tax_id }}</p>
+                    {% endif %}
+                    {% if invoice.billing_email %}
+                    <p>{{ invoice.billing_email }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <table class="line-items-table">
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th class="text-right">Qty</th>
+                        <th class="text-right">Unit Price</th>
+                        <th class="text-right">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in invoice.line_items %}
+                    <tr>
+                        <td>{{ item.description }}</td>
+                        <td class="text-right">{{ item.quantity }}</td>
+                        <td class="text-right">{{ item.unit_price|format_price }}</td>
+                        <td class="text-right">{{ item.amount|format_price }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted">No line items</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="totals-section">
+                <table class="totals-table">
+                    <tr>
+                        <td>Subtotal</td>
+                        <td>{{ invoice.currency }} {{ invoice.subtotal|floatformat:2 }}</td>
+                    </tr>
+                    {% if invoice.tax_amount_cents > 0 %}
+                    <tr>
+                        <td>Tax {% if invoice.tax_type %}({{ invoice.tax_type }}){% endif %}</td>
+                        <td>{{ invoice.currency }} {{ invoice.tax_amount|floatformat:2 }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr class="total-row">
+                        <td>Total</td>
+                        <td>{{ invoice.currency }} {{ invoice.total|floatformat:2 }}</td>
+                    </tr>
+                </table>
+            </div>
+
+            {% if invoice.status == 'paid' %}
+            <div class="status-paid">
+                <strong>PAID</strong> - Thank you for your payment{% if invoice.paid_date %} on {{ invoice.paid_date|date:"F d, Y" }}{% endif %}
+            </div>
+            {% endif %}
+
+            {% if invoice.notes %}
+            <div class="mt-4 pt-4" style="border-top: 1px solid var(--border-color);">
+                <h5 style="font-size: 0.875rem; color: var(--text-muted);">Notes</h5>
+                <p class="mb-0">{{ invoice.notes }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

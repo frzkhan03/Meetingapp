@@ -164,10 +164,9 @@ def billing_manage_view(request):
 
 
 @login_required
+@require_POST
 def cancel_subscription_view(request):
     """Cancel subscription at period end. POST only."""
-    if request.method != 'POST':
-        return redirect('billing_manage')
 
     org = getattr(request, 'organization', None)
     if not org:
@@ -194,10 +193,9 @@ def cancel_subscription_view(request):
 
 
 @login_required
+@require_POST
 def resume_subscription_view(request):
     """Resume a subscription set to cancel. POST only."""
-    if request.method != 'POST':
-        return redirect('billing_manage')
 
     org = getattr(request, 'organization', None)
     if not org:
@@ -305,6 +303,23 @@ def save_billing_info_view(request):
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
+    # Validate email if provided
+    billing_email = data.get('billing_email', '').strip()[:254]
+    if billing_email:
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+        try:
+            validate_email(billing_email)
+        except ValidationError:
+            return JsonResponse({'error': 'Invalid email address'}, status=400)
+
+    # Validate country code if provided
+    country = data.get('country', '').strip()[:2].upper()
+    if country:
+        valid_countries = [code for code, name in COUNTRIES]
+        if country not in valid_countries:
+            return JsonResponse({'error': 'Invalid country code'}, status=400)
+
     # Get or create billing info
     billing_info, created = BillingInfo.objects.get_or_create(
         organization=org,
@@ -318,9 +333,9 @@ def save_billing_info_view(request):
     billing_info.city = data.get('city', '').strip()[:100]
     billing_info.state = data.get('state', '').strip()[:100]
     billing_info.postal_code = data.get('postal_code', '').strip()[:20]
-    billing_info.country = data.get('country', '').strip()[:2].upper()
+    billing_info.country = country
     billing_info.tax_id = data.get('tax_id', '').strip()[:50]
-    billing_info.billing_email = data.get('billing_email', '').strip()[:254]
+    billing_info.billing_email = billing_email
 
     # Auto-set tax type based on country
     if billing_info.country:
@@ -454,13 +469,15 @@ def invoices_api(request):
 
     invoice_list = []
     for inv in invoices:
+        # Return download URL instead of raw S3 URL to prevent unauthorized access
         invoice_list.append({
             'id': str(inv.id),
             'invoice_number': inv.invoice_number,
             'issued_date': inv.issued_date.isoformat() if inv.issued_date else None,
             'total': inv.get_formatted_total(),
             'status': inv.status,
-            'pdf_url': inv.pdf_url,
+            'download_url': f'/billing/invoices/{inv.id}/download/' if inv.pdf_url else None,
+            'has_pdf': bool(inv.pdf_url),
         })
 
     return JsonResponse({'invoices': invoice_list})

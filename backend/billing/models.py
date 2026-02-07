@@ -432,25 +432,39 @@ class Invoice(models.Model):
 
     @classmethod
     def generate_invoice_number(cls):
-        """Generate a unique invoice number in format INV-YYYY-NNNN."""
+        """Generate a unique invoice number in format INV-YYYY-NNNN.
+
+        Uses SELECT FOR UPDATE to prevent race conditions when multiple
+        invoices are generated concurrently.
+        """
+        from django.db import transaction
+
         year = date.today().year
         prefix = f'INV-{year}-'
 
-        # Get the last invoice number for this year
-        last_invoice = cls.objects.filter(
-            invoice_number__startswith=prefix
-        ).order_by('-invoice_number').first()
+        with transaction.atomic():
+            # Use select_for_update to lock the row and prevent race conditions
+            last_invoice = cls.objects.filter(
+                invoice_number__startswith=prefix
+            ).select_for_update().order_by('-invoice_number').first()
 
-        if last_invoice:
-            try:
-                last_num = int(last_invoice.invoice_number.split('-')[-1])
-                next_num = last_num + 1
-            except ValueError:
+            if last_invoice:
+                try:
+                    last_num = int(last_invoice.invoice_number.split('-')[-1])
+                    next_num = last_num + 1
+                except ValueError:
+                    next_num = 1
+            else:
                 next_num = 1
-        else:
-            next_num = 1
 
-        return f'{prefix}{next_num:04d}'
+            invoice_number = f'{prefix}{next_num:04d}'
+
+            # Double-check uniqueness (for extra safety)
+            while cls.objects.filter(invoice_number=invoice_number).exists():
+                next_num += 1
+                invoice_number = f'{prefix}{next_num:04d}'
+
+            return invoice_number
 
     def get_formatted_total(self):
         """Return formatted total with currency symbol."""

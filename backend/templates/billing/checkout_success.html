@@ -11,7 +11,7 @@
         </svg>
         <h2 class="fw-bold mb-3">Subscription Activated!</h2>
         <p class="text-muted mb-4">
-            Your organization <strong>{{ organization.name }}</strong> has been upgraded successfully.
+            {% if organization %}Your organization <strong>{{ organization.name }}</strong> has been upgraded successfully.{% else %}Your subscription has been activated successfully.{% endif %}
             Your new features are available immediately.
         </p>
         <div class="d-flex gap-3 justify-content-center">
