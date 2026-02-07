@@ -12,4 +12,15 @@ urlpatterns = [
     path('resume/', views.resume_subscription_view, name='billing_resume'),
     path('webhooks/payu/', webhooks.payu_webhook_view, name='payu_webhook'),
     path('api/currency-rates/', views.currency_rates_api, name='currency_rates'),
+
+    # Billing Info
+    path('api/billing-info/', views.get_billing_info_view, name='billing_info_get'),
+    path('api/billing-info/save/', views.save_billing_info_view, name='billing_info_save'),
+    path('api/tax-label/', views.get_tax_label_api, name='tax_label_api'),
+
+    # Invoices
+    path('invoices/', views.invoice_list_view, name='invoice_list'),
+    path('invoices/<uuid:invoice_id>/', views.invoice_detail_view, name='invoice_detail'),
+    path('invoices/<uuid:invoice_id>/download/', views.invoice_download_view, name='invoice_download'),
+    path('api/invoices/', views.invoices_api, name='invoices_api'),
 ]

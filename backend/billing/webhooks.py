@@ -142,7 +142,7 @@ def handle_order_completed(order, full_data):
     amount = int(order.get('totalAmount', 0))
     currency = order.get('currencyCode', 'USD')
 
-    Payment.objects.create(
+    payment = Payment.objects.create(
         subscription=sub,
         payu_order_id=order_id,
         payu_transaction_id=payu_transaction_id,
@@ -156,6 +156,14 @@ def handle_order_completed(order, full_data):
         'Payment completed: org=%s plan=%s cycle=%s amount=%s %s recurring=%s',
         org_id, tier, billing_cycle, amount, currency, is_recurring,
     )
+
+    # Generate invoice for successful payment
+    try:
+        from .invoice_generator import create_invoice_for_payment
+        invoice = create_invoice_for_payment(payment)
+        logger.info('Invoice %s created for payment %s', invoice.invoice_number, payment.id)
+    except Exception as e:
+        logger.exception('Failed to create invoice for payment %s: %s', payment.id, e)
 
 
 def handle_order_failed(order):

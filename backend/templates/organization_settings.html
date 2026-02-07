@@ -685,20 +685,52 @@
 
                 <!-- Billing Tab -->
                 <div class="tab-pane fade" id="billing" role="tabpanel">
-                    <div class="p-4">
-                        <h5 class="mb-3">Subscription</h5>
-                        <div class="d-flex justify-content-between align-items-center p-3 rounded" style="background: var(--bg-primary);">
-                            <div>
-                                <strong>{{ request.plan_tier|default:"free"|title }} Plan</strong>
-                                <p class="text-muted mb-0 small">
-                                    {% if request.plan_tier == 'free' or not request.plan_tier %}
-                                        Upgrade to unlock more rooms, participants, and recording.
-                                    {% else %}
-                                        Your team is on a paid plan with enhanced features.
-                                    {% endif %}
-                                </p>
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="mb-3">Subscription</h5>
+                            <div class="d-flex justify-content-between align-items-center p-3 rounded" style="background: var(--bg-primary);">
+                                <div>
+                                    <strong>{{ request.plan_tier|default:"free"|title }} Plan</strong>
+                                    <p class="text-muted mb-0 small">
+                                        {% if request.plan_tier == 'free' or not request.plan_tier %}
+                                            Upgrade to unlock more rooms, participants, and recording.
+                                        {% else %}
+                                            Your team is on a paid plan with enhanced features.
+                                        {% endif %}
+                                    </p>
+                                </div>
+                                <a href="{% url 'billing_manage' %}" class="btn btn-primary btn-sm">Manage Billing</a>
                             </div>
-                            <a href="{% url 'billing_manage' %}" class="btn btn-primary btn-sm">Manage Billing</a>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="mb-3">Billing Details</h5>
+                            <p class="text-muted small mb-3">Update your billing address and tax information for invoices.</p>
+                            <a href="{% url 'billing_manage' %}#billing-details" class="btn btn-outline-primary btn-sm">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                                Edit Billing Details
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="card mt-4">
+                        <div class="card-body">
+                            <h5 class="mb-3">Invoices</h5>
+                            <p class="text-muted small mb-3">View and download your past invoices.</p>
+                            <a href="{% url 'billing_manage' %}#invoices" class="btn btn-outline-primary btn-sm">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                    <line x1="16" y1="13" x2="8" y2="13"/>
+                                    <line x1="16" y1="17" x2="8" y2="17"/>
+                                </svg>
+                                View Invoices
+                            </a>
                         </div>
                     </div>
                 </div>

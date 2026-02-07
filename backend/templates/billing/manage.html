@@ -6,148 +6,403 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/billing.css' %}">
+<style>
+    .billing-section {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+    }
+    .billing-section .card-body {
+        padding: 1.5rem;
+    }
+    .billing-section .card-title {
+        margin-bottom: 1rem;
+        font-weight: 600;
+    }
+    .form-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin-bottom: 0.375rem;
+    }
+    .form-control, .form-select {
+        background: var(--bg-primary);
+        border-color: var(--border-color);
+        color: var(--text-primary);
+    }
+    .form-control:focus, .form-select:focus {
+        background: var(--bg-primary);
+        border-color: var(--accent-primary);
+        color: var(--text-primary);
+        box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.15);
+    }
+    .form-control::placeholder {
+        color: var(--text-muted);
+    }
+    .invoice-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .invoice-row:last-child {
+        border-bottom: none;
+    }
+    .invoice-number {
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+    .invoice-date {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+    }
+    .invoice-amount {
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+    .nav-tabs-billing {
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 1.5rem;
+    }
+    .nav-tabs-billing .nav-link {
+        color: var(--text-secondary);
+        border: none;
+        border-bottom: 2px solid transparent;
+        padding: 0.75rem 1.25rem;
+        font-weight: 500;
+    }
+    .nav-tabs-billing .nav-link:hover {
+        color: var(--text-primary);
+        border-bottom-color: var(--border-color);
+    }
+    .nav-tabs-billing .nav-link.active {
+        color: var(--accent-primary);
+        border-bottom-color: var(--accent-primary);
+        background: transparent;
+    }
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="container py-4">
     <h2 class="mb-4">Billing & Subscription</h2>
 
-    <!-- Current Plan -->
-    <div class="card mb-4" style="background: var(--card-bg); border: 1px solid var(--border-color);">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start">
-                <div>
-                    <h5 class="card-title mb-1">
-                        Current Plan: <strong>{{ subscription.plan.name|default:"Free" }}</strong>
-                        {% if subscription.is_complimentary %}
-                        <span class="badge bg-info ms-2">Complimentary</span>
-                        {% endif %}
-                    </h5>
-                    <p class="text-muted mb-2">
-                        {% if subscription.plan.tier == 'free' %}
-                            Free forever
-                        {% elif subscription.billing_cycle == 'annual' %}
-                            ${{ subscription.plan.annual_price|floatformat:2 }}/year{% if subscription.plan.is_per_user %}/user{% endif %}
-                        {% else %}
-                            ${{ subscription.plan.monthly_price|floatformat:2 }}/month{% if subscription.plan.is_per_user %}/user{% endif %}
-                        {% endif %}
-                    </p>
+    <!-- Tabs -->
+    <ul class="nav nav-tabs-billing" id="billingTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="subscription-tab" data-bs-toggle="tab" data-bs-target="#subscription" type="button" role="tab">
+                Subscription
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="billing-details-tab" data-bs-toggle="tab" data-bs-target="#billing-details" type="button" role="tab">
+                Billing Details
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="invoices-tab" data-bs-toggle="tab" data-bs-target="#invoices" type="button" role="tab">
+                Invoices
+            </button>
+        </li>
+    </ul>
 
-                    {% if subscription.cancel_at_period_end %}
-                    <div class="alert alert-warning py-2 px-3 d-inline-block">
-                        Subscription will cancel on {{ subscription.current_period_end|date:"M d, Y" }}
-                    </div>
-                    {% elif subscription.current_period_end and subscription.plan.tier != 'free' %}
-                    <p class="text-muted small mb-0">Next billing date: {{ subscription.current_period_end|date:"M d, Y" }}</p>
-                    {% endif %}
-                </div>
-
-                {% if is_owner %}
-                <div class="d-flex gap-2">
-                    {% if subscription.cancel_at_period_end %}
-                    <form method="post" action="{% url 'billing_resume' %}">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-success btn-sm">Resume Subscription</button>
-                    </form>
-                    {% endif %}
-                    <a href="{% url 'pricing' %}" class="btn btn-primary btn-sm">
-                        {% if subscription.plan.tier == 'free' %}Upgrade{% else %}Change Plan{% endif %}
-                    </a>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-
-    <!-- Usage -->
-    {% if plan_limits %}
-    <div class="card mb-4" style="background: var(--card-bg); border: 1px solid var(--border-color);">
-        <div class="card-body">
-            <h5 class="card-title mb-3">Usage</h5>
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <div class="usage-item">
-                        <span class="usage-label">Rooms</span>
-                        <span class="usage-value">
-                            {{ room_count }} / {% if plan_limits.has_unlimited_rooms %}Unlimited{% else %}{{ plan_limits.max_rooms }}{% endif %}
-                        </span>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="usage-item">
-                        <span class="usage-label">Max Participants</span>
-                        <span class="usage-value">{{ plan_limits.max_participants }} per meeting</span>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="usage-item">
-                        <span class="usage-label">Meeting Duration</span>
-                        <span class="usage-value">
-                            {% if plan_limits.has_unlimited_duration %}Unlimited{% else %}{{ plan_limits.max_meeting_duration_minutes }} min{% endif %}
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Actions -->
-    {% if is_owner and subscription.plan.tier != 'free' and payu_enabled %}
-    <div class="card mb-4" style="background: var(--card-bg); border: 1px solid var(--border-color);">
-        <div class="card-body">
-            <h5 class="card-title mb-3">Manage</h5>
-            <div class="d-flex gap-2 flex-wrap">
-                {% if not subscription.cancel_at_period_end %}
-                <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal">
-                    Cancel Subscription
-                </button>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Payment History -->
-    {% if payments %}
-    <div class="card" style="background: var(--card-bg); border: 1px solid var(--border-color);">
-        <div class="card-body">
-            <h5 class="card-title mb-3">Payment History</h5>
-            <div class="table-responsive">
-                <table class="table table-sm" style="color: var(--text-primary);">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Amount</th>
-                            <th>Status</th>
-                            <th>Invoice</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for payment in payments %}
-                        <tr>
-                            <td>{{ payment.created_at|date:"M d, Y" }}</td>
-                            <td>${{ payment.amount|floatformat:2 }}</td>
-                            <td>
-                                <span class="badge {% if payment.status == 'succeeded' %}bg-success{% elif payment.status == 'failed' %}bg-danger{% else %}bg-warning{% endif %}">
-                                    {{ payment.status }}
-                                </span>
-                            </td>
-                            <td>
-                                {% if payment.invoice_pdf_url %}
-                                <a href="{{ payment.invoice_pdf_url }}" target="_blank" class="text-decoration-none">Download</a>
-                                {% else %}
-                                -
+    <div class="tab-content" id="billingTabsContent">
+        <!-- Subscription Tab -->
+        <div class="tab-pane fade show active" id="subscription" role="tabpanel">
+            <!-- Current Plan -->
+            <div class="card billing-section">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="card-title mb-1">
+                                Current Plan: <strong>{{ subscription.plan.name|default:"Free" }}</strong>
+                                {% if subscription.is_complimentary %}
+                                <span class="badge bg-info ms-2">Complimentary</span>
                                 {% endif %}
-                            </td>
-                        </tr>
+                            </h5>
+                            <p class="text-muted mb-2">
+                                {% if subscription.plan.tier == 'free' %}
+                                    Free forever
+                                {% elif subscription.billing_cycle == 'annual' %}
+                                    ${{ subscription.plan.annual_price|floatformat:2 }}/year{% if subscription.plan.is_per_user %}/user{% endif %}
+                                {% else %}
+                                    ${{ subscription.plan.monthly_price|floatformat:2 }}/month{% if subscription.plan.is_per_user %}/user{% endif %}
+                                {% endif %}
+                            </p>
+
+                            {% if subscription.cancel_at_period_end %}
+                            <div class="alert alert-warning py-2 px-3 d-inline-block">
+                                Subscription will cancel on {{ subscription.current_period_end|date:"M d, Y" }}
+                            </div>
+                            {% elif subscription.current_period_end and subscription.plan.tier != 'free' %}
+                            <p class="text-muted small mb-0">Next billing date: {{ subscription.current_period_end|date:"M d, Y" }}</p>
+                            {% endif %}
+                        </div>
+
+                        {% if is_owner %}
+                        <div class="d-flex gap-2">
+                            {% if subscription.cancel_at_period_end %}
+                            <form method="post" action="{% url 'billing_resume' %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-success btn-sm">Resume Subscription</button>
+                            </form>
+                            {% endif %}
+                            <a href="{% url 'pricing' %}" class="btn btn-primary btn-sm">
+                                {% if subscription.plan.tier == 'free' %}Upgrade{% else %}Change Plan{% endif %}
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Usage -->
+            {% if plan_limits %}
+            <div class="card billing-section">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Usage</h5>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="usage-item">
+                                <span class="usage-label">Rooms</span>
+                                <span class="usage-value">
+                                    {{ room_count }} / {% if plan_limits.has_unlimited_rooms %}Unlimited{% else %}{{ plan_limits.max_rooms }}{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="usage-item">
+                                <span class="usage-label">Max Participants</span>
+                                <span class="usage-value">{{ plan_limits.max_participants }} per meeting</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="usage-item">
+                                <span class="usage-label">Meeting Duration</span>
+                                <span class="usage-value">
+                                    {% if plan_limits.has_unlimited_duration %}Unlimited{% else %}{{ plan_limits.max_meeting_duration_minutes }} min{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Actions -->
+            {% if is_owner and subscription.plan.tier != 'free' and payu_enabled %}
+            <div class="card billing-section">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Manage</h5>
+                    <div class="d-flex gap-2 flex-wrap">
+                        {% if not subscription.cancel_at_period_end %}
+                        <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal">
+                            Cancel Subscription
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Payment History -->
+            {% if payments %}
+            <div class="card billing-section">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Payment History</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm" style="color: var(--text-primary);">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>Invoice</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for payment in payments %}
+                                <tr>
+                                    <td>{{ payment.created_at|date:"M d, Y" }}</td>
+                                    <td>${{ payment.amount|floatformat:2 }}</td>
+                                    <td>
+                                        <span class="badge {% if payment.status == 'succeeded' %}bg-success{% elif payment.status == 'failed' %}bg-danger{% else %}bg-warning{% endif %}">
+                                            {{ payment.status }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if payment.invoice_pdf_url %}
+                                        <a href="{{ payment.invoice_pdf_url }}" target="_blank" class="text-decoration-none">Download</a>
+                                        {% else %}
+                                        -
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Billing Details Tab -->
+        <div class="tab-pane fade" id="billing-details" role="tabpanel">
+            <div class="card billing-section">
+                <div class="card-body">
+                    <h5 class="card-title">Billing Information</h5>
+                    <p class="text-muted small mb-4">This information will appear on your invoices.</p>
+
+                    <form id="billingInfoForm">
+                        {% csrf_token %}
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="billingName" class="form-label">Company / Billing Name</label>
+                                <input type="text" class="form-control" id="billingName" name="billing_name"
+                                       value="{{ billing_info.billing_name|default:'' }}" placeholder="{{ organization.name }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="billingEmail" class="form-label">Billing Email</label>
+                                <input type="email" class="form-control" id="billingEmail" name="billing_email"
+                                       value="{{ billing_info.billing_email|default:'' }}" placeholder="billing@company.com">
+                            </div>
+                        </div>
+
+                        <hr class="my-4" style="border-color: var(--border-color);">
+
+                        <h6 class="mb-3">Address</h6>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label for="addressLine1" class="form-label">Address Line 1</label>
+                                <input type="text" class="form-control" id="addressLine1" name="address_line1"
+                                       value="{{ billing_info.address_line1|default:'' }}" placeholder="123 Main Street">
+                            </div>
+                            <div class="col-12">
+                                <label for="addressLine2" class="form-label">Address Line 2</label>
+                                <input type="text" class="form-control" id="addressLine2" name="address_line2"
+                                       value="{{ billing_info.address_line2|default:'' }}" placeholder="Suite 100">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="city" class="form-label">City</label>
+                                <input type="text" class="form-control" id="city" name="city"
+                                       value="{{ billing_info.city|default:'' }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="state" class="form-label">State / Province</label>
+                                <input type="text" class="form-control" id="state" name="state"
+                                       value="{{ billing_info.state|default:'' }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="postalCode" class="form-label">Postal Code</label>
+                                <input type="text" class="form-control" id="postalCode" name="postal_code"
+                                       value="{{ billing_info.postal_code|default:'' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="country" class="form-label">Country</label>
+                                <select class="form-select" id="country" name="country">
+                                    <option value="">Select a country</option>
+                                    {% for code, name in countries %}
+                                    <option value="{{ code }}" {% if billing_info.country == code %}selected{% endif %}>{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <hr class="my-4" style="border-color: var(--border-color);">
+
+                        <h6 class="mb-3">Tax Information</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="taxId" class="form-label" id="taxIdLabel">
+                                    {% if billing_info.country %}
+                                        {% if billing_info.country == 'IN' %}GST Number{% elif billing_info.country == 'US' %}Tax ID / EIN{% elif billing_info.country == 'AU' %}ABN{% elif billing_info.country == 'CA' %}GST/HST Number{% elif billing_info.country in 'GB,AT,BE,BG,HR,CY,CZ,DK,EE,FI,FR,DE,GR,HU,IE,IT,LV,LT,LU,MT,NL,PL,PT,RO,SK,SI,ES,SE' %}VAT Number{% else %}Tax ID{% endif %}
+                                    {% else %}
+                                        Tax ID
+                                    {% endif %}
+                                </label>
+                                <input type="text" class="form-control" id="taxId" name="tax_id"
+                                       value="{{ billing_info.tax_id|default:'' }}" placeholder="Enter your tax identification number">
+                                <div class="form-text text-muted">Optional. Required for business invoices in some regions.</div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <button type="submit" class="btn btn-primary" id="saveBillingBtn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                    <polyline points="17 21 17 13 7 13 7 21"/>
+                                    <polyline points="7 3 7 8 15 8"/>
+                                </svg>
+                                Save Billing Information
+                            </button>
+                            <span id="saveStatus" class="ms-3 text-success" style="display: none;">Saved!</span>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Invoices Tab -->
+        <div class="tab-pane fade" id="invoices" role="tabpanel">
+            <div class="card billing-section">
+                <div class="card-body">
+                    <h5 class="card-title">Invoice History</h5>
+
+                    {% if invoices %}
+                    <div class="invoice-list mt-3">
+                        {% for invoice in invoices %}
+                        <div class="invoice-row">
+                            <div>
+                                <span class="invoice-number">{{ invoice.invoice_number }}</span>
+                                <span class="invoice-date ms-3">{{ invoice.issued_date|date:"M d, Y" }}</span>
+                            </div>
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="invoice-amount">{{ invoice.get_formatted_total }}</span>
+                                <span class="badge {% if invoice.status == 'paid' %}bg-success{% elif invoice.status == 'issued' %}bg-warning{% else %}bg-secondary{% endif %}">
+                                    {{ invoice.status|title }}
+                                </span>
+                                {% if invoice.pdf_url %}
+                                <a href="{{ invoice.pdf_url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                        <polyline points="7 10 12 15 17 10"/>
+                                        <line x1="12" y1="15" x2="12" y2="3"/>
+                                    </svg>
+                                    Download
+                                </a>
+                                {% else %}
+                                <a href="{% url 'invoice_download' invoice.id %}" class="btn btn-outline-primary btn-sm">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                        <polyline points="7 10 12 15 17 10"/>
+                                        <line x1="12" y1="15" x2="12" y2="3"/>
+                                    </svg>
+                                    Download
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
                         {% endfor %}
-                    </tbody>
-                </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--text-muted); margin-bottom: 1rem;">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                            <polyline points="10 9 9 9 8 9"/>
+                        </svg>
+                        <p class="text-muted mb-0">No invoices yet</p>
+                        <p class="text-muted small">Invoices will appear here after your first payment.</p>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
-    {% endif %}
 </div>
 
 <!-- Cancel Modal -->
@@ -174,4 +429,107 @@
     </div>
 </div>
 {% endif %}
+
+<script>
+// Tax label mapping
+const TAX_LABELS = {
+    'IN': 'GST Number',
+    'US': 'Tax ID / EIN',
+    'GB': 'VAT Number',
+    'AU': 'ABN',
+    'CA': 'GST/HST Number',
+    'AT': 'VAT Number', 'BE': 'VAT Number', 'BG': 'VAT Number', 'HR': 'VAT Number',
+    'CY': 'VAT Number', 'CZ': 'VAT Number', 'DK': 'VAT Number', 'EE': 'VAT Number',
+    'FI': 'VAT Number', 'FR': 'VAT Number', 'DE': 'VAT Number', 'GR': 'VAT Number',
+    'HU': 'VAT Number', 'IE': 'VAT Number', 'IT': 'VAT Number', 'LV': 'VAT Number',
+    'LT': 'VAT Number', 'LU': 'VAT Number', 'MT': 'VAT Number', 'NL': 'VAT Number',
+    'PL': 'VAT Number', 'PT': 'VAT Number', 'RO': 'VAT Number', 'SK': 'VAT Number',
+    'SI': 'VAT Number', 'ES': 'VAT Number', 'SE': 'VAT Number',
+};
+
+// Update tax label when country changes
+document.getElementById('country').addEventListener('change', function() {
+    const country = this.value;
+    const label = TAX_LABELS[country] || 'Tax ID';
+    document.getElementById('taxIdLabel').textContent = label;
+});
+
+// Handle billing info form submission
+document.getElementById('billingInfoForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const saveBtn = document.getElementById('saveBillingBtn');
+    const saveStatus = document.getElementById('saveStatus');
+
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+    saveStatus.style.display = 'none';
+
+    const data = {
+        billing_name: document.getElementById('billingName').value,
+        billing_email: document.getElementById('billingEmail').value,
+        address_line1: document.getElementById('addressLine1').value,
+        address_line2: document.getElementById('addressLine2').value,
+        city: document.getElementById('city').value,
+        state: document.getElementById('state').value,
+        postal_code: document.getElementById('postalCode').value,
+        country: document.getElementById('country').value,
+        tax_id: document.getElementById('taxId').value,
+    };
+
+    fetch('{% url "billing_info_save" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+        },
+        body: JSON.stringify(data),
+    })
+    .then(response => response.json())
+    .then(result => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Billing Information';
+
+        if (result.success) {
+            saveStatus.textContent = 'Saved!';
+            saveStatus.className = 'ms-3 text-success';
+            saveStatus.style.display = 'inline';
+            setTimeout(() => { saveStatus.style.display = 'none'; }, 3000);
+        } else {
+            saveStatus.textContent = result.error || 'Error saving';
+            saveStatus.className = 'ms-3 text-danger';
+            saveStatus.style.display = 'inline';
+        }
+    })
+    .catch(error => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Billing Information';
+        saveStatus.textContent = 'Error saving. Please try again.';
+        saveStatus.className = 'ms-3 text-danger';
+        saveStatus.style.display = 'inline';
+    });
+});
+
+// Handle tab switching via URL hash
+document.addEventListener('DOMContentLoaded', function() {
+    const hash = window.location.hash;
+    if (hash === '#billing-details') {
+        const tab = new bootstrap.Tab(document.getElementById('billing-details-tab'));
+        tab.show();
+    } else if (hash === '#invoices') {
+        const tab = new bootstrap.Tab(document.getElementById('invoices-tab'));
+        tab.show();
+    }
+
+    // Update hash on tab change
+    document.querySelectorAll('#billingTabs .nav-link').forEach(function(tab) {
+        tab.addEventListener('shown.bs.tab', function(e) {
+            const target = e.target.getAttribute('data-bs-target');
+            if (target) {
+                history.replaceState(null, null, target);
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

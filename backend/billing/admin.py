@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Plan, Subscription, Payment, UsageRecord
+from .models import Plan, Subscription, Payment, UsageRecord, BillingInfo, Invoice
 from .plan_limits import invalidate_plan_cache
 
 
@@ -52,3 +52,46 @@ class UsageRecordAdmin(admin.ModelAdmin):
     list_filter = ['metric', 'recorded_at']
     search_fields = ['organization__name']
     readonly_fields = ['id']
+
+
+@admin.register(BillingInfo)
+class BillingInfoAdmin(admin.ModelAdmin):
+    list_display = ['organization', 'billing_name', 'country', 'tax_type', 'tax_id', 'updated_at']
+    list_filter = ['country', 'tax_type']
+    search_fields = ['organization__name', 'billing_name', 'tax_id']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    list_display = ['invoice_number', 'organization', 'total', 'currency', 'status', 'issued_date', 'created_at']
+    list_filter = ['status', 'currency', 'issued_date']
+    search_fields = ['invoice_number', 'organization__name', 'billing_name', 'tax_id']
+    readonly_fields = ['id', 'invoice_number', 'created_at', 'updated_at']
+    date_hierarchy = 'issued_date'
+
+    fieldsets = (
+        ('Invoice Info', {
+            'fields': ('id', 'invoice_number', 'organization', 'payment', 'status')
+        }),
+        ('Billing Details', {
+            'fields': ('billing_name', 'billing_address', 'billing_email', 'tax_id', 'tax_type')
+        }),
+        ('Amounts', {
+            'fields': ('line_items', 'subtotal_cents', 'tax_amount_cents', 'total_cents', 'currency')
+        }),
+        ('Dates', {
+            'fields': ('issued_date', 'due_date', 'paid_date')
+        }),
+        ('PDF', {
+            'fields': ('pdf_url',)
+        }),
+        ('Notes', {
+            'fields': ('notes',),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )

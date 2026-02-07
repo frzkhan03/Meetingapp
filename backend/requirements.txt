@@ -14,6 +14,9 @@ boto3>=1.28  # AWS SDK for S3 recording storage
 # Payments
 requests>=2.31  # HTTP client for PayU API calls
 
+# PDF Generation
+reportlab>=4.0  # PDF invoice generation
+
 # Security packages
 argon2-cffi>=21.0  # Argon2 password hashing (most secure)
 cryptography>=41.0  # Encryption library for data at rest
