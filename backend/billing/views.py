@@ -88,7 +88,9 @@ def create_checkout_view(request, plan_tier, billing_cycle):
         messages.error(request, 'Unable to start checkout. Please try again.')
         return redirect('pricing')
     except Exception as e:
-        messages.error(request, f'Unable to start checkout: {str(e)}')
+        import logging
+        logging.getLogger(__name__).exception('Checkout error for org %s', org.id)
+        messages.error(request, 'Unable to start checkout. Please try again later.')
         return redirect('pricing')
 
 
@@ -170,7 +172,9 @@ def cancel_subscription_view(request):
             'Your subscription will be canceled at the end of the current billing period.'
         )
     except Exception as e:
-        messages.error(request, f'Unable to cancel: {str(e)}')
+        import logging
+        logging.getLogger(__name__).exception('Cancel subscription error for org %s', org.id)
+        messages.error(request, 'Unable to cancel subscription. Please try again later.')
 
     return redirect('billing_manage')
 
@@ -195,7 +199,9 @@ def resume_subscription_view(request):
         resume_subscription(org)
         messages.success(request, 'Your subscription has been resumed.')
     except Exception as e:
-        messages.error(request, f'Unable to resume: {str(e)}')
+        import logging
+        logging.getLogger(__name__).exception('Resume subscription error for org %s', org.id)
+        messages.error(request, 'Unable to resume subscription. Please try again later.')
 
     return redirect('billing_manage')
 

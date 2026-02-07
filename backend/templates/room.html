@@ -692,7 +692,9 @@
 
                 const headerDiv = document.createElement('div');
                 headerDiv.className = 'd-flex justify-content-between align-items-center mb-2';
-                headerDiv.innerHTML = '<strong>' + escapeHtml(room.name) + '</strong>';
+                const strongEl = document.createElement('strong');
+                strongEl.textContent = room.name;
+                headerDiv.appendChild(strongEl);
                 roomDiv.appendChild(headerDiv);
 
                 // List assigned participants
@@ -768,7 +770,20 @@
             const toast = document.createElement('div');
             toast.className = 'breakout-notification';
             toast.style.cssText = 'position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--accent-primary); border-radius: 12px; padding: 16px 24px; z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.4);';
-            toast.innerHTML = '<div style="text-align:center;"><strong>You have been assigned to ' + escapeHtml(roomName) + '</strong><br><button class="btn btn-primary btn-sm mt-2" onclick="joinBreakoutRoom()">Join Room</button></div>';
+
+            const innerDiv = document.createElement('div');
+            innerDiv.style.textAlign = 'center';
+            const strong = document.createElement('strong');
+            strong.textContent = 'You have been assigned to ' + roomName;
+            innerDiv.appendChild(strong);
+            innerDiv.appendChild(document.createElement('br'));
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-primary btn-sm mt-2';
+            btn.textContent = 'Join Room';
+            btn.addEventListener('click', joinBreakoutRoom);
+            innerDiv.appendChild(btn);
+            toast.appendChild(innerDiv);
+
             document.body.appendChild(toast);
         }
 

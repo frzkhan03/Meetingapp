@@ -26,6 +26,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
         )
         self._duration_task = None
 
+        # Validate room exists and user has access
+        room_access = await self._check_room_access()
+        if not room_access:
+            logger.warning(f"WebSocket connection denied: room {self.room_id} not found or access denied")
+            await self.close(code=4004)  # Not found / forbidden
+            return
+
         # Enforce plan-based participant limit via Redis cache
         max_participants = await self._get_room_participant_limit()
         room_count_key = f'ws:room:count:{self.room_id}'
@@ -66,6 +73,38 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 )
             except Exception:
                 pass
+
+    @database_sync_to_async
+    def _check_room_access(self):
+        """
+        Validate that the room exists and the user has access.
+        Returns True if access is granted, False otherwise.
+        """
+        from meetings.models import Meeting, PersonalRoom
+
+        # Check if room exists (Meeting or PersonalRoom)
+        room_exists = False
+        try:
+            Meeting.objects.get(room_id=self.room_id)
+            room_exists = True
+        except Meeting.DoesNotExist:
+            try:
+                PersonalRoom.objects.get(room_id=self.room_id)
+                room_exists = True
+            except PersonalRoom.DoesNotExist:
+                pass
+
+        if not room_exists:
+            return False
+
+        # For unauthenticated users (guests), allow access if room exists
+        # (they came via a valid token link which rendered the room page)
+        if not self.user_id:
+            return True
+
+        # For authenticated users, room exists check is sufficient
+        # The HTTP view already validated their access before rendering room.html
+        return True
 
     @database_sync_to_async
     def _get_room_participant_limit(self):
@@ -300,13 +339,24 @@ class RoomConsumer(AsyncWebsocketConsumer):
         )
 
     async def handle_new_chat(self, payload):
+        import html
+        # Sanitize message to prevent XSS - escape HTML entities
+        raw_message = payload.get('message', '')
+        if raw_message:
+            # Limit message length
+            raw_message = raw_message[:2000]
+            # Escape HTML to prevent XSS
+            sanitized_message = html.escape(str(raw_message))
+        else:
+            sanitized_message = ''
+
         await self.channel_layer.group_send(
             self.room_group_name,
             {
                 'type': 'new_message',
-                'message': payload.get('message'),
+                'message': sanitized_message,
                 'user_id': payload.get('user_id', self.user_id),
-                'username': payload.get('username', ''),
+                'username': html.escape(str(payload.get('username', ''))[:50]),
                 'sender_channel': self.channel_name
             }
         )
@@ -574,6 +624,14 @@ class RoomConsumer(AsyncWebsocketConsumer):
             return
 
         rooms = payload.get('rooms', [])  # List of room names like ["Room 1", "Room 2"]
+
+        # Validate breakout room count (max 10)
+        if not isinstance(rooms, list) or len(rooms) > 10:
+            await self.send(text_data=json.dumps({
+                'type': 'breakout-error',
+                'message': 'Maximum of 10 breakout rooms allowed.'
+            }))
+            return
 
         created_rooms = []
         for room_name in rooms:

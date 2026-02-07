@@ -15,7 +15,7 @@ class Organization(models.Model):
     primary_color = models.CharField(max_length=7, blank=True, default='')
     secondary_color = models.CharField(max_length=7, blank=True, default='')
     # Subdomain for custom URLs (e.g., 'acme' for acme.pytalk.veriright.com)
-    subdomain = models.CharField(max_length=63, blank=True, unique=True, null=True)
+    subdomain = models.CharField(max_length=63, blank=True, unique=True, null=True, db_index=True)
     is_active = models.BooleanField(default=True)
     recording_to_s3 = models.BooleanField(default=False, help_text='Save recordings to cloud storage instead of local download')
     created_at = models.DateTimeField(auto_now_add=True)

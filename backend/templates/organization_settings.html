@@ -1068,10 +1068,16 @@ document.getElementById('memberSearchInput').addEventListener('input', function(
             noResults = document.createElement('div');
             noResults.id = 'memberSearchNoResults';
             noResults.className = 'text-center py-4';
-            noResults.innerHTML = '<p class="text-muted mb-0">No members found matching "<strong>' + query + '</strong>"</p>';
+            var p = document.createElement('p');
+            p.className = 'text-muted mb-0';
+            p.textContent = 'No members found matching "' + query + '"';
+            noResults.appendChild(p);
             document.querySelector('.members-list').appendChild(noResults);
         } else {
-            noResults.innerHTML = '<p class="text-muted mb-0">No members found matching "<strong>' + query + '</strong>"</p>';
+            var p = noResults.querySelector('p') || document.createElement('p');
+            p.className = 'text-muted mb-0';
+            p.textContent = 'No members found matching "' + query + '"';
+            if (!noResults.contains(p)) noResults.appendChild(p);
             noResults.style.display = '';
         }
     } else if (noResults) {

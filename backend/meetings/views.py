@@ -509,10 +509,25 @@ def upload_recording_view(request):
 
         recording_file = request.FILES.get('recording')
         room_id = request.POST.get('room_id', '')
-        duration = int(request.POST.get('duration', 0))
+        try:
+            duration = int(request.POST.get('duration', 0))
+            if duration < 0 or duration > 86400:  # Max 24 hours
+                duration = 0
+        except (ValueError, TypeError):
+            duration = 0
 
         if not recording_file:
             return JsonResponse({'error': 'No recording file provided'}, status=400)
+
+        # Validate file type - only allow video formats
+        allowed_types = ['video/webm', 'video/mp4', 'video/x-matroska']
+        if recording_file.content_type not in allowed_types:
+            return JsonResponse({'error': 'Invalid file type. Only video recordings are allowed.'}, status=400)
+
+        # Limit file size (500 MB max)
+        max_size = 500 * 1024 * 1024
+        if recording_file.size > max_size:
+            return JsonResponse({'error': 'Recording file too large. Maximum size is 500MB.'}, status=400)
 
         # Get user's current organization
         org = getattr(request, 'organization', None)
@@ -610,6 +625,11 @@ def download_recording_view(request, recording_id):
         # Verify ownership
         if recording.recorded_by != request.user:
             return JsonResponse({'error': 'Access denied'}, status=403)
+
+        # Verify user still has access to the organization
+        if recording.organization:
+            if not recording.organization.memberships.filter(user=request.user, is_active=True).exists():
+                return JsonResponse({'error': 'Access denied - no longer a member of this organization'}, status=403)
 
         if not recording.s3_key:
             return JsonResponse({'error': 'No S3 file associated with this recording'}, status=404)

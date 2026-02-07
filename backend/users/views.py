@@ -143,6 +143,8 @@ def register_view(request):
 
 
 def login_view(request):
+    from django.utils.http import url_has_allowed_host_and_scheme
+
     if request.user.is_authenticated:
         return redirect('home')
 
@@ -155,8 +157,11 @@ def login_view(request):
             if user is not None:
                 login(request, user)
                 messages.success(request, f'Welcome back, {username}!')
-                next_url = request.GET.get('next', 'home')
-                return redirect(next_url)
+                next_url = request.GET.get('next', '')
+                # Validate redirect URL to prevent open redirect attacks
+                if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+                    return redirect(next_url)
+                return redirect('home')
         messages.error(request, 'Invalid username or password.')
     else:
         form = LoginForm()
@@ -164,6 +169,7 @@ def login_view(request):
     return render(request, 'login.html', {'form': form})
 
 
+@require_POST
 def logout_view(request):
     logout(request)
     messages.info(request, 'You have been logged out.')
