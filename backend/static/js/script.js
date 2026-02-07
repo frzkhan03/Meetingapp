@@ -1991,10 +1991,13 @@ async function uploadRecordingToS3(blob, duration) {
         formData.append('room_id', ROOM_ID);
         formData.append('duration', duration);
 
+        // Use CSRF_TOKEN from template if available, fallback to cookie
+        const csrfToken = (typeof CSRF_TOKEN !== 'undefined' && CSRF_TOKEN) ? CSRF_TOKEN : getCookie('csrftoken');
+
         const response = await fetch('/meeting/upload-recording/', {
             method: 'POST',
             headers: {
-                'X-CSRFToken': getCookie('csrftoken'),
+                'X-CSRFToken': csrfToken,
             },
             body: formData,
         });

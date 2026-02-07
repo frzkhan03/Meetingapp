@@ -417,6 +417,7 @@
         var DURATION_LIMIT = {% if duration_limit_seconds %}{{ duration_limit_seconds }}{% else %}null{% endif %};
         var PLAN_TIER = "{{ plan_tier|default:'free' }}";
         var BREAKOUT_ROOMS_ALLOWED = {% if breakout_rooms_allowed %}true{% else %}false{% endif %};
+        var CSRF_TOKEN = "{{ csrf_token }}";
 
         // Breakout rooms state
         var breakoutRooms = [];
