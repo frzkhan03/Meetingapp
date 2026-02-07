@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from django.http import Http404
 from django.utils.deprecation import MiddlewareMixin
 from .models import Organization, Profile
 
@@ -16,21 +17,28 @@ class TenantMiddleware(MiddlewareMixin):
     def process_request(self, request):
         request.organization = None
         request.subdomain_org = None  # Org from subdomain (for branding even when not logged in)
+        request.is_subdomain_request = False  # Track if this is a subdomain request
 
         # Check for custom subdomain first (works for both authenticated and anonymous users)
-        subdomain_org = self._get_org_from_subdomain(request)
-        if subdomain_org:
-            request.subdomain_org = subdomain_org
+        subdomain_result = self._get_org_from_subdomain(request)
+
+        if subdomain_result == 'invalid':
+            # Subdomain was requested but doesn't exist - return 404
+            raise Http404("Organization not found")
+
+        if subdomain_result:
+            request.subdomain_org = subdomain_result
+            request.is_subdomain_request = True
 
         # Skip further processing for unauthenticated users
         if not request.user.is_authenticated:
             return
 
         # If subdomain org exists and user is a member, use it
-        if subdomain_org:
-            if self._is_member_cached(request.user.id, str(subdomain_org.id)):
-                request.organization = subdomain_org
-                request.session['current_organization_id'] = str(subdomain_org.id)
+        if request.subdomain_org:
+            if self._is_member_cached(request.user.id, str(request.subdomain_org.id)):
+                request.organization = request.subdomain_org
+                request.session['current_organization_id'] = str(request.subdomain_org.id)
                 return
 
         # Try to get organization from session first
@@ -97,18 +105,21 @@ class TenantMiddleware(MiddlewareMixin):
     def _get_org_from_subdomain(self, request):
         """
         Extract subdomain from host and resolve to Organization.
-        Returns Organization if subdomain matches and org has Business plan.
+        Returns:
+            - Organization if subdomain matches and org has Business plan
+            - 'invalid' if subdomain was requested but doesn't exist
+            - None if not a subdomain request (main domain)
         """
         host = request.get_host().split(':')[0]  # Remove port if present
 
         # Check if host is a subdomain of the main domain
         if not host.endswith('.' + self.MAIN_DOMAIN):
-            return None
+            return None  # Not a subdomain request
 
         # Extract subdomain
         subdomain = host[:-len('.' + self.MAIN_DOMAIN)]
         if not subdomain or '.' in subdomain:  # Ignore multi-level subdomains
-            return None
+            return None  # Main domain or invalid format
 
         # Look up organization by subdomain (or slug as fallback)
         cache_key = f'org:subdomain:{subdomain}'
@@ -121,20 +132,20 @@ class TenantMiddleware(MiddlewareMixin):
                 try:
                     org = Organization.objects.get(slug=subdomain, is_active=True)
                 except Organization.DoesNotExist:
-                    cache.set(cache_key, False, 300)  # Cache miss
-                    return None
+                    cache.set(cache_key, 'invalid', 300)  # Cache miss as invalid
+                    return 'invalid'
             cache.set(cache_key, org, 300)
-        elif org is False:  # Cached miss
-            return None
+        elif org == 'invalid':  # Cached invalid subdomain
+            return 'invalid'
 
         # Check if org has Business plan (subdomain feature)
         try:
             from billing.plan_limits import get_plan_limits
             limits = get_plan_limits(org)
             if not limits.can_use_custom_subdomain():
-                return None
+                return 'invalid'  # Org exists but doesn't have subdomain feature
         except ImportError:
-            return None
+            return 'invalid'
 
         return org
 
