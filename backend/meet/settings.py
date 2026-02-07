@@ -34,6 +34,9 @@ PRODUCTION = os.getenv('PRODUCTION', 'False') == 'True'
 # Example: ALLOWED_HOSTS=pytalk.veriright.com,.pytalk.veriright.com,localhost
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# Base domain for subdomain redirects (e.g., pytalk.veriright.com)
+BASE_DOMAIN = os.getenv('BASE_DOMAIN', 'pytalk.veriright.com')
+
 # ==================== SSL/HTTPS SECURITY ====================
 if PRODUCTION:
     # Force HTTPS in production

@@ -142,6 +142,56 @@ def register_view(request):
     })
 
 
+def _get_subdomain_redirect_url(request, org):
+    """Build redirect URL for organization's subdomain if it has one."""
+    if not org or not org.subdomain:
+        return None
+
+    # Build subdomain URL
+    scheme = 'https' if request.is_secure() else 'http'
+    # Get base domain from settings or request
+    base_domain = getattr(settings, 'BASE_DOMAIN', 'pytalk.veriright.com')
+    subdomain_url = f"{scheme}://{org.subdomain}.{base_domain}/"
+    return subdomain_url
+
+
+def _get_post_login_redirect(request, user):
+    """Determine where to redirect user after login."""
+    # Get user's organizations
+    memberships = user.memberships.filter(is_active=True).select_related('organization')
+    orgs_with_subdomain = [m.organization for m in memberships if m.organization.subdomain]
+
+    if len(orgs_with_subdomain) == 1:
+        # User has exactly one org with subdomain - redirect there
+        org = orgs_with_subdomain[0]
+        # Set session and profile
+        request.session['current_organization_id'] = str(org.id)
+        try:
+            profile = user.profile
+            profile.current_organization = org
+            profile.save()
+        except Profile.DoesNotExist:
+            Profile.objects.create(user=user, current_organization=org)
+
+        subdomain_url = _get_subdomain_redirect_url(request, org)
+        if subdomain_url:
+            return subdomain_url
+
+    elif len(memberships) == 1:
+        # User has exactly one org (without subdomain) - set it as current
+        org = memberships[0].organization
+        request.session['current_organization_id'] = str(org.id)
+        try:
+            profile = user.profile
+            profile.current_organization = org
+            profile.save()
+        except Profile.DoesNotExist:
+            Profile.objects.create(user=user, current_organization=org)
+
+    # Multiple orgs or no subdomain - go to home
+    return None
+
+
 def login_view(request):
     from django.utils.http import url_has_allowed_host_and_scheme
 
@@ -161,6 +211,12 @@ def login_view(request):
                 # Validate redirect URL to prevent open redirect attacks
                 if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
                     return redirect(next_url)
+
+                # Check for subdomain redirect
+                subdomain_redirect = _get_post_login_redirect(request, user)
+                if subdomain_redirect:
+                    return redirect(subdomain_redirect)
+
                 return redirect('home')
         messages.error(request, 'Invalid username or password.')
     else:
@@ -237,6 +293,12 @@ def organization_switch_view(request, org_id):
     Profile.invalidate_org_cache(request.user.id, str(org.id))
 
     messages.success(request, f'Switched to {org.name}')
+
+    # Redirect to subdomain if org has one
+    subdomain_url = _get_subdomain_redirect_url(request, org)
+    if subdomain_url:
+        return redirect(subdomain_url)
+
     return redirect('home')
 
 
