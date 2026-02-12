@@ -418,10 +418,15 @@ class RoomConsumer(AsyncWebsocketConsumer):
 
         if approved:
             # Create meeting packet asynchronously via Celery task
-            from .tasks import create_meeting_packet
-            create_meeting_packet.delay(requesting_user_id, self.room_id)
+            # Wrapped in try/except so a Celery failure doesn't block the response
+            try:
+                from .tasks import create_meeting_packet
+                create_meeting_packet.delay(requesting_user_id, self.room_id)
+            except Exception as e:
+                logger.exception(f"Failed to dispatch meeting packet task: {e}")
 
-        # Send response to the requesting user via user-specific channel
+        # Always send response to the requesting user, regardless of task creation
+        # Send via user-specific channel
         await self.channel_layer.group_send(
             f'user_{requesting_user_id}',
             {

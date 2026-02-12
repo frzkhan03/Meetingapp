@@ -377,17 +377,17 @@ def join_personal_room_view(request, room_id):
         # Check if user has been approved
         is_approved = False
 
-        # For authenticated users, check UserMeetingPacket
-        if request.user.is_authenticated:
+        # Check session-based approval (works for both guests and authenticated users)
+        approved_key = f'approved_for_{room_id}'
+        is_approved = request.session.get(approved_key, False)
+
+        # For authenticated users, also check UserMeetingPacket as fallback
+        if not is_approved and request.user.is_authenticated:
             packet = UserMeetingPacket.objects.filter(
                 room_id=room_id,
                 user__id=request.user.id
             ).first()
             is_approved = packet is not None
-        else:
-            # For guests, check session for approval
-            approved_key = f'approved_for_{room_id}'
-            is_approved = request.session.get(approved_key, False)
 
         if not is_approved:
             # User needs approval - store room info in session and redirect to pending

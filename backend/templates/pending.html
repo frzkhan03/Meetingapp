@@ -48,8 +48,8 @@
             document.getElementById('status-message').innerHTML =
                 '<div class="alert alert-success">Approved! Joining meeting...</div>';
 
-            // Mark as approved in session before redirecting (for guests)
-            if (pendingToken && userId.startsWith('guest_')) {
+            // Mark as approved in session before redirecting
+            if (pendingToken) {
                 try {
                     await fetch('/meeting/room/' + roomId + '/mark-approved/', {
                         method: 'POST',
