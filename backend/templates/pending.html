@@ -35,99 +35,6 @@
     const pendingToken = "{{ pending_token|default:'' }}";
     let responseHandled = false;
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const userSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/user/`);
-    const roomSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/room/${roomId}/`);
-
-    async function handleApprovalResponse(approved) {
-        // Prevent duplicate handling from both sockets
-        if (responseHandled) return;
-        responseHandled = true;
-
-        if (approved) {
-            document.getElementById('status-message').innerHTML =
-                '<div class="alert alert-success">Approved! Joining meeting...</div>';
-
-            // Mark as approved in session before redirecting
-            let markApproved = false;
-            if (pendingToken) {
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    try {
-                        const resp = await fetch('/meeting/room/' + roomId + '/mark-approved/', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRFToken': getCookie('csrftoken')
-                            }
-                        });
-                        if (resp.ok) {
-                            markApproved = true;
-                            break;
-                        }
-                        console.warn('mark-approved returned ' + resp.status + ', retrying...');
-                    } catch (err) {
-                        console.error('Error marking approval (attempt ' + (attempt + 1) + '):', err);
-                    }
-                    await new Promise(r => setTimeout(r, 500));
-                }
-            }
-
-            setTimeout(() => {
-                if (pendingToken) {
-                    window.location.href = '/meeting/room/' + roomId + '/join/?token=' + pendingToken;
-                } else {
-                    window.location.href = '/meeting/startmeeting/' + roomId + '/';
-                }
-            }, markApproved ? 500 : 1000);
-        } else {
-            document.getElementById('status-message').innerHTML =
-                '<div class="alert alert-danger">The host has denied your request.</div>';
-        }
-    }
-
-    userSocket.onopen = function() {
-        // Register guest ID if it's a guest user
-        if (userId.startsWith('guest_')) {
-            userSocket.send(JSON.stringify({
-                type: 'register',
-                user_id: userId
-            }));
-        }
-    };
-
-    roomSocket.onopen = function() {
-        roomSocket.send(JSON.stringify({
-            type: 'alert',
-            data: {
-                author_id: authorId,
-                user_id: userId,
-                username: username
-            }
-        }));
-    };
-
-    // Listen for approval response via user socket
-    userSocket.onmessage = function(e) {
-        const data = JSON.parse(e.data);
-        console.log('UserSocket received:', data);
-
-        if (data.type === 'registered') {
-            console.log('Successfully registered for notifications as:', data.user_id);
-        }
-
-        if (data.type === 'alert-response') {
-            handleApprovalResponse(data.approved);
-        }
-    };
-
-    // Also listen for approval response via room socket (fallback)
-    roomSocket.onmessage = function(e) {
-        const data = JSON.parse(e.data);
-        if (data.type === 'join-response' && data.user_id === userId) {
-            handleApprovalResponse(data.approved);
-        }
-    };
-
     function getCookie(name) {
         let cookieValue = null;
         if (document.cookie && document.cookie !== '') {
@@ -143,12 +50,112 @@
         return cookieValue;
     }
 
+    // Send join alert via HTTP (avoids opening a room WebSocket that counts against participant limit)
+    async function sendJoinAlert() {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const resp = await fetch('/meeting/room/' + roomId + '/send-alert/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
+                });
+                if (resp.ok) {
+                    console.log('Join alert sent successfully');
+                    return;
+                }
+                console.warn('send-alert returned ' + resp.status + ', retrying...');
+            } catch (err) {
+                console.error('Error sending join alert (attempt ' + (attempt + 1) + '):', err);
+            }
+            await new Promise(r => setTimeout(r, 1000));
+        }
+    }
+
+    async function handleApprovalResponse(approved) {
+        // Prevent duplicate handling
+        if (responseHandled) return;
+        responseHandled = true;
+
+        if (approved) {
+            document.getElementById('status-message').innerHTML =
+                '<div class="alert alert-success">Approved! Joining meeting...</div>';
+
+            // Mark as approved in session before redirecting
+            if (pendingToken) {
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        const resp = await fetch('/meeting/room/' + roomId + '/mark-approved/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCookie('csrftoken')
+                            }
+                        });
+                        if (resp.ok) break;
+                        console.warn('mark-approved returned ' + resp.status + ', retrying...');
+                    } catch (err) {
+                        console.error('Error marking approval (attempt ' + (attempt + 1) + '):', err);
+                    }
+                    await new Promise(r => setTimeout(r, 500));
+                }
+            }
+
+            setTimeout(() => {
+                if (pendingToken) {
+                    window.location.href = '/meeting/room/' + roomId + '/join/?token=' + pendingToken;
+                } else {
+                    window.location.href = '/meeting/startmeeting/' + roomId + '/';
+                }
+            }, 500);
+        } else {
+            document.getElementById('status-message').innerHTML =
+                '<div class="alert alert-danger">The host has denied your request.</div>';
+        }
+    }
+
+    // User WebSocket for receiving approval response
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const userSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/user/`);
+
+    userSocket.onopen = function() {
+        console.log('UserSocket connected');
+        // Register guest ID if it's a guest user
+        if (userId.startsWith('guest_')) {
+            userSocket.send(JSON.stringify({
+                type: 'register',
+                user_id: userId
+            }));
+        }
+        // Send join alert via HTTP after userSocket is ready
+        sendJoinAlert();
+    };
+
+    userSocket.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+        console.log('UserSocket received:', data);
+
+        if (data.type === 'registered') {
+            console.log('Successfully registered for notifications as:', data.user_id);
+        }
+
+        if (data.type === 'alert-response') {
+            handleApprovalResponse(data.approved);
+        }
+    };
+
     userSocket.onerror = function(e) {
         console.error('WebSocket error:', e);
     };
 
-    roomSocket.onerror = function(e) {
-        console.error('Room WebSocket error:', e);
-    };
+    // Resend alert periodically in case moderator joined after initial alert
+    let alertInterval = setInterval(() => {
+        if (!responseHandled) {
+            sendJoinAlert();
+        } else {
+            clearInterval(alertInterval);
+        }
+    }, 15000);
 </script>
 {% endblock %}

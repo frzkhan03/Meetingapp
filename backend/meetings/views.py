@@ -486,6 +486,57 @@ def get_room_lock_status_view(request, room_id):
     })
 
 
+@ensure_csrf_cookie
+@require_POST
+def send_join_alert_view(request, room_id):
+    """Send a join request alert to the room moderator via channel layer (HTTP-based)"""
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        personal_room = get_object_or_404(PersonalRoom, room_id=room_id)
+
+        # Get user info from session (set by join_personal_room_view)
+        author_id = request.session.get('pending_author_id', '')
+        user_id = request.session.get('pending_user_id', '')
+        alert_username = request.session.get('pending_username', 'Guest')
+
+        if request.user.is_authenticated:
+            user_id = str(request.user.id)
+            alert_username = request.user.username
+
+        if not author_id or not user_id:
+            return JsonResponse({'error': 'Missing session data'}, status=400)
+
+        channel_layer = get_channel_layer()
+        room_group_name = f'room_{room_id}'
+
+        # Send to room group (for moderators in the room)
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'join_request',
+                'user_id': user_id,
+                'username': alert_username,
+            }
+        )
+
+        # Also send to user-specific group (for authenticated moderators)
+        async_to_sync(channel_layer.group_send)(
+            f'user_{author_id}',
+            {
+                'type': 'alert_request',
+                'user_id': user_id,
+                'username': alert_username,
+                'room_id': str(room_id),
+            }
+        )
+
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
 @require_POST
 def mark_guest_approved_view(request, room_id):
     """Mark a guest as approved for a room (stores in session)"""

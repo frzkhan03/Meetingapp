@@ -18,6 +18,7 @@ urlpatterns = [
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/join/$', views.join_personal_room_view, name='join_personal_room'),
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/toggle-lock/$', views.toggle_room_lock_view, name='toggle_room_lock'),
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/lock-status/$', views.get_room_lock_status_view, name='room_lock_status'),
+    re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/send-alert/$', views.send_join_alert_view, name='send_join_alert'),
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/mark-approved/$', views.mark_guest_approved_view, name='mark_guest_approved'),
     path('all-rooms/', views.all_rooms_view, name='all_rooms'),
 

@@ -132,8 +132,11 @@ function connectUserSocket() {
             return;
         }
         if (data.type === 'alert') {
-            console.log('Join request received from:', data.username, data.user_id);
-            showJoinRequestModal(data.user_id, data.username, data.room_id);
+            if (!pendingJoinRequests[data.user_id]) {
+                console.log('Join request received from:', data.username, data.user_id);
+                pendingJoinRequests[data.user_id] = true;
+                showJoinRequestModal(data.user_id, data.username, data.room_id);
+            }
         }
     };
 
@@ -217,8 +220,30 @@ const myPeer = new Peer(undefined, iceConfig);
 var myPeer2;
 
 myPeer.on('open', async function(id) {
+    const oldUserId = USER_ID;
     USER_ID = id;
     UserIdName[id] = username; // Update with new peer ID
+
+    // Update local video element ID if it was already created with the old ID
+    if (oldUserId !== id) {
+        const oldVideoDiv = document.getElementById(oldUserId);
+        if (oldVideoDiv) {
+            oldVideoDiv.setAttribute('id', id);
+        }
+        if (UserVideoOn[oldUserId]) {
+            UserVideoOn[id] = UserVideoOn[oldUserId];
+            delete UserVideoOn[oldUserId];
+        }
+        if (ActiveUsers[oldUserId]) {
+            delete ActiveUsers[oldUserId];
+        }
+        delete UserIdName[oldUserId];
+    }
+
+    // Update ParticipantsInfo with new peer ID
+    ParticipantsInfo[id] = { id: id, username: username, is_moderator: IS_MODERATOR };
+    delete ParticipantsInfo[oldUserId];
+
     socketWrapper.emit('join-room', {
         room_id: ROOM_ID,
         user_id: id,
@@ -315,8 +340,7 @@ socketWrapper.on('newuserjoined', async (data) => {
 
     // Store their name if provided
     if (newUsername) {
-        const displayName = isModerator ? newUsername + ' (Host)' : newUsername;
-        UserIdName[userId] = displayName;
+        UserIdName[userId] = newUsername;
         ParticipantsInfo[userId] = {
             id: userId,
             username: newUsername,
@@ -732,6 +756,8 @@ function getDisplayName(userId, includeRole = false) {
         } else {
             name += ' (You)';
         }
+    } else if (ParticipantsInfo[userId] && ParticipantsInfo[userId].is_moderator) {
+        name += ' (Host)';
     }
 
     return name;
@@ -1072,12 +1098,14 @@ socketWrapper.on('recording-stopped', (userId) => {
     }
 });
 
-// Host approval alerts are now handled inside connectUserSocket()
+// Host approval alerts - deduplicate between userSocket and roomSocket
+let pendingJoinRequests = {};
 
-// Also listen for join requests via room socket (fallback for unauthenticated moderators)
+// Also listen for join requests via room socket (for unauthenticated moderators)
 socketWrapper.on('join-request', (data) => {
-    if (IS_MODERATOR) {
+    if (IS_MODERATOR && !pendingJoinRequests[data.user_id]) {
         console.log('Join request received via room socket from:', data.username, data.user_id);
+        pendingJoinRequests[data.user_id] = true;
         showJoinRequestModal(data.user_id, data.username, ROOM_ID);
     }
 });
@@ -1132,9 +1160,10 @@ function showJoinRequestModal(userId, username, roomId) {
 }
 
 function respondToJoinRequest(userId, approved) {
-    // Remove modal
+    // Remove modal and clean up dedup tracking
     const modal = document.getElementById('join-request-modal');
     if (modal) modal.remove();
+    delete pendingJoinRequests[userId];
 
     // Send response via room socket
     socketWrapper.emit('alert-response', {
@@ -1281,13 +1310,12 @@ let RoomModerators = {};
 // Receive other participants info
 socketWrapper.on('share-info', (data) => {
     if (data.user_id && data.username) {
-        const displayName = data.is_moderator ? data.username + ' (Host)' : data.username;
         ParticipantsInfo[data.user_id] = {
             id: data.user_id,
             username: data.username,
             is_moderator: data.is_moderator
         };
-        UserIdName[data.user_id] = displayName;
+        UserIdName[data.user_id] = data.username;
         if (data.is_moderator) {
             RoomModerators[data.user_id] = true;
         }
