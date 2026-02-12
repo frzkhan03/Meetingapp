@@ -421,13 +421,23 @@ class RoomConsumer(AsyncWebsocketConsumer):
             from .tasks import create_meeting_packet
             create_meeting_packet.delay(requesting_user_id, self.room_id)
 
-        # Send response to the requesting user
+        # Send response to the requesting user via user-specific channel
         await self.channel_layer.group_send(
             f'user_{requesting_user_id}',
             {
                 'type': 'alert_response',
                 'approved': approved,
                 'room_id': self.room_id
+            }
+        )
+
+        # Also broadcast to room so pending user's room socket receives it
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'join_response',
+                'user_id': requesting_user_id,
+                'approved': approved,
             }
         )
 
@@ -936,6 +946,14 @@ class RoomConsumer(AsyncWebsocketConsumer):
             'type': 'join-request',
             'user_id': event['user_id'],
             'username': event['username'],
+        }))
+
+    async def join_response(self, event):
+        """Forward join response to room members (for pending user's room socket)"""
+        await self.send(text_data=json.dumps({
+            'type': 'join-response',
+            'user_id': event['user_id'],
+            'approved': event['approved'],
         }))
 
     async def user_mute_status(self, event):

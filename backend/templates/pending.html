@@ -32,10 +32,49 @@
     const authorId = "{{ author_id }}";
     const userId = "{{ user_id }}";
     const username = "{{ username }}";
+    const pendingToken = "{{ pending_token|default:'' }}";
+    let responseHandled = false;
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const userSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/user/`);
     const roomSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/room/${roomId}/`);
+
+    async function handleApprovalResponse(approved) {
+        // Prevent duplicate handling from both sockets
+        if (responseHandled) return;
+        responseHandled = true;
+
+        if (approved) {
+            document.getElementById('status-message').innerHTML =
+                '<div class="alert alert-success">Approved! Joining meeting...</div>';
+
+            // Mark as approved in session before redirecting (for guests)
+            if (pendingToken && userId.startsWith('guest_')) {
+                try {
+                    await fetch('/meeting/room/' + roomId + '/mark-approved/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken')
+                        }
+                    });
+                } catch (err) {
+                    console.error('Error marking approval:', err);
+                }
+            }
+
+            setTimeout(() => {
+                if (pendingToken) {
+                    window.location.href = '/meeting/room/' + roomId + '/join/?token=' + pendingToken;
+                } else {
+                    window.location.href = '/meeting/startmeeting/' + roomId + '/';
+                }
+            }, 1000);
+        } else {
+            document.getElementById('status-message').innerHTML =
+                '<div class="alert alert-danger">The host has denied your request.</div>';
+        }
+    }
 
     userSocket.onopen = function() {
         // Register guest ID if it's a guest user
@@ -58,9 +97,8 @@
         }));
     };
 
-    const pendingToken = "{{ pending_token|default:'' }}";
-
-    userSocket.onmessage = async function(e) {
+    // Listen for approval response via user socket
+    userSocket.onmessage = function(e) {
         const data = JSON.parse(e.data);
         console.log('UserSocket received:', data);
 
@@ -69,37 +107,15 @@
         }
 
         if (data.type === 'alert-response') {
-            if (data.approved) {
-                document.getElementById('status-message').innerHTML =
-                    '<div class="alert alert-success">Approved! Joining meeting...</div>';
+            handleApprovalResponse(data.approved);
+        }
+    };
 
-                // Mark as approved in session before redirecting (for guests)
-                if (pendingToken && userId.startsWith('guest_')) {
-                    try {
-                        await fetch('/meeting/room/' + roomId + '/mark-approved/', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRFToken': getCookie('csrftoken')
-                            }
-                        });
-                    } catch (err) {
-                        console.error('Error marking approval:', err);
-                    }
-                }
-
-                setTimeout(() => {
-                    // If we have a token, it's a personal room - redirect with token
-                    if (pendingToken) {
-                        window.location.href = '/meeting/room/' + roomId + '/join/?token=' + pendingToken;
-                    } else {
-                        window.location.href = '/meeting/startmeeting/' + roomId + '/';
-                    }
-                }, 1000);
-            } else {
-                document.getElementById('status-message').innerHTML =
-                    '<div class="alert alert-danger">The host has denied your request.</div>';
-            }
+    // Also listen for approval response via room socket (fallback)
+    roomSocket.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+        if (data.type === 'join-response' && data.user_id === userId) {
+            handleApprovalResponse(data.approved);
         }
     };
 
