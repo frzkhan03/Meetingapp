@@ -1074,6 +1074,14 @@ socketWrapper.on('recording-stopped', (userId) => {
 
 // Host approval alerts are now handled inside connectUserSocket()
 
+// Also listen for join requests via room socket (fallback for unauthenticated moderators)
+socketWrapper.on('join-request', (data) => {
+    if (IS_MODERATOR) {
+        console.log('Join request received via room socket from:', data.username, data.user_id);
+        showJoinRequestModal(data.user_id, data.username, ROOM_ID);
+    }
+});
+
 // Show a nice modal for join requests instead of confirm()
 function showJoinRequestModal(userId, username, roomId) {
     // Remove any existing modal

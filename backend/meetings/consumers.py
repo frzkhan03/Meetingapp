@@ -387,7 +387,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
         requesting_user_id = payload.get('user_id')
         requesting_username = payload.get('username')
 
-        # Send alert to the author (host)
+        # Send alert to the author (host) via user-specific channel
         await self.channel_layer.group_send(
             f'user_{author_id}',
             {
@@ -395,6 +395,17 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 'user_id': requesting_user_id,
                 'username': requesting_username,
                 'room_id': self.room_id
+            }
+        )
+
+        # Also broadcast to the room so moderators who aren't authenticated
+        # (e.g. accessing via moderator token link) still receive the alert
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'join_request',
+                'user_id': requesting_user_id,
+                'username': requesting_username,
             }
         )
 
@@ -917,6 +928,14 @@ class RoomConsumer(AsyncWebsocketConsumer):
             'type': 'alert-response',
             'approved': event['approved'],
             'room_id': event['room_id']
+        }))
+
+    async def join_request(self, event):
+        """Forward join request to room members (for moderators not on user socket)"""
+        await self.send(text_data=json.dumps({
+            'type': 'join-request',
+            'user_id': event['user_id'],
+            'username': event['username'],
         }))
 
     async def user_mute_status(self, event):

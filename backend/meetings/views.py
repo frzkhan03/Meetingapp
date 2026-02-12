@@ -348,6 +348,16 @@ def join_personal_room_view(request, room_id):
         # Use custom display name if set, otherwise use account username
         name_key = f'display_name_{room_id}'
         username = request.session.get(name_key, request.user.username)
+    elif is_moderator:
+        # Unauthenticated moderator accessing via token link
+        # Use room owner's name so they appear as the host
+        session_key = f'guest_id_{room_id}'
+        if session_key in request.session:
+            user_id = request.session[session_key]
+        else:
+            user_id = f"guest_{uuid.uuid4().hex[:8]}"
+            request.session[session_key] = user_id
+        username = personal_room.user.username
     else:
         # Use persistent guest ID from session, or generate new one
         session_key = f'guest_id_{room_id}'
@@ -394,6 +404,7 @@ def join_personal_room_view(request, room_id):
         'username': username,
         'is_moderator': is_moderator,
         'room_owner': personal_room.user.username,
+        'room_owner_id': str(personal_room.user.id),
         'room_name': personal_room.room_name,
         'organization': personal_room.organization,
         'is_locked': personal_room.is_locked,
