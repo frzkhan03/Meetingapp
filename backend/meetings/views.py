@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.http import JsonResponse, HttpResponseRedirect
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.conf import settings
 import json
 import uuid
@@ -198,6 +199,7 @@ def start_meeting_view(request, room_id):
     return redirect('pending_room')
 
 
+@ensure_csrf_cookie
 def pending_room_view(request):
     room_id = request.session.get('pending_room_id')
     author_id = request.session.get('pending_author_id')

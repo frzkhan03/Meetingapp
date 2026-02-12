@@ -49,17 +49,26 @@
                 '<div class="alert alert-success">Approved! Joining meeting...</div>';
 
             // Mark as approved in session before redirecting
+            let markApproved = false;
             if (pendingToken) {
-                try {
-                    await fetch('/meeting/room/' + roomId + '/mark-approved/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': getCookie('csrftoken')
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        const resp = await fetch('/meeting/room/' + roomId + '/mark-approved/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCookie('csrftoken')
+                            }
+                        });
+                        if (resp.ok) {
+                            markApproved = true;
+                            break;
                         }
-                    });
-                } catch (err) {
-                    console.error('Error marking approval:', err);
+                        console.warn('mark-approved returned ' + resp.status + ', retrying...');
+                    } catch (err) {
+                        console.error('Error marking approval (attempt ' + (attempt + 1) + '):', err);
+                    }
+                    await new Promise(r => setTimeout(r, 500));
                 }
             }
 
@@ -69,7 +78,7 @@
                 } else {
                     window.location.href = '/meeting/startmeeting/' + roomId + '/';
                 }
-            }, 1000);
+            }, markApproved ? 500 : 1000);
         } else {
             document.getElementById('status-message').innerHTML =
                 '<div class="alert alert-danger">The host has denied your request.</div>';
