@@ -43,6 +43,7 @@ class PlanAdmin(ModelAdmin):
         'active_subscriptions', 'is_active', 'display_order',
     ]
     list_filter = ['tier', 'is_active']
+    search_fields = ['name', 'tier']
     readonly_fields = ['id', 'created_at', 'updated_at']
     ordering = ['display_order']
     list_per_page = 10
