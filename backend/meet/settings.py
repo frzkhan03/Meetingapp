@@ -516,6 +516,11 @@ UNFOLD = {
                         "icon": "assignment",
                         "link": reverse_lazy("admin:meetings_usermeetingpacket_changelist"),
                     },
+                    {
+                        "title": "Transcripts",
+                        "icon": "description",
+                        "link": reverse_lazy("admin:meetings_meetingtranscript_changelist"),
+                    },
                 ],
             },
             {

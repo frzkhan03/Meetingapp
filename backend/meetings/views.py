@@ -9,7 +9,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.conf import settings
 import json
 import uuid
-from .models import Meeting, UserMeetingPacket, PersonalRoom, MeetingRecording
+from .models import Meeting, UserMeetingPacket, PersonalRoom, MeetingRecording, MeetingTranscript
 from .forms import MeetingForm
 
 
@@ -837,3 +837,107 @@ def download_recording_view(request, recording_id):
 
     except ClientError as e:
         return JsonResponse({'error': f'Failed to generate download link: {str(e)}'}, status=500)
+
+
+# ==================== TRANSCRIPT VIEWS ====================
+
+@require_POST
+def save_transcript_view(request, room_id):
+    """Flush Redis-buffered transcript entries to database."""
+    from django.core.cache import cache
+
+    key = f'transcript:entries:{room_id}'
+    raw_entries = cache.get(key) or []
+
+    entries = []
+    for raw in raw_entries:
+        if isinstance(raw, str):
+            try:
+                entries.append(json.loads(raw))
+            except (json.JSONDecodeError, ValueError):
+                continue
+        else:
+            entries.append(raw)
+
+    if not entries:
+        return JsonResponse({'error': 'No transcript data available'}, status=404)
+
+    # Determine meeting and org
+    org = getattr(request, 'organization', None)
+    meeting = None
+    try:
+        meeting = Meeting.objects.get(room_id=room_id)
+        if not org:
+            org = meeting.organization
+    except Meeting.DoesNotExist:
+        try:
+            room = PersonalRoom.objects.get(room_id=room_id)
+            if not org:
+                org = room.organization
+        except PersonalRoom.DoesNotExist:
+            pass
+
+    created_by = request.user if request.user.is_authenticated else None
+
+    transcript = MeetingTranscript.objects.create(
+        meeting=meeting,
+        room_id=room_id,
+        organization=org,
+        entries=entries,
+        status='completed',
+        created_by=created_by,
+    )
+
+    # Clear Redis buffer
+    cache.delete(key)
+
+    return JsonResponse({
+        'success': True,
+        'transcript_id': transcript.id,
+        'entry_count': len(entries),
+    })
+
+
+def view_transcript_view(request, transcript_id):
+    """View transcript as JSON or plain text download."""
+    transcript = get_object_or_404(MeetingTranscript, id=transcript_id)
+
+    # Access control for authenticated users
+    if request.user.is_authenticated and transcript.organization:
+        from users.models import OrganizationMembership
+        if not OrganizationMembership.objects.filter(
+            user=request.user, organization=transcript.organization, is_active=True
+        ).exists() and not request.user.is_staff:
+            return JsonResponse({'error': 'Access denied'}, status=403)
+
+    fmt = request.GET.get('format', 'json')
+
+    if fmt == 'text':
+        from django.http import HttpResponse
+        from datetime import datetime
+        lines = []
+        for entry in transcript.entries:
+            ts = entry.get('timestamp', '')
+            speaker = entry.get('speaker', 'Unknown')
+            text = entry.get('text', '')
+            if ts:
+                try:
+                    dt = datetime.fromtimestamp(int(ts) / 1000)
+                    ts_str = dt.strftime('%H:%M:%S')
+                except (ValueError, TypeError, OSError):
+                    ts_str = str(ts)
+            else:
+                ts_str = '??:??:??'
+            lines.append(f'[{ts_str}] {speaker}: {text}')
+        content = '\n'.join(lines)
+        response = HttpResponse(content, content_type='text/plain; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="transcript-{transcript.room_id}.txt"'
+        return response
+
+    return JsonResponse({
+        'id': transcript.id,
+        'room_id': transcript.room_id,
+        'status': transcript.status,
+        'entries': transcript.entries,
+        'created_at': transcript.created_at.isoformat(),
+    })

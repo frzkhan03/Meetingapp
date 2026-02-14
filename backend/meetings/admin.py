@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.db.models import Count
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin, TabularInline
-from .models import Meeting, UserMeetingPacket, MeetingRecording, PersonalRoom, BreakoutRoom
+from .models import Meeting, UserMeetingPacket, MeetingRecording, PersonalRoom, BreakoutRoom, MeetingTranscript
 
 
 class MeetingRecordingInline(TabularInline):
@@ -241,3 +241,17 @@ class MeetingRecordingAdmin(ModelAdmin):
         if obj.s3_key:
             return format_html('<span style="color:#22c55e;">{}</span>', 'S3')
         return format_html('<span style="color:#6b7280;">{}</span>', 'Local')
+
+
+@admin.register(MeetingTranscript)
+class MeetingTranscriptAdmin(ModelAdmin):
+    list_display = ['room_id', 'meeting', 'organization', 'status', 'entry_count', 'created_by', 'created_at']
+    list_filter = ['status', 'created_at', 'organization']
+    search_fields = ['room_id', 'meeting__name', 'organization__name']
+    autocomplete_fields = ['meeting', 'organization', 'created_by']
+    readonly_fields = ['created_at', 'updated_at']
+    list_per_page = 25
+
+    @admin.display(description='Entries')
+    def entry_count(self, obj):
+        return len(obj.entries) if obj.entries else 0

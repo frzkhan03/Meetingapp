@@ -186,6 +186,14 @@
             </svg>
         </button>
 
+        <button class="control-btn" id="noiseCancelBtn" onclick="toggleNoiseCancellation()" title="Noise Cancellation (N)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M2 12c0-3.5 3-6 5-7.5M8 12c0-1.5 1.5-3 2.5-3.5M22 12c0-3.5-3-6-5-7.5M16 12c0-1.5-1.5-3-2.5-3.5"/>
+                <circle cx="12" cy="12" r="2"/>
+                <path d="M2 12c0 3.5 3 6 5 7.5M8 12c0 1.5 1.5 3 2.5 3.5M22 12c0 3.5-3 6-5 7.5M16 12c0 1.5-1.5 3-2.5 3.5"/>
+            </svg>
+        </button>
+
         {% if is_moderator %}
         <button class="control-btn" id="screenShare" title="Share Screen">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -212,6 +220,22 @@
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
             <span id="chat-badge" class="chat-badge"></span>
+        </button>
+
+        <button class="control-btn" id="captionsBtn" onclick="toggleCaptions()" title="Live Captions (T)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="4" width="20" height="16" rx="2"/>
+                <text x="6" y="16" font-size="10" font-weight="bold" fill="currentColor" stroke="none">CC</text>
+            </svg>
+        </button>
+
+        <button class="control-btn" id="saveTranscriptBtn" onclick="saveTranscript()" title="Save Transcript" style="display:none;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
         </button>
 
         <button class="control-btn" id="screenshotBtn" title="Take Screenshot (Ctrl+S)">
@@ -269,6 +293,34 @@
                         <rect x="18" y="17" width="4" height="4" rx="1"/>
                     </svg>
                     <span>Sidebar</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="layout-picker-wrapper">
+            <button class="control-btn" id="qualityBtn" title="Video Quality (Q)">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 20h.01"/>
+                    <path d="M7 20v-4"/>
+                    <path d="M12 20v-8"/>
+                    <path d="M17 20v-12"/>
+                </svg>
+            </button>
+            <div class="quality-picker" id="qualityPicker">
+                <div class="quality-option active" data-quality="auto">
+                    <span class="quality-dot auto"></span> Auto
+                </div>
+                <div class="quality-option" data-quality="high">
+                    <span class="quality-dot high"></span> HD (720p)
+                </div>
+                <div class="quality-option" data-quality="medium">
+                    <span class="quality-dot medium"></span> SD (480p)
+                </div>
+                <div class="quality-option" data-quality="low">
+                    <span class="quality-dot low"></span> LD (360p)
+                </div>
+                <div class="quality-option" data-quality="audioOnly">
+                    <span class="quality-dot audioOnly"></span> Audio Only
                 </div>
             </div>
         </div>

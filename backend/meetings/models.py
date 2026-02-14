@@ -257,3 +257,47 @@ class BreakoutRoom(models.Model):
     def __str__(self):
         parent = self.parent_room or self.parent_meeting
         return f"Breakout: {self.name} ({parent})"
+
+
+class MeetingTranscript(models.Model):
+    """Persisted transcript of meeting speech captions."""
+    STATUS_CHOICES = [
+        ('recording', 'Recording'),
+        ('completed', 'Completed'),
+    ]
+
+    meeting = models.ForeignKey(
+        Meeting,
+        on_delete=models.CASCADE,
+        related_name='transcripts',
+        null=True,
+        blank=True,
+    )
+    room_id = models.CharField(max_length=50, db_index=True)
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='transcripts',
+        null=True,
+        blank=True,
+    )
+    entries = models.JSONField(default=list, help_text='List of {timestamp, speaker, text}')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='recording')
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transcripts',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['room_id', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Transcript - {self.room_id} - {self.created_at}"

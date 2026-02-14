@@ -283,6 +283,11 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 await self.handle_close_breakouts(payload)
             elif event_type == 'broadcast-to-breakouts':
                 await self.handle_broadcast_to_breakouts(payload)
+            # Bandwidth & Caption events
+            elif event_type == 'quality-tier':
+                await self.handle_quality_tier(payload)
+            elif event_type == 'caption':
+                await self.handle_caption(payload)
 
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON received from {self.user_id}")
@@ -536,6 +541,79 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 'sender_channel': self.channel_name
             }
         )
+
+    # ========== Bandwidth & Caption Handlers ==========
+
+    async def handle_quality_tier(self, payload):
+        """Broadcast a user's network quality tier to other participants."""
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'user_quality_tier',
+                'user_id': payload.get('user_id', self.user_id),
+                'tier': payload.get('tier', 'high'),
+                'sender_channel': self.channel_name,
+            }
+        )
+
+    async def user_quality_tier(self, event):
+        if self.channel_name != event.get('sender_channel'):
+            await self.send(text_data=json.dumps({
+                'type': 'quality-tier',
+                'user_id': event['user_id'],
+                'tier': event['tier'],
+            }))
+
+    async def handle_caption(self, payload):
+        """Broadcast live caption text and accumulate for transcript."""
+        import html as html_module
+        text = str(payload.get('text', ''))[:500]
+        sanitized_text = html_module.escape(text)
+        username = html_module.escape(str(payload.get('username', ''))[:50])
+        is_final = payload.get('is_final', False)
+        timestamp = payload.get('timestamp', 0)
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'caption_broadcast',
+                'user_id': payload.get('user_id', self.user_id),
+                'username': username,
+                'text': sanitized_text,
+                'is_final': is_final,
+                'timestamp': timestamp,
+                'sender_channel': self.channel_name,
+            }
+        )
+
+        # Accumulate final captions in Redis for transcript persistence
+        if is_final and sanitized_text.strip():
+            try:
+                from django.core.cache import cache
+                key = f'transcript:entries:{self.room_id}'
+                entry = json.dumps({
+                    'timestamp': timestamp,
+                    'speaker': username,
+                    'text': sanitized_text,
+                    'user_id': payload.get('user_id', self.user_id),
+                })
+                current = cache.get(key) or []
+                if len(current) < 10000:  # Limit entries
+                    current.append(entry)
+                    cache.set(key, current, 14400)  # 4h TTL
+            except Exception as e:
+                logger.warning(f"Failed to accumulate transcript for room {self.room_id}: {e}")
+
+    async def caption_broadcast(self, event):
+        if self.channel_name != event.get('sender_channel'):
+            await self.send(text_data=json.dumps({
+                'type': 'caption',
+                'user_id': event['user_id'],
+                'username': event['username'],
+                'text': event['text'],
+                'is_final': event['is_final'],
+                'timestamp': event['timestamp'],
+            }))
 
     # ========== Breakout Room Handlers ==========
 

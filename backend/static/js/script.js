@@ -198,6 +198,20 @@ let UserIdName = {};
 UserIdName[USER_ID] = username;
 let USER_ID_ScreenShare;
 
+// ================== BANDWIDTH ADAPTATION STATE ==================
+const QUALITY_TIERS = {
+    high:      { width: 1280, height: 720, frameRate: 30, maxBitrate: 2500000, label: 'HD' },
+    medium:    { width: 854,  height: 480, frameRate: 15, maxBitrate: 1000000, label: 'SD' },
+    low:       { width: 640,  height: 360, frameRate: 10, maxBitrate: 500000,  label: 'LD' },
+    audioOnly: { width: 0,    height: 0,   frameRate: 0,  maxBitrate: 0,       label: 'Audio' }
+};
+
+let bandwidthState = {
+    currentTier: 'high',
+    manualOverride: null,  // null = auto, or tier name
+    statsInterval: null,
+};
+
 // Layout state
 let currentLayout = 'grid'; // 'grid', 'spotlight', or 'sidebar'
 let pinnedVideoId = null;
@@ -937,6 +951,18 @@ async function addVideoStream(stream, userId, isScreenShare) {
             newVideodiv.append(avatarDiv);
             newVideodiv.append(myVideo);
             newVideodiv.append(foot);
+
+            // Network quality indicator
+            const networkInd = document.createElement('div');
+            networkInd.className = 'network-indicator tier-high';
+            networkInd.setAttribute('data-user-id', userId);
+            for (let i = 0; i < 4; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'signal-bar';
+                networkInd.appendChild(bar);
+            }
+            newVideodiv.appendChild(networkInd);
+
             videoElement.append(newVideodiv);
 
             // Update label after a delay in case name info arrives later
@@ -2076,6 +2102,36 @@ document.addEventListener('keydown', (e) => {
                 toggleBgEffectsPopup();
             }
             break;
+        case 'n':
+            // N for noise cancellation
+            if (!e.ctrlKey && !e.metaKey) {
+                toggleNoiseCancellation();
+            }
+            break;
+        case 't':
+            // T for live captions toggle
+            if (!e.ctrlKey && !e.metaKey) {
+                toggleCaptions();
+            }
+            break;
+        case 'q':
+            // Q for quality cycle
+            if (!e.ctrlKey && !e.metaKey) {
+                var tiers = ['auto', 'high', 'medium', 'low', 'audioOnly'];
+                var current = bandwidthState.manualOverride || 'auto';
+                var idx = (tiers.indexOf(current) + 1) % tiers.length;
+                var next = tiers[idx];
+                document.querySelectorAll('.quality-option').forEach(function(o) {
+                    o.classList.toggle('active', o.dataset.quality === next);
+                });
+                if (next === 'auto') {
+                    bandwidthState.manualOverride = null;
+                } else {
+                    bandwidthState.manualOverride = next;
+                    applyQualityTier(next);
+                }
+            }
+            break;
         case 'escape':
             // Escape to close panels
             const sidebar = document.getElementById('sidebar');
@@ -2563,5 +2619,494 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         }, 500);
+    }
+});
+
+// ================== BANDWIDTH ADAPTATION ==================
+
+function monitorBandwidth() {
+    if (bandwidthState.statsInterval) return;
+    bandwidthState.statsInterval = setInterval(async function() {
+        if (bandwidthState.manualOverride) return; // Skip auto if manual override
+        if (!myPeer || !myPeer.connections) return;
+
+        let totalBitrate = 0;
+        let totalRtt = 0;
+        let connCount = 0;
+
+        try {
+            const connEntries = Object.values(myPeer.connections);
+            for (const conns of connEntries) {
+                for (const conn of conns) {
+                    if (!conn.peerConnection) continue;
+                    const stats = await conn.peerConnection.getStats();
+                    stats.forEach(function(report) {
+                        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                            if (report.availableOutgoingBitrate) {
+                                totalBitrate += report.availableOutgoingBitrate;
+                                connCount++;
+                            }
+                            if (report.currentRoundTripTime) {
+                                totalRtt += report.currentRoundTripTime;
+                            }
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            return;
+        }
+
+        if (connCount === 0) return;
+        var avgBitrate = totalBitrate / connCount;
+
+        // Determine tier based on available bandwidth
+        var newTier;
+        if (avgBitrate > 2000000) newTier = 'high';
+        else if (avgBitrate > 800000) newTier = 'medium';
+        else if (avgBitrate > 300000) newTier = 'low';
+        else newTier = 'audioOnly';
+
+        if (newTier !== bandwidthState.currentTier) {
+            applyQualityTier(newTier);
+        }
+    }, 5000);
+}
+
+function applyQualityTier(tier) {
+    if (bandwidthState.currentTier === tier) return;
+    bandwidthState.currentTier = tier;
+    var config = QUALITY_TIERS[tier];
+
+    if (tier === 'audioOnly') {
+        if (VideoDetails.myVideoStream) {
+            VideoDetails.myVideoStream.getVideoTracks().forEach(function(t) { t.enabled = false; });
+        }
+        updateNetworkIndicator(USER_ID, tier);
+        socketWrapper.emit('quality-tier', { user_id: USER_ID, tier: tier });
+        return;
+    }
+
+    // Re-enable video if coming from audioOnly
+    if (VideoDetails.myVideoStream) {
+        VideoDetails.myVideoStream.getVideoTracks().forEach(function(t) { t.enabled = true; });
+    }
+
+    // Apply constraints to each sender
+    if (myPeer && myPeer.connections) {
+        Object.values(myPeer.connections).forEach(function(conns) {
+            conns.forEach(function(conn) {
+                if (!conn.peerConnection) return;
+                var senders = conn.peerConnection.getSenders();
+                var videoSender = senders.find(function(s) { return s.track && s.track.kind === 'video'; });
+                if (videoSender) {
+                    var params = videoSender.getParameters();
+                    if (!params.encodings || params.encodings.length === 0) {
+                        params.encodings = [{}];
+                    }
+                    params.encodings[0].maxBitrate = config.maxBitrate;
+                    params.encodings[0].maxFramerate = config.frameRate;
+                    if (config.height > 0) {
+                        params.encodings[0].scaleResolutionDownBy = Math.max(1, 720 / config.height);
+                    }
+                    videoSender.setParameters(params).catch(function(e) {
+                        console.warn('setParameters failed:', e);
+                    });
+                }
+            });
+        });
+    }
+    updateNetworkIndicator(USER_ID, tier);
+    socketWrapper.emit('quality-tier', { user_id: USER_ID, tier: tier });
+}
+
+function updateNetworkIndicator(userId, tier) {
+    var indicators = document.querySelectorAll('.network-indicator[data-user-id="' + userId + '"]');
+    indicators.forEach(function(ind) {
+        ind.className = 'network-indicator tier-' + tier;
+    });
+}
+
+// Listen for quality-tier from remote peers
+socketWrapper.on('quality-tier', function(data) {
+    if (data.user_id && data.tier) {
+        updateNetworkIndicator(data.user_id, data.tier);
+    }
+});
+
+// Quality picker UI
+(function() {
+    var qualityBtn = document.getElementById('qualityBtn');
+    var qualityPicker = document.getElementById('qualityPicker');
+    if (!qualityBtn || !qualityPicker) return;
+
+    qualityBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        qualityPicker.classList.toggle('open');
+    });
+
+    qualityPicker.querySelectorAll('.quality-option').forEach(function(option) {
+        option.addEventListener('click', function() {
+            var quality = option.dataset.quality;
+            qualityPicker.querySelectorAll('.quality-option').forEach(function(o) { o.classList.remove('active'); });
+            option.classList.add('active');
+            qualityPicker.classList.remove('open');
+
+            if (quality === 'auto') {
+                bandwidthState.manualOverride = null;
+            } else {
+                bandwidthState.manualOverride = quality;
+                applyQualityTier(quality);
+            }
+        });
+    });
+
+    document.addEventListener('click', function() {
+        qualityPicker.classList.remove('open');
+    });
+})();
+
+// ================== AI NOISE CANCELLATION (RNNoise) ==================
+
+var noiseCancelState = {
+    enabled: false,
+    audioContext: null,
+    sourceNode: null,
+    workletNode: null,
+    destinationNode: null,
+    originalAudioTrack: null,
+    wasmModule: null,
+};
+
+async function initNoiseCancellation() {
+    if (noiseCancelState.audioContext) return true;
+    try {
+        var audioCtx = new AudioContext({ sampleRate: 48000 });
+        await audioCtx.audioWorklet.addModule('/static/js/rnnoise-processor.js');
+        noiseCancelState.audioContext = audioCtx;
+        return true;
+    } catch (err) {
+        console.error('Failed to initialize noise cancellation:', err);
+        return false;
+    }
+}
+
+async function enableNoiseCancellation() {
+    if (!VideoDetails.myVideoStream) return;
+
+    var ok = await initNoiseCancellation();
+    if (!ok) {
+        showNotification('Noise cancellation not available');
+        return;
+    }
+
+    var audioCtx = noiseCancelState.audioContext;
+    var originalTrack = VideoDetails.myVideoStream.getAudioTracks()[0];
+    if (!originalTrack) return;
+    noiseCancelState.originalAudioTrack = originalTrack;
+
+    var source = audioCtx.createMediaStreamSource(new MediaStream([originalTrack]));
+    var workletNode = new AudioWorkletNode(audioCtx, 'rnnoise-processor');
+    workletNode.port.postMessage({ type: 'init' });
+
+    var destination = audioCtx.createMediaStreamDestination();
+    source.connect(workletNode);
+    workletNode.connect(destination);
+
+    noiseCancelState.sourceNode = source;
+    noiseCancelState.workletNode = workletNode;
+    noiseCancelState.destinationNode = destination;
+
+    var processedTrack = destination.stream.getAudioTracks()[0];
+    replaceAudioTrackInPeers(processedTrack);
+
+    VideoDetails.myVideoStream.removeTrack(originalTrack);
+    VideoDetails.myVideoStream.addTrack(processedTrack);
+
+    noiseCancelState.enabled = true;
+    localStorage.setItem('noiseCancelEnabled', 'true');
+    var btn = document.getElementById('noiseCancelBtn');
+    if (btn) btn.classList.add('active');
+}
+
+function disableNoiseCancellation() {
+    if (!noiseCancelState.originalAudioTrack) return;
+
+    var originalTrack = noiseCancelState.originalAudioTrack;
+    replaceAudioTrackInPeers(originalTrack);
+
+    var currentTrack = VideoDetails.myVideoStream.getAudioTracks()[0];
+    if (currentTrack) VideoDetails.myVideoStream.removeTrack(currentTrack);
+    VideoDetails.myVideoStream.addTrack(originalTrack);
+
+    if (noiseCancelState.sourceNode) noiseCancelState.sourceNode.disconnect();
+    if (noiseCancelState.workletNode) noiseCancelState.workletNode.disconnect();
+
+    noiseCancelState.enabled = false;
+    noiseCancelState.sourceNode = null;
+    noiseCancelState.workletNode = null;
+    localStorage.removeItem('noiseCancelEnabled');
+    var btn = document.getElementById('noiseCancelBtn');
+    if (btn) btn.classList.remove('active');
+}
+
+function toggleNoiseCancellation() {
+    if (noiseCancelState.enabled) {
+        disableNoiseCancellation();
+    } else {
+        enableNoiseCancellation();
+    }
+}
+
+function replaceAudioTrackInPeers(newTrack) {
+    if (myPeer && myPeer.connections) {
+        Object.values(myPeer.connections).forEach(function(conns) {
+            conns.forEach(function(conn) {
+                if (conn.peerConnection) {
+                    var senders = conn.peerConnection.getSenders();
+                    var audioSender = senders.find(function(s) { return s.track && s.track.kind === 'audio'; });
+                    if (audioSender) {
+                        audioSender.replaceTrack(newTrack).catch(function(err) {
+                            console.error('Error replacing audio track:', err);
+                        });
+                    }
+                }
+            });
+        });
+    }
+}
+
+// ================== LIVE CAPTIONS (Web Speech API) ==================
+
+var captionState = {
+    enabled: false,
+    recognition: null,
+    supported: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
+};
+
+function initCaptions() {
+    if (!captionState.supported) {
+        showNotification('Live captions require Chrome or Edge browser');
+        return false;
+    }
+
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = function(event) {
+        var interimTranscript = '';
+        var finalTranscript = '';
+
+        for (var i = event.resultIndex; i < event.results.length; i++) {
+            var transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript;
+            } else {
+                interimTranscript += transcript;
+            }
+        }
+
+        if (finalTranscript) {
+            displayCaption(username, finalTranscript, false);
+            socketWrapper.emit('caption', {
+                user_id: USER_ID,
+                username: username,
+                text: finalTranscript,
+                is_final: true,
+                timestamp: Date.now()
+            });
+        }
+        if (interimTranscript) {
+            displayCaption(username, interimTranscript, true);
+        }
+    };
+
+    recognition.onerror = function(event) {
+        console.warn('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+            showNotification('Microphone access denied for captions');
+            disableCaptions();
+        }
+    };
+
+    recognition.onend = function() {
+        if (captionState.enabled) {
+            try { recognition.start(); } catch (e) {}
+        }
+    };
+
+    captionState.recognition = recognition;
+    return true;
+}
+
+function enableCaptions() {
+    if (!captionState.recognition) {
+        if (!initCaptions()) return;
+    }
+    try {
+        captionState.recognition.start();
+        captionState.enabled = true;
+        localStorage.setItem('captionsEnabled', 'true');
+        var btn = document.getElementById('captionsBtn');
+        if (btn) btn.classList.add('active');
+        showCaptionOverlay();
+        // Show save transcript button
+        var saveBtn = document.getElementById('saveTranscriptBtn');
+        if (saveBtn) saveBtn.style.display = '';
+    } catch (e) {
+        console.error('Failed to start captions:', e);
+    }
+}
+
+function disableCaptions() {
+    if (captionState.recognition) {
+        captionState.enabled = false;
+        try { captionState.recognition.stop(); } catch (e) {}
+    }
+    localStorage.removeItem('captionsEnabled');
+    var btn = document.getElementById('captionsBtn');
+    if (btn) btn.classList.remove('active');
+    hideCaptionOverlay();
+    var saveBtn = document.getElementById('saveTranscriptBtn');
+    if (saveBtn) saveBtn.style.display = 'none';
+}
+
+function toggleCaptions() {
+    if (captionState.enabled) {
+        disableCaptions();
+    } else {
+        enableCaptions();
+    }
+}
+
+function showCaptionOverlay() {
+    var overlay = document.getElementById('caption-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'caption-overlay';
+        overlay.className = 'caption-overlay';
+        document.body.appendChild(overlay);
+    }
+    overlay.classList.add('visible');
+}
+
+function hideCaptionOverlay() {
+    var overlay = document.getElementById('caption-overlay');
+    if (overlay) overlay.classList.remove('visible');
+}
+
+function displayCaption(speakerName, text, isInterim) {
+    var overlay = document.getElementById('caption-overlay');
+    if (!overlay) return;
+
+    var line = overlay.querySelector('[data-speaker="' + speakerName + '"]');
+    if (!line) {
+        line = document.createElement('div');
+        line.className = 'caption-line';
+        line.setAttribute('data-speaker', speakerName);
+        overlay.appendChild(line);
+    }
+
+    line.textContent = '';
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'caption-speaker';
+    nameSpan.textContent = speakerName + ': ';
+    var textSpan = document.createElement('span');
+    textSpan.className = isInterim ? 'caption-text interim' : 'caption-text';
+    textSpan.textContent = text;
+    line.appendChild(nameSpan);
+    line.appendChild(textSpan);
+
+    if (!isInterim) {
+        if (line._fadeTimeout) clearTimeout(line._fadeTimeout);
+        line._fadeTimeout = setTimeout(function() {
+            line.classList.add('fade-out');
+            setTimeout(function() { line.remove(); }, 500);
+        }, 5000);
+    }
+
+    overlay.scrollTop = overlay.scrollHeight;
+}
+
+// Receive captions from other participants
+socketWrapper.on('caption', function(data) {
+    if (data.user_id === USER_ID) return;
+    var speakerName = data.username || 'Unknown';
+    displayCaption(speakerName, data.text, !data.is_final);
+
+    // Also show the overlay if another user is sending captions
+    showCaptionOverlay();
+});
+
+// ================== TRANSCRIPT SAVE ==================
+
+async function saveTranscript() {
+    try {
+        var response = await fetch('/meeting/room/' + ROOM_ID + '/save-transcript/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+            }
+        });
+        var data = await response.json();
+        if (data.success) {
+            showNotification('Transcript saved (' + data.entry_count + ' entries)');
+        } else {
+            showNotification(data.error || 'Failed to save transcript');
+        }
+    } catch (err) {
+        console.error('Error saving transcript:', err);
+        showNotification('Error saving transcript');
+    }
+}
+
+// ================== RESTORE PREFERENCES & START MONITORING ==================
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Start bandwidth monitoring once stream is ready
+    var waitForPeer = setInterval(function() {
+        if (myPeer && myPeer.open) {
+            clearInterval(waitForPeer);
+            monitorBandwidth();
+        }
+    }, 1000);
+
+    // Restore noise cancellation preference
+    if (localStorage.getItem('noiseCancelEnabled') === 'true') {
+        var waitForStreamNC = setInterval(function() {
+            if (VideoDetails.myVideoStream) {
+                clearInterval(waitForStreamNC);
+                enableNoiseCancellation();
+            }
+        }, 500);
+    }
+
+    // Restore captions preference
+    if (localStorage.getItem('captionsEnabled') === 'true') {
+        var waitForStreamCC = setInterval(function() {
+            if (VideoDetails.myVideoStream) {
+                clearInterval(waitForStreamCC);
+                enableCaptions();
+            }
+        }, 500);
+    }
+
+    // Show notification helper
+    if (typeof showNotification === 'undefined') {
+        window.showNotification = function(msg) {
+            var notif = document.createElement('div');
+            notif.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#fff;padding:10px 20px;border-radius:8px;z-index:9999;font-size:0.9rem;backdrop-filter:blur(10px);';
+            notif.textContent = msg;
+            document.body.appendChild(notif);
+            setTimeout(function() {
+                notif.style.transition = 'opacity 0.3s';
+                notif.style.opacity = '0';
+                setTimeout(function() { notif.remove(); }, 300);
+            }, 3000);
+        };
     }
 });

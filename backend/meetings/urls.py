@@ -27,4 +27,8 @@ urlpatterns = [
     path('upload-recording/', views.upload_recording_view, name='upload_recording'),
     path('my-recordings/', views.my_recordings_view, name='my_recordings'),
     path('recording/<int:recording_id>/download/', views.download_recording_view, name='download_recording'),
+
+    # Transcript routes
+    re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/save-transcript/$', views.save_transcript_view, name='save_transcript'),
+    path('transcript/<int:transcript_id>/', views.view_transcript_view, name='view_transcript'),
 ]
