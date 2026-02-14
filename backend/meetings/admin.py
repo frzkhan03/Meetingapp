@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.db.models import Count
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin, TabularInline
-from .models import Meeting, UserMeetingPacket, MeetingRecording, PersonalRoom, BreakoutRoom, MeetingTranscript
+from .models import Meeting, UserMeetingPacket, MeetingRecording, PersonalRoom, BreakoutRoom, MeetingTranscript, ConnectionLog
 
 
 class MeetingRecordingInline(TabularInline):
@@ -255,3 +255,28 @@ class MeetingTranscriptAdmin(ModelAdmin):
     @admin.display(description='Entries')
     def entry_count(self, obj):
         return len(obj.entries) if obj.entries else 0
+
+
+@admin.register(ConnectionLog)
+class ConnectionLogAdmin(ModelAdmin):
+    list_display = [
+        'room_id', 'user_id', 'organization', 'avg_bitrate_kbps',
+        'avg_rtt_ms', 'packet_loss_display', 'duration_seconds',
+        'reconnection_count', 'browser', 'device_type', 'created_at',
+    ]
+    list_filter = ['organization', 'device_type', 'created_at']
+    search_fields = ['room_id', 'user_id', 'browser']
+    readonly_fields = ['created_at']
+    date_hierarchy = 'created_at'
+    list_per_page = 50
+
+    @admin.display(description='Packet Loss')
+    def packet_loss_display(self, obj):
+        pct = obj.packet_loss_pct
+        if pct > 5:
+            color = '#ef4444'
+        elif pct > 1:
+            color = '#f59e0b'
+        else:
+            color = '#22c55e'
+        return format_html('<span style="color:{};">{}%</span>', color, round(pct, 2))

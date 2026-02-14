@@ -130,6 +130,40 @@ class RateLimitMiddleware(MiddlewareMixin):
                     'retry_after': window
                 }, status=429)
 
+        # Meeting room POST operations
+        if request.path.startswith('/meeting/room/') and request.method == 'POST':
+            ip = self.get_client_ip(request)
+            if '/save-transcript/' in request.path:
+                key = f'ratelimit:transcript:{ip}'
+                max_requests, window = 10, 3600
+            elif '/toggle-lock/' in request.path:
+                key = f'ratelimit:toggle_lock:{ip}'
+                max_requests, window = 30, 60
+            elif '/approve-join/' in request.path or '/deny-join/' in request.path:
+                key = f'ratelimit:join_approval:{ip}'
+                max_requests, window = 60, 60
+            else:
+                key = f'ratelimit:room_ops:{ip}'
+                max_requests, window = 50, 60
+
+            if self.is_rate_limited(key, max_requests, window):
+                security_logger.warning(
+                    f'Room operation rate limit exceeded from {ip}: {request.path}'
+                )
+                return JsonResponse({
+                    'error': 'Rate limit exceeded. Please slow down.',
+                    'retry_after': window
+                }, status=429)
+
+        # Meeting scheduling
+        if request.path == '/meeting/schedule/' and request.method == 'POST':
+            key = f'ratelimit:schedule:{self.get_client_ip(request)}'
+            if self.is_rate_limited(key, 20, 3600):
+                return JsonResponse({
+                    'error': 'Too many meetings scheduled. Please try again later.',
+                    'retry_after': 3600
+                }, status=429)
+
         return None
 
 

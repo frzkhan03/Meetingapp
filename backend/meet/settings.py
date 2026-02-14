@@ -522,6 +522,16 @@ UNFOLD = {
                         "icon": "description",
                         "link": reverse_lazy("admin:meetings_meetingtranscript_changelist"),
                     },
+                    {
+                        "title": "Connection Logs",
+                        "icon": "wifi",
+                        "link": reverse_lazy("admin:meetings_connectionlog_changelist"),
+                    },
+                    {
+                        "title": "Connection Analytics",
+                        "icon": "insights",
+                        "link": reverse_lazy("admin:connection_analytics"),
+                    },
                 ],
             },
             {

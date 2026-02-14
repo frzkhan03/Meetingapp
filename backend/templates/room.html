@@ -54,6 +54,13 @@
                     </svg>
                 </span>
             </div>
+            <div class="meeting-timer" id="meeting-timer">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span id="timer-display">00:00</span>
+            </div>
         </div>
         <div class="top-bar-right">
             <button class="theme-toggle-room" id="themeToggleRoom" title="Toggle theme">
@@ -115,6 +122,8 @@
 
     <!-- Control Bar -->
     <div class="allbuttons">
+        <!-- Primary controls (always visible on mobile) -->
+        <div class="primary-controls">
         <button class="control-btn" id="onVideo" title="Toggle Video (V)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polygon points="23 7 16 12 23 17 23 7"/>
@@ -122,6 +131,51 @@
             </svg>
         </button>
 
+        <button class="control-btn" id="mic" title="Toggle Microphone (M)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+        </button>
+
+        {% if is_moderator %}
+        <button class="control-btn" id="screenShare" title="Share Screen">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+        </button>
+        {% endif %}
+
+        <button class="control-btn" id="chat" onclick="toggleChat()" title="Toggle Chat (C)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span id="chat-badge" class="chat-badge"></span>
+        </button>
+
+        <!-- Mobile overflow menu button -->
+        <button class="control-btn mobile-more-btn" id="mobileMoreBtn" title="More options">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/>
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+                <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/>
+            </svg>
+        </button>
+
+        <button class="control-btn danger btn-end-call" id="endCall" onclick="endMeeting()" title="Leave Meeting">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 2.59 3.4z"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+        </button>
+        </div>
+
+        <!-- Secondary controls (hidden on mobile, shown in overflow menu) -->
+        <div class="secondary-controls">
         <button class="control-btn" id="bgEffectBtn" title="Background Effects (B)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="2" y="2" width="20" height="20" rx="2"/>
@@ -177,15 +231,6 @@
             </div>
         </div>
 
-        <button class="control-btn" id="mic" title="Toggle Microphone (M)">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                <line x1="12" y1="19" x2="12" y2="23"/>
-                <line x1="8" y1="23" x2="16" y2="23"/>
-            </svg>
-        </button>
-
         <button class="control-btn" id="noiseCancelBtn" onclick="toggleNoiseCancellation()" title="Noise Cancellation (N)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M2 12c0-3.5 3-6 5-7.5M8 12c0-1.5 1.5-3 2.5-3.5M22 12c0-3.5-3-6-5-7.5M16 12c0-1.5-1.5-3-2.5-3.5"/>
@@ -195,16 +240,6 @@
         </button>
 
         {% if is_moderator %}
-        <button class="control-btn" id="screenShare" title="Share Screen">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                <line x1="8" y1="21" x2="16" y2="21"/>
-                <line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-        </button>
-
-        <div class="control-divider"></div>
-
         {% if recording_allowed %}
         <button class="control-btn" id="recordButton" title="Record Meeting">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -214,13 +249,6 @@
         </button>
         {% endif %}
         {% endif %}
-
-        <button class="control-btn" id="chat" onclick="toggleChat()" title="Toggle Chat (C)">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-            <span id="chat-badge" class="chat-badge"></span>
-        </button>
 
         <button class="control-btn" id="captionsBtn" onclick="toggleCaptions()" title="Live Captions (T)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -326,9 +354,7 @@
         </div>
 
         {% if is_moderator %}
-        <div class="control-divider"></div>
-
-        <!-- Moderator Controls -->
+        <!-- Moderator Controls (in secondary, hidden on mobile) -->
         {% if can_use_waiting_room %}
         <button class="control-btn moderator-btn {% if is_locked %}active{% endif %}" id="lockRoomBtn" onclick="toggleRoomLock()" title="Lock/Unlock Room (Waiting Room)">
             <svg class="lock-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -372,16 +398,23 @@
         </button>
         {% endif %}
         {% endif %}
-
-        <div class="control-divider"></div>
-
-        <button class="control-btn danger btn-end-call" id="endCall" onclick="endMeeting()" title="Leave Meeting">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 2.59 3.4z"/>
-                <line x1="1" y1="1" x2="23" y2="23"/>
-            </svg>
-        </button>
+        </div><!-- /secondary-controls -->
     </div>
+
+    <!-- Mobile overflow panel (bottom sheet) -->
+    <div class="mobile-overflow-panel" id="mobileOverflowPanel">
+        <div class="mobile-overflow-header">
+            <span>More Options</span>
+            <button class="close-btn" onclick="document.getElementById('mobileOverflowPanel').classList.remove('visible')">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div id="mobileOverflowContent"></div>
+    </div>
+    <div class="mobile-overflow-backdrop" id="mobileOverflowBackdrop" onclick="document.getElementById('mobileOverflowPanel').classList.remove('visible');this.classList.remove('visible')"></div>
 
     <!-- Participants Panel (Moderator Only) -->
     {% if is_moderator %}
@@ -411,15 +444,24 @@
             </button>
         </div>
         <div class="breakout-content">
-            <!-- Create Breakout Rooms Section -->
+            <!-- Create Breakout Rooms Section (Moderator) -->
             <div id="breakout-create-section">
                 <p class="text-muted small mb-3">Create separate rooms for smaller group discussions.</p>
-                <div class="mb-3">
-                    <label class="form-label small">Number of rooms:</label>
-                    <input type="number" id="breakoutRoomCount" class="form-control form-control-sm" value="2" min="2" max="10" style="width: 80px;">
+                <div class="breakout-form-row">
+                    <div class="breakout-form-field">
+                        <label class="form-label small">Rooms:</label>
+                        <input type="number" id="breakoutRoomCount" class="breakout-input" value="2" min="2" max="10">
+                    </div>
+                    <div class="breakout-form-field">
+                        <label class="form-label small">Assignment:</label>
+                        <select id="breakoutAssignMode" class="breakout-input">
+                            <option value="manual">Manual</option>
+                            <option value="auto">Auto Random</option>
+                        </select>
+                    </div>
                 </div>
-                <button class="btn btn-primary btn-sm w-100" onclick="createBreakoutRooms()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                <button class="breakout-create-btn" onclick="createBreakoutRooms()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="12" y1="5" x2="12" y2="19"/>
                         <line x1="5" y1="12" x2="19" y2="12"/>
                     </svg>
@@ -427,27 +469,93 @@
                 </button>
             </div>
 
-            <!-- Active Breakout Rooms Section (hidden by default) -->
+            <!-- Active Breakout Rooms Section (Moderator view after creation) -->
             <div id="breakout-active-section" style="display: none;">
+                <!-- Timer -->
+                <div class="breakout-timer-bar">
+                    <div class="breakout-timer" id="breakoutTimerDisplay">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <span id="breakoutTimerText">No timer</span>
+                    </div>
+                    <button class="breakout-timer-set-btn" onclick="setBreakoutTimer()" title="Set timer">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        Set
+                    </button>
+                </div>
+
+                <!-- Unassigned participants -->
+                <div class="breakout-unassigned" id="breakoutUnassigned">
+                    <div class="breakout-unassigned-label">Unassigned</div>
+                    <div class="breakout-chip-area" id="breakoutUnassignedChips"></div>
+                </div>
+
+                <!-- Room cards -->
                 <div id="breakout-rooms-list"></div>
-                <hr style="border-color: var(--border-color);">
-                <div class="d-flex gap-2">
-                    <button class="btn btn-outline-secondary btn-sm flex-grow-1" onclick="broadcastToBreakouts()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+
+                <!-- Controls -->
+                <div class="breakout-controls">
+                    <button class="breakout-action-btn breakout-broadcast-btn" onclick="openBroadcastModal()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polygon points="12 2 2 7 12 12 22 7 12 2"/>
                             <polyline points="2 17 12 22 22 17"/>
                             <polyline points="2 12 12 17 22 12"/>
                         </svg>
                         Broadcast
                     </button>
-                    <button class="btn btn-danger btn-sm flex-grow-1" onclick="closeAllBreakouts()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
+                    <button class="breakout-action-btn breakout-close-btn" onclick="closeAllBreakouts()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="18" y1="6" x2="6" y2="18"/>
                             <line x1="6" y1="6" x2="18" y2="18"/>
                         </svg>
                         Close All
                     </button>
                 </div>
+            </div>
+
+            <!-- Participant view (when assigned to a breakout) -->
+            <div id="breakout-participant-view" style="display: none;">
+                <div class="breakout-assigned-alert">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    <span>You are assigned to <strong id="breakoutAssignedName"></strong></span>
+                </div>
+                <button class="breakout-create-btn" onclick="joinBreakoutRoom()" id="breakoutJoinBtn">
+                    Join Breakout Room
+                </button>
+                <button class="breakout-action-btn" onclick="returnToMainRoom()" id="breakoutReturnBtn" style="display: none; margin-top: 8px; width: 100%;">
+                    Return to Main Room
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Broadcast Modal -->
+    <div class="breakout-modal-overlay" id="breakoutBroadcastModal" style="display: none;">
+        <div class="breakout-modal">
+            <div class="breakout-modal-header">
+                <h4>Broadcast Message</h4>
+                <button class="close-btn" onclick="closeBroadcastModal()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <p class="text-muted small">Send a message to all breakout rooms.</p>
+            <textarea id="broadcastMessageInput" class="breakout-textarea" rows="3" placeholder="Type your message..."></textarea>
+            <div class="breakout-modal-actions">
+                <button class="breakout-action-btn" onclick="closeBroadcastModal()">Cancel</button>
+                <button class="breakout-create-btn" onclick="sendBroadcast()" style="flex: 1;">Send</button>
             </div>
         </div>
     </div>
@@ -703,6 +811,8 @@
         }
 
         // ========== Breakout Rooms Functions ==========
+        var breakoutTimer = { intervalId: null, endTime: null };
+
         function toggleBreakoutPanel() {
             const panel = document.getElementById('breakout-panel');
             if (panel) {
@@ -712,197 +822,315 @@
 
         function createBreakoutRooms() {
             const count = parseInt(document.getElementById('breakoutRoomCount').value) || 2;
+            const assignMode = document.getElementById('breakoutAssignMode') ? document.getElementById('breakoutAssignMode').value : 'manual';
             const roomNames = [];
             for (let i = 1; i <= count; i++) {
                 roomNames.push('Room ' + i);
             }
 
-            // Send via WebSocket
-            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'create-breakout',
-                    data: {
-                        rooms: roomNames,
-                        moderator_id: USER_ID
-                    }
-                }));
+            if (typeof socketWrapper !== 'undefined' && socketWrapper.connected) {
+                socketWrapper.emit('create-breakout', {
+                    rooms: roomNames,
+                    moderator_id: USER_ID
+                });
             }
+
+            // Store assign mode for after creation callback
+            window._breakoutAssignMode = assignMode;
         }
 
         function handleBreakoutRoomsCreated(data) {
             breakoutRooms = data.rooms || [];
-            document.getElementById('breakout-create-section').style.display = 'none';
-            document.getElementById('breakout-active-section').style.display = 'block';
-            renderBreakoutRoomsList();
+            var createSec = document.getElementById('breakout-create-section');
+            var activeSec = document.getElementById('breakout-active-section');
+            var participantView = document.getElementById('breakout-participant-view');
+            if (createSec) createSec.style.display = 'none';
+            if (activeSec) activeSec.style.display = 'block';
+            if (participantView) participantView.style.display = 'none';
+            renderBreakoutRooms();
+
+            // Auto-assign if selected
+            if (window._breakoutAssignMode === 'auto' && IS_MODERATOR) {
+                autoAssignParticipants();
+                window._breakoutAssignMode = null;
+            }
         }
 
-        function renderBreakoutRoomsList() {
-            const list = document.getElementById('breakout-rooms-list');
+        function autoAssignParticipants() {
+            // Get all participants except moderator
+            var available = [];
+            for (var key in ParticipantsInfo) {
+                if (ParticipantsInfo[key].id !== USER_ID) {
+                    available.push(ParticipantsInfo[key].id);
+                }
+            }
+            // Shuffle
+            for (var i = available.length - 1; i > 0; i--) {
+                var j = Math.floor(Math.random() * (i + 1));
+                var tmp = available[i];
+                available[i] = available[j];
+                available[j] = tmp;
+            }
+            // Round-robin assign
+            for (var k = 0; k < available.length; k++) {
+                var roomIdx = k % breakoutRooms.length;
+                var room = breakoutRooms[roomIdx];
+                assignToBreakout(available[k], room.breakout_id, room.name);
+            }
+        }
+
+        function renderBreakoutRooms() {
+            var list = document.getElementById('breakout-rooms-list');
+            var unassignedChips = document.getElementById('breakoutUnassignedChips');
             if (!list) return;
 
             list.innerHTML = '';
 
-            breakoutRooms.forEach(function(room) {
-                const roomDiv = document.createElement('div');
-                roomDiv.className = 'breakout-room-item mb-3 p-2';
-                roomDiv.style.cssText = 'background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);';
-
-                const headerDiv = document.createElement('div');
-                headerDiv.className = 'd-flex justify-content-between align-items-center mb-2';
-                const strongEl = document.createElement('strong');
-                strongEl.textContent = room.name;
-                headerDiv.appendChild(strongEl);
-                roomDiv.appendChild(headerDiv);
-
-                // List assigned participants
-                const assignedDiv = document.createElement('div');
-                assignedDiv.className = 'breakout-assigned small';
-                assignedDiv.style.cssText = 'color: var(--text-muted);';
-
-                let assignedUsers = [];
-                for (let userId in breakoutAssignments) {
-                    if (breakoutAssignments[userId] === room.breakout_id) {
-                        const p = participants.find(function(x) { return x.id === userId; });
-                        assignedUsers.push(p ? p.username : userId);
+            // Render unassigned participants
+            if (unassignedChips) {
+                unassignedChips.innerHTML = '';
+                for (var key in ParticipantsInfo) {
+                    var p = ParticipantsInfo[key];
+                    if (p.id !== USER_ID && !breakoutAssignments[p.id]) {
+                        var chip = document.createElement('span');
+                        chip.className = 'breakout-participant-chip';
+                        chip.textContent = p.username || p.id;
+                        chip.setAttribute('data-userid', p.id);
+                        unassignedChips.appendChild(chip);
                     }
                 }
-                assignedDiv.textContent = assignedUsers.length > 0 ? assignedUsers.join(', ') : 'No participants assigned';
-                roomDiv.appendChild(assignedDiv);
+                if (!unassignedChips.innerHTML) {
+                    unassignedChips.innerHTML = '<span class="breakout-no-participants">All assigned</span>';
+                }
+            }
+
+            // Render room cards
+            breakoutRooms.forEach(function(room) {
+                var card = document.createElement('div');
+                card.className = 'breakout-room-card';
+
+                // Header
+                var header = document.createElement('div');
+                header.className = 'breakout-room-header';
+                var nameSpan = document.createElement('span');
+                nameSpan.className = 'breakout-room-name';
+                nameSpan.textContent = room.name;
+                header.appendChild(nameSpan);
+
+                var count = 0;
+                for (var uid in breakoutAssignments) {
+                    if (breakoutAssignments[uid] === room.breakout_id) count++;
+                }
+                var countSpan = document.createElement('span');
+                countSpan.className = 'breakout-room-count';
+                countSpan.textContent = count + ' participant' + (count !== 1 ? 's' : '');
+                header.appendChild(countSpan);
+                card.appendChild(header);
+
+                // Participant chips
+                var chipsArea = document.createElement('div');
+                chipsArea.className = 'breakout-chip-area';
+                for (var userId in breakoutAssignments) {
+                    if (breakoutAssignments[userId] === room.breakout_id) {
+                        var pInfo = ParticipantsInfo[userId];
+                        var pChip = document.createElement('span');
+                        pChip.className = 'breakout-participant-chip removable';
+                        pChip.textContent = pInfo ? (pInfo.username || userId) : userId;
+
+                        var removeBtn = document.createElement('button');
+                        removeBtn.className = 'breakout-chip-remove';
+                        removeBtn.innerHTML = '&times;';
+                        removeBtn.setAttribute('data-userid', userId);
+                        removeBtn.addEventListener('click', function() {
+                            var uid = this.getAttribute('data-userid');
+                            delete breakoutAssignments[uid];
+                            renderBreakoutRooms();
+                        });
+                        pChip.appendChild(removeBtn);
+                        chipsArea.appendChild(pChip);
+                    }
+                }
+                if (count === 0) {
+                    var emptyMsg = document.createElement('span');
+                    emptyMsg.className = 'breakout-no-participants';
+                    emptyMsg.textContent = 'No participants';
+                    chipsArea.appendChild(emptyMsg);
+                }
+                card.appendChild(chipsArea);
 
                 // Assign dropdown
-                const selectDiv = document.createElement('div');
-                selectDiv.className = 'mt-2';
-                const select = document.createElement('select');
-                select.className = 'form-select form-select-sm';
-                select.innerHTML = '<option value="">+ Assign participant</option>';
-                participants.forEach(function(p) {
-                    if (p.id !== USER_ID && !breakoutAssignments[p.id]) {
-                        const opt = document.createElement('option');
-                        opt.value = p.id;
-                        opt.textContent = p.username;
+                var selectDiv = document.createElement('div');
+                selectDiv.className = 'breakout-assign-row';
+                var select = document.createElement('select');
+                select.className = 'breakout-input breakout-assign-select';
+                select.innerHTML = '<option value="">+ Assign</option>';
+                for (var pKey in ParticipantsInfo) {
+                    var pp = ParticipantsInfo[pKey];
+                    if (pp.id !== USER_ID && !breakoutAssignments[pp.id]) {
+                        var opt = document.createElement('option');
+                        opt.value = pp.id;
+                        opt.textContent = pp.username || pp.id;
                         select.appendChild(opt);
                     }
-                });
-                select.addEventListener('change', function() {
-                    if (this.value) {
-                        assignToBreakout(this.value, room.breakout_id, room.name);
-                        this.value = '';
-                    }
-                });
+                }
+                select.addEventListener('change', (function(rm) {
+                    return function() {
+                        if (this.value) {
+                            assignToBreakout(this.value, rm.breakout_id, rm.name);
+                            this.value = '';
+                        }
+                    };
+                })(room));
                 selectDiv.appendChild(select);
-                roomDiv.appendChild(selectDiv);
+                card.appendChild(selectDiv);
 
-                list.appendChild(roomDiv);
+                list.appendChild(card);
             });
         }
 
         function assignToBreakout(userId, breakoutId, breakoutName) {
-            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'assign-to-breakout',
-                    data: {
-                        user_id: userId,
-                        breakout_id: breakoutId,
-                        breakout_name: breakoutName,
-                        moderator_id: USER_ID
-                    }
-                }));
+            if (typeof socketWrapper !== 'undefined' && socketWrapper.connected) {
+                socketWrapper.emit('assign-to-breakout', {
+                    user_id: userId,
+                    breakout_id: breakoutId,
+                    breakout_name: breakoutName,
+                    moderator_id: USER_ID
+                });
             }
             breakoutAssignments[userId] = breakoutId;
-            renderBreakoutRoomsList();
+            renderBreakoutRooms();
         }
 
         function handleUserAssignedBreakout(data) {
             breakoutAssignments[data.user_id] = data.breakout_id;
-            renderBreakoutRoomsList();
+            renderBreakoutRooms();
         }
 
         function handleBreakoutAssigned(data) {
             // Non-moderator receives their assignment
             currentBreakoutId = data.breakout_id;
-            showBreakoutNotification(data.breakout_name);
-        }
+            var nameEl = document.getElementById('breakoutAssignedName');
+            var participantView = document.getElementById('breakout-participant-view');
+            var createSec = document.getElementById('breakout-create-section');
+            var joinBtn = document.getElementById('breakoutJoinBtn');
+            var returnBtn = document.getElementById('breakoutReturnBtn');
 
-        function showBreakoutNotification(roomName) {
-            const toast = document.createElement('div');
-            toast.className = 'breakout-notification';
-            toast.style.cssText = 'position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--accent-primary); border-radius: 12px; padding: 16px 24px; z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.4);';
+            if (nameEl) nameEl.textContent = data.breakout_name;
+            if (participantView) participantView.style.display = 'block';
+            if (createSec) createSec.style.display = 'none';
+            if (joinBtn) joinBtn.style.display = 'block';
+            if (returnBtn) returnBtn.style.display = 'none';
 
-            const innerDiv = document.createElement('div');
-            innerDiv.style.textAlign = 'center';
-            const strong = document.createElement('strong');
-            strong.textContent = 'You have been assigned to ' + roomName;
-            innerDiv.appendChild(strong);
-            innerDiv.appendChild(document.createElement('br'));
-            const btn = document.createElement('button');
-            btn.className = 'btn btn-primary btn-sm mt-2';
-            btn.textContent = 'Join Room';
-            btn.addEventListener('click', joinBreakoutRoom);
-            innerDiv.appendChild(btn);
-            toast.appendChild(innerDiv);
+            // Auto-open panel for participant
+            var panel = document.getElementById('breakout-panel');
+            if (panel) panel.style.display = 'block';
 
-            document.body.appendChild(toast);
+            // Also show a toast notification
+            showToast('You have been assigned to ' + data.breakout_name, 5000);
         }
 
         function joinBreakoutRoom() {
             if (!currentBreakoutId) return;
-            // Remove notification
-            const notif = document.querySelector('.breakout-notification');
+            // Remove old notification if present
+            var notif = document.querySelector('.breakout-notification');
             if (notif) notif.remove();
 
-            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'join-breakout',
-                    data: {
-                        breakout_id: currentBreakoutId,
-                        user_id: USER_ID,
-                        username: username
-                    }
-                }));
+            if (typeof socketWrapper !== 'undefined' && socketWrapper.connected) {
+                socketWrapper.emit('join-breakout', {
+                    breakout_id: currentBreakoutId,
+                    user_id: USER_ID,
+                    username: username
+                });
             }
+
+            // Update participant view
+            var joinBtn = document.getElementById('breakoutJoinBtn');
+            var returnBtn = document.getElementById('breakoutReturnBtn');
+            if (joinBtn) joinBtn.style.display = 'none';
+            if (returnBtn) returnBtn.style.display = 'block';
         }
 
         function returnToMainRoom() {
             if (!currentBreakoutId) return;
 
-            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'return-to-main',
-                    data: {
-                        breakout_id: currentBreakoutId,
-                        user_id: USER_ID,
-                        username: username
-                    }
-                }));
+            if (typeof socketWrapper !== 'undefined' && socketWrapper.connected) {
+                socketWrapper.emit('return-to-main', {
+                    breakout_id: currentBreakoutId,
+                    user_id: USER_ID,
+                    username: username
+                });
             }
             currentBreakoutId = null;
+
+            // Reset participant view
+            var participantView = document.getElementById('breakout-participant-view');
+            if (participantView) participantView.style.display = 'none';
+        }
+
+        function setBreakoutTimer() {
+            var minutes = prompt('Set breakout timer (minutes):');
+            if (!minutes || isNaN(minutes) || minutes <= 0) return;
+            minutes = parseInt(minutes);
+            breakoutTimer.endTime = Date.now() + (minutes * 60 * 1000);
+            if (breakoutTimer.intervalId) clearInterval(breakoutTimer.intervalId);
+            breakoutTimer.intervalId = setInterval(updateBreakoutTimer, 1000);
+            updateBreakoutTimer();
+        }
+
+        function updateBreakoutTimer() {
+            var timerText = document.getElementById('breakoutTimerText');
+            if (!timerText || !breakoutTimer.endTime) return;
+            var remaining = Math.max(0, breakoutTimer.endTime - Date.now());
+            var mins = Math.floor(remaining / 60000);
+            var secs = Math.floor((remaining % 60000) / 1000);
+            timerText.textContent = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+            if (remaining <= 0) {
+                clearInterval(breakoutTimer.intervalId);
+                breakoutTimer.intervalId = null;
+                timerText.textContent = "Time's up!";
+                timerText.style.color = '#ef4444';
+            }
+        }
+
+        function openBroadcastModal() {
+            var modal = document.getElementById('breakoutBroadcastModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                var input = document.getElementById('broadcastMessageInput');
+                if (input) { input.value = ''; input.focus(); }
+            }
+        }
+
+        function closeBroadcastModal() {
+            var modal = document.getElementById('breakoutBroadcastModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function sendBroadcast() {
+            var input = document.getElementById('broadcastMessageInput');
+            var message = input ? input.value.trim() : '';
+            if (!message) return;
+
+            if (typeof socketWrapper !== 'undefined' && socketWrapper.connected) {
+                socketWrapper.emit('broadcast-to-breakouts', {
+                    message: message,
+                    moderator_id: USER_ID
+                });
+            }
+            closeBroadcastModal();
         }
 
         function broadcastToBreakouts() {
-            const message = prompt('Message to broadcast to all breakout rooms:');
-            if (!message) return;
-
-            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'broadcast-to-breakouts',
-                    data: {
-                        message: message,
-                        moderator_id: USER_ID
-                    }
-                }));
-            }
+            openBroadcastModal();
         }
 
         function closeAllBreakouts() {
             if (!confirm('Close all breakout rooms? Participants will return to the main room.')) return;
 
-            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'close-breakouts',
-                    data: {
-                        moderator_id: USER_ID
-                    }
-                }));
+            if (typeof socketWrapper !== 'undefined' && socketWrapper.connected) {
+                socketWrapper.emit('close-breakouts', {
+                    moderator_id: USER_ID
+                });
             }
         }
 
@@ -911,18 +1139,44 @@
             breakoutAssignments = {};
             currentBreakoutId = null;
 
+            // Clear timer
+            if (breakoutTimer.intervalId) clearInterval(breakoutTimer.intervalId);
+            breakoutTimer.endTime = null;
+            var timerText = document.getElementById('breakoutTimerText');
+            if (timerText) { timerText.textContent = 'No timer'; timerText.style.color = ''; }
+
             // Reset UI
-            const createSection = document.getElementById('breakout-create-section');
-            const activeSection = document.getElementById('breakout-active-section');
+            var createSection = document.getElementById('breakout-create-section');
+            var activeSection = document.getElementById('breakout-active-section');
+            var participantView = document.getElementById('breakout-participant-view');
             if (createSection) createSection.style.display = 'block';
             if (activeSection) activeSection.style.display = 'none';
+            if (participantView) participantView.style.display = 'none';
 
-            // Show notification
-            alert('Breakout rooms have been closed.');
+            showToast('Breakout rooms have been closed.', 4000);
         }
 
         function handleBreakoutBroadcast(data) {
-            alert('Message from moderator: ' + data.message);
+            // Show prominent notification
+            showToast('Broadcast: ' + data.message, 8000);
+            // Also add to chat
+            if (typeof displaychat === 'function') {
+                displaychat(data.message, 'Moderator Broadcast', 'Moderator');
+            }
+        }
+
+        function showToast(msg, duration) {
+            var existing = document.querySelector('.breakout-toast');
+            if (existing) existing.remove();
+            var toast = document.createElement('div');
+            toast.className = 'breakout-toast';
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.classList.add('show'); }, 10);
+            setTimeout(function() {
+                toast.classList.remove('show');
+                setTimeout(function() { toast.remove(); }, 300);
+            }, duration || 4000);
         }
     </script>
     <!-- MediaPipe Selfie Segmentation for background effects -->

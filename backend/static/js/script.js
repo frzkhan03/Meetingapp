@@ -39,6 +39,63 @@ function createHeartbeat(ws, label) {
     return { start: start, onPong: onPong, stop: stop };
 }
 
+// ================== CONNECTION STATE MANAGEMENT ==================
+var ConnectionState = {
+    status: 'connecting',  // connecting | connected | reconnecting | disconnected
+    wsConnected: false,
+    peerConnected: false,
+    reconnectAttempts: 0,
+    maxReconnects: 10
+};
+
+var activePeerConnections = new Set();
+
+function updateConnectionState(newStatus) {
+    var oldStatus = ConnectionState.status;
+    if (oldStatus === newStatus) return;
+    ConnectionState.status = newStatus;
+    console.log('Connection state:', oldStatus, '->', newStatus);
+
+    var overlay = document.getElementById('reconnecting-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'reconnecting-overlay';
+        overlay.innerHTML =
+            '<div class="reconnect-content">' +
+                '<div class="reconnect-spinner"></div>' +
+                '<div class="reconnect-text">Connection lost. Reconnecting...</div>' +
+                '<div class="reconnect-attempt" id="reconnect-attempt"></div>' +
+            '</div>';
+        document.body.appendChild(overlay);
+    }
+
+    if (newStatus === 'reconnecting') {
+        overlay.style.display = 'flex';
+        var attemptEl = document.getElementById('reconnect-attempt');
+        if (attemptEl) {
+            attemptEl.textContent = 'Attempt ' + ConnectionState.reconnectAttempts + '/' + ConnectionState.maxReconnects;
+        }
+    } else if (newStatus === 'connected') {
+        overlay.style.display = 'none';
+        ConnectionState.reconnectAttempts = 0;
+        if (oldStatus === 'reconnecting') {
+            console.log('Connection restored');
+        }
+    } else if (newStatus === 'disconnected') {
+        overlay.style.display = 'flex';
+        overlay.querySelector('.reconnect-text').textContent = 'Connection failed. Please refresh the page.';
+        overlay.querySelector('.reconnect-spinner').style.display = 'none';
+        // Add refresh button
+        if (!overlay.querySelector('.reconnect-refresh')) {
+            var btn = document.createElement('button');
+            btn.className = 'reconnect-refresh';
+            btn.textContent = 'Refresh Page';
+            btn.onclick = function() { location.reload(); };
+            overlay.querySelector('.reconnect-content').appendChild(btn);
+        }
+    }
+}
+
 // --- Room Socket ---
 let socket = null;
 let roomHeartbeat = null;
@@ -55,6 +112,11 @@ function connectRoomSocket() {
         console.log('Room WebSocket connected');
         roomReconnectAttempts = 0;
         roomHeartbeat.start();
+        ConnectionState.wsConnected = true;
+        if (ConnectionState.peerConnected) {
+            updateConnectionState('connected');
+            startConnectionStatsCollection();
+        }
         socketWrapper.emit('join-room', {
             room_id: ROOM_ID,
             user_id: USER_ID,
@@ -91,7 +153,11 @@ function connectRoomSocket() {
     socket.onclose = function(e) {
         console.log('Room WebSocket closed:', e.code, e.reason);
         roomHeartbeat.stop();
+        ConnectionState.wsConnected = false;
         if (e.code !== 4029 && roomReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
+            ConnectionState.reconnectAttempts = roomReconnectAttempts + 1;
+            ConnectionStats.reconnectCount++;
+            updateConnectionState('reconnecting');
             var baseDelay = WS_BASE_RECONNECT_DELAY * Math.pow(2, roomReconnectAttempts);
             var jitter = Math.random() * baseDelay * 0.5;
             var delay = Math.floor(baseDelay + jitter);
@@ -100,6 +166,8 @@ function connectRoomSocket() {
                 roomReconnectAttempts++;
                 connectRoomSocket();
             }, delay);
+        } else if (roomReconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
+            updateConnectionState('disconnected');
         }
     };
 
@@ -212,6 +280,177 @@ let bandwidthState = {
     statsInterval: null,
 };
 
+// ================== MEETING DURATION TIMER ==================
+var MeetingTimer = {
+    startTime: null,
+    intervalId: null,
+    isVisible: true
+};
+
+function initMeetingTimer(serverStartTime) {
+    MeetingTimer.startTime = serverStartTime || Date.now();
+    if (MeetingTimer.intervalId) clearInterval(MeetingTimer.intervalId);
+
+    function updateTimerDisplay() {
+        if (!MeetingTimer.isVisible) return;
+        var elapsed = Math.floor((Date.now() - MeetingTimer.startTime) / 1000);
+        if (elapsed < 0) elapsed = 0;
+        var hours = Math.floor(elapsed / 3600);
+        var minutes = Math.floor((elapsed % 3600) / 60);
+        var seconds = elapsed % 60;
+        var display;
+        if (hours > 0) {
+            display = hours + ':' + (minutes < 10 ? '0' : '') + minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
+        } else {
+            display = (minutes < 10 ? '0' : '') + minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
+        }
+        var el = document.getElementById('timer-display');
+        if (el) el.textContent = display;
+    }
+
+    MeetingTimer.intervalId = setInterval(updateTimerDisplay, 1000);
+    updateTimerDisplay();
+}
+
+document.addEventListener('visibilitychange', function() {
+    MeetingTimer.isVisible = !document.hidden;
+});
+
+// ================== CONNECTION ANALYTICS ==================
+var ConnectionStats = {
+    samples: [],
+    connectedAt: Date.now(),
+    reconnectCount: 0,
+    qualityChanges: [],
+    uploadInterval: null,
+    collectInterval: null,
+};
+
+function detectBrowser() {
+    var ua = navigator.userAgent;
+    if (ua.indexOf('Firefox') > -1) return 'Firefox';
+    if (ua.indexOf('Edg/') > -1) return 'Edge';
+    if (ua.indexOf('Chrome') > -1) return 'Chrome';
+    if (ua.indexOf('Safari') > -1) return 'Safari';
+    return 'Other';
+}
+
+function detectDevice() {
+    if (/Mobi|Android/i.test(navigator.userAgent)) return 'mobile';
+    if (/Tablet|iPad/i.test(navigator.userAgent)) return 'tablet';
+    return 'desktop';
+}
+
+function collectConnectionSample() {
+    // Find an active peer connection to sample from
+    var peers = Object.keys(myPeer.connections || {});
+    if (peers.length === 0) return;
+
+    var conn = null;
+    for (var i = 0; i < peers.length; i++) {
+        var conns = myPeer.connections[peers[i]];
+        if (conns && conns.length > 0) {
+            for (var j = 0; j < conns.length; j++) {
+                if (conns[j].peerConnection) {
+                    conn = conns[j].peerConnection;
+                    break;
+                }
+            }
+            if (conn) break;
+        }
+    }
+    if (!conn || !conn.getStats) return;
+
+    conn.getStats().then(function(stats) {
+        var bitrate = 0, rtt = 0, packetsLost = 0, packetsSent = 0;
+        stats.forEach(function(report) {
+            if (report.type === 'outbound-rtp' && report.kind === 'video') {
+                if (report.bytesSent !== undefined && ConnectionStats._lastBytesSent !== undefined) {
+                    var bytesDelta = report.bytesSent - ConnectionStats._lastBytesSent;
+                    var timeDelta = (report.timestamp - ConnectionStats._lastTimestamp) / 1000;
+                    if (timeDelta > 0) {
+                        bitrate = Math.round((bytesDelta * 8) / timeDelta / 1000); // kbps
+                    }
+                }
+                ConnectionStats._lastBytesSent = report.bytesSent;
+                ConnectionStats._lastTimestamp = report.timestamp;
+            }
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                rtt = report.currentRoundTripTime ? Math.round(report.currentRoundTripTime * 1000) : 0;
+            }
+            if (report.type === 'remote-inbound-rtp') {
+                packetsLost += report.packetsLost || 0;
+            }
+            if (report.type === 'outbound-rtp') {
+                packetsSent += report.packetsSent || 0;
+            }
+        });
+
+        var lossPercent = packetsSent > 0 ? Math.round((packetsLost / packetsSent) * 10000) / 100 : 0;
+
+        if (bitrate > 0 || rtt > 0) {
+            ConnectionStats.samples.push({
+                bitrate: bitrate,
+                rtt: rtt,
+                loss: lossPercent,
+                ts: Date.now()
+            });
+            // Keep only last 120 samples (1 hour at 30s interval)
+            if (ConnectionStats.samples.length > 120) {
+                ConnectionStats.samples.shift();
+            }
+        }
+    }).catch(function() {});
+}
+
+function uploadConnectionStats() {
+    if (ConnectionStats.samples.length === 0) return;
+
+    var samples = ConnectionStats.samples;
+    var avgBitrate = 0, minBitrate = Infinity, maxBitrate = 0, avgRtt = 0, avgLoss = 0;
+    for (var i = 0; i < samples.length; i++) {
+        avgBitrate += samples[i].bitrate;
+        avgRtt += samples[i].rtt;
+        avgLoss += samples[i].loss;
+        if (samples[i].bitrate < minBitrate) minBitrate = samples[i].bitrate;
+        if (samples[i].bitrate > maxBitrate) maxBitrate = samples[i].bitrate;
+    }
+    avgBitrate = Math.round(avgBitrate / samples.length);
+    avgRtt = Math.round(avgRtt / samples.length);
+    avgLoss = Math.round(avgLoss / samples.length * 100) / 100;
+    if (minBitrate === Infinity) minBitrate = 0;
+
+    if (typeof socketWrapper !== 'undefined' && socketWrapper.connected) {
+        socketWrapper.emit('connection-stats', {
+            avg_bitrate: avgBitrate,
+            min_bitrate: minBitrate,
+            max_bitrate: maxBitrate,
+            avg_rtt: avgRtt,
+            packet_loss: avgLoss,
+            quality_changes: ConnectionStats.qualityChanges,
+            reconnections: ConnectionStats.reconnectCount,
+            browser: detectBrowser(),
+            device_type: detectDevice(),
+            connected_at: ConnectionStats.connectedAt,
+        });
+    }
+}
+
+function startConnectionStatsCollection() {
+    ConnectionStats.connectedAt = Date.now();
+    // Collect a sample every 30 seconds
+    ConnectionStats.collectInterval = setInterval(collectConnectionSample, 30000);
+    // Upload aggregated stats every 60 seconds
+    ConnectionStats.uploadInterval = setInterval(uploadConnectionStats, 60000);
+}
+
+function stopConnectionStatsCollection() {
+    if (ConnectionStats.collectInterval) clearInterval(ConnectionStats.collectInterval);
+    if (ConnectionStats.uploadInterval) clearInterval(ConnectionStats.uploadInterval);
+    // Final upload
+    uploadConnectionStats();
+}
+
 // Layout state
 let currentLayout = 'grid'; // 'grid', 'spotlight', or 'sidebar'
 let pinnedVideoId = null;
@@ -256,6 +495,7 @@ var myPeer2;
 
 myPeer.on('open', async function(id) {
     const oldUserId = USER_ID;
+    const isReconnect = ConnectionState.peerConnected === false && oldUserId !== 'undefined';
     USER_ID = id;
     UserIdName[id] = username; // Update with new peer ID
 
@@ -279,6 +519,12 @@ myPeer.on('open', async function(id) {
     ParticipantsInfo[id] = { id: id, username: username, is_moderator: IS_MODERATOR };
     delete ParticipantsInfo[oldUserId];
 
+    ConnectionState.peerConnected = true;
+    if (ConnectionState.wsConnected) {
+        updateConnectionState('connected');
+        startConnectionStatsCollection();
+    }
+
     socketWrapper.emit('join-room', {
         room_id: ROOM_ID,
         user_id: id,
@@ -287,6 +533,18 @@ myPeer.on('open', async function(id) {
     });
     console.log('My peer Id is:', id);
     ActiveUsers[id] = 1;
+
+    // Re-establish peer connections after reconnect
+    if (isReconnect && activePeerConnections.size > 0) {
+        console.log('Re-establishing peer connections after reconnect...');
+        activePeerConnections.forEach(function(peerId) {
+            if (peerId !== id && ActiveUsers[peerId]) {
+                setTimeout(function() {
+                    ConnecttonewUser(peerId, VideoDetails.myVideoStream);
+                }, 500);
+            }
+        });
+    }
 
     myPeer2 = new Peer(USER_ID + 'ScreenShare', iceConfig);
     myPeer2.on('open', async (id) => {
@@ -311,15 +569,24 @@ myPeer.on('open', async function(id) {
 myPeer.on('error', function(err) {
     console.error('PeerJS error:', err.type, err.message);
     if (err.type === 'network' || err.type === 'server-error') {
-        console.warn('PeerJS connection lost, attempting reconnect...');
+        ConnectionState.peerConnected = false;
+        updateConnectionState('reconnecting');
     }
 });
 
 myPeer.on('disconnected', function() {
     console.warn('PeerJS disconnected from signaling server, reconnecting...');
+    ConnectionState.peerConnected = false;
+    if (ConnectionState.wsConnected) {
+        updateConnectionState('reconnecting');
+    }
     if (!myPeer.destroyed) {
         setTimeout(function() {
-            try { myPeer.reconnect(); } catch (e) { console.error('PeerJS reconnect failed:', e); }
+            try {
+                myPeer.reconnect();
+            } catch (e) {
+                console.error('PeerJS reconnect failed:', e);
+            }
         }, 2000);
     }
 });
@@ -376,6 +643,19 @@ let initializeVideoStreamSetup = async () => {
 };
 initializeVideoStreamSetup();
 
+// Meeting timer initialization from server
+socketWrapper.on('meeting-start-time', function(data) {
+    if (data && data.meeting_start_time && !MeetingTimer.startTime) {
+        initMeetingTimer(data.meeting_start_time);
+    }
+});
+
+// Rate limit error handler
+socketWrapper.on('rate-limit-error', function(data) {
+    console.warn('Rate limit exceeded:', data.event_type, data.message);
+    showNotification(data.message || 'Too many requests. Please slow down.', 'warning', 3000);
+});
+
 // Socket Event Handlers
 socketWrapper.on('newuserjoined', async (data) => {
     // Handle both old format (just userId) and new format (object with user_id, username)
@@ -422,6 +702,7 @@ socketWrapper.on('user-disconnected', async (userId) => {
     console.log('User disconnected:', userId);
     delete ActiveUsers[userId];
     delete UserVideoOn[userId];
+    activePeerConnections.delete(userId);
     if (document.getElementById(userId)) {
         document.getElementById(userId).remove();
     }
@@ -572,6 +853,9 @@ const PEER_CALL_STREAM_TIMEOUT = 10000; // 10s to receive stream
 async function ConnecttonewUser(userId, stream, isScreenShare, retryCount) {
     if (!stream) return;
     retryCount = retryCount || 0;
+    if (!isScreenShare && userId !== USER_ID) {
+        activePeerConnections.add(userId);
+    }
 
     if (isScreenShare) {
         let ScreenShareUser = userId + 'ScreenShare';
@@ -1919,6 +2203,9 @@ function endMeeting() {
 }
 
 function cleanupAndLeave() {
+    // Upload final connection stats
+    stopConnectionStatsCollection();
+
     // Stop all media tracks
     if (VideoDetails.myVideoStream) {
         VideoDetails.myVideoStream.getTracks().forEach(track => track.stop());
@@ -2022,13 +2309,24 @@ socketWrapper.on('breakout-broadcast', (data) => {
 });
 
 socketWrapper.on('user-moved-to-breakout', (data) => {
-    // Update UI to show user moved to breakout room
     console.log('User ' + data.user_id + ' moved to breakout ' + data.breakout_id);
+    if (typeof renderBreakoutRooms === 'function') renderBreakoutRooms();
 });
 
 socketWrapper.on('user-returned-from-breakout', (data) => {
-    // Update UI to show user returned to main room
     console.log('User ' + data.user_id + ' returned from breakout');
+    if (typeof breakoutAssignments !== 'undefined') {
+        delete breakoutAssignments[data.user_id];
+    }
+    if (typeof renderBreakoutRooms === 'function') renderBreakoutRooms();
+});
+
+socketWrapper.on('breakout-error', (data) => {
+    if (typeof showToast === 'function') {
+        showToast(data.message || 'Breakout room error', 5000);
+    } else {
+        alert(data.message || 'Breakout room error');
+    }
 });
 
 function showMeetingEndedOverlay() {
@@ -2675,6 +2973,8 @@ function monitorBandwidth() {
 
 function applyQualityTier(tier) {
     if (bandwidthState.currentTier === tier) return;
+    // Track quality tier changes for analytics
+    ConnectionStats.qualityChanges.push({ from: bandwidthState.currentTier, to: tier, ts: Date.now() });
     bandwidthState.currentTier = tier;
     var config = QUALITY_TIERS[tier];
 
@@ -3109,4 +3409,55 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 3000);
         };
     }
+
+    // Mobile overflow menu
+    (function initMobileOverflow() {
+        var moreBtn = document.getElementById('mobileMoreBtn');
+        var panel = document.getElementById('mobileOverflowPanel');
+        var backdrop = document.getElementById('mobileOverflowBackdrop');
+        var content = document.getElementById('mobileOverflowContent');
+        if (!moreBtn || !panel || !content) return;
+
+        // Populate overflow menu from secondary controls
+        var secondaryBtns = document.querySelectorAll('.secondary-controls .control-btn');
+        secondaryBtns.forEach(function(btn) {
+            var item = document.createElement('button');
+            item.className = 'overflow-item';
+            if (btn.classList.contains('active')) item.classList.add('active');
+            var svgClone = btn.querySelector('svg');
+            item.innerHTML = (svgClone ? svgClone.outerHTML : '') +
+                '<span>' + (btn.getAttribute('title') || 'Option') + '</span>';
+            item.onclick = function() {
+                btn.click();
+                panel.classList.remove('visible');
+                if (backdrop) backdrop.classList.remove('visible');
+            };
+            content.appendChild(item);
+        });
+
+        moreBtn.addEventListener('click', function() {
+            panel.classList.toggle('visible');
+            if (backdrop) backdrop.classList.toggle('visible');
+        });
+    })();
+
+    // Tab visibility: check connections when returning from background
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+            setTimeout(function() {
+                if (socket && socket.readyState !== WebSocket.OPEN) {
+                    console.log('WebSocket dead after tab resume, reconnecting...');
+                    connectRoomSocket();
+                }
+                if (myPeer && myPeer.disconnected && !myPeer.destroyed) {
+                    console.log('PeerJS dead after tab resume, reconnecting...');
+                    try { myPeer.reconnect(); } catch(e) {}
+                }
+                // Send a ping to verify
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 1000);
+        }
+    });
 });

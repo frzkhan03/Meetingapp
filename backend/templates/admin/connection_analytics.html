@@ -1,0 +1,375 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Connection Analytics{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+    .analytics-filter {
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .analytics-filter select {
+        padding: 6px 12px;
+        border: 1px solid var(--hairline-color, #ddd);
+        border-radius: 6px;
+        background: var(--body-bg, #fff);
+        color: var(--body-fg, #333);
+    }
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    .metric-card {
+        background: var(--body-bg, #fff);
+        border: 1px solid var(--hairline-color, #ddd);
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+    }
+    .metric-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #7c3aed;
+    }
+    .metric-value.warn { color: #f59e0b; }
+    .metric-value.danger { color: #ef4444; }
+    .metric-value.good { color: #22c55e; }
+    .metric-label {
+        font-size: 0.85rem;
+        color: var(--body-quiet-color, #666);
+        margin-top: 4px;
+    }
+    .chart-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    @media (max-width: 900px) {
+        .chart-row { grid-template-columns: 1fr; }
+    }
+    .chart-container {
+        background: var(--body-bg, #fff);
+        border: 1px solid var(--hairline-color, #ddd);
+        border-radius: 8px;
+        padding: 20px;
+    }
+    .chart-container h3 {
+        margin-top: 0;
+        font-size: 1.1rem;
+        color: var(--body-fg, #333);
+    }
+    .section-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin: 24px 0 12px 0;
+        color: var(--body-fg, #333);
+    }
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--body-bg, #fff);
+        border: 1px solid var(--hairline-color, #ddd);
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+    .data-table th {
+        background: var(--darkened-bg, #f8f8f8);
+        padding: 10px 14px;
+        text-align: left;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--body-quiet-color, #666);
+        border-bottom: 1px solid var(--hairline-color, #ddd);
+    }
+    .data-table td {
+        padding: 10px 14px;
+        font-size: 0.9rem;
+        color: var(--body-fg, #333);
+        border-bottom: 1px solid var(--hairline-color, #eee);
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .badge-good { background: #dcfce7; color: #166534; }
+    .badge-warn { background: #fef3c7; color: #92400e; }
+    .badge-danger { background: #fecaca; color: #991b1b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Connection Analytics <span style="font-size:0.7em;color:var(--body-quiet-color,#888);">(Last 7 Days)</span></h1>
+
+<!-- Org Filter -->
+<div class="analytics-filter">
+    <label><strong>Organization:</strong></label>
+    <select onchange="window.location.href='?org=' + this.value">
+        <option value="">All Organizations</option>
+        {% for org in organizations %}
+        <option value="{{ org.id }}" {% if selected_org == org.id|stringformat:"s" %}selected{% endif %}>{{ org.name }}</option>
+        {% endfor %}
+    </select>
+</div>
+
+<!-- Summary Metrics -->
+<div class="dashboard-grid">
+    <div class="metric-card">
+        <div class="metric-value">{{ summary.total_connections|default:"0" }}</div>
+        <div class="metric-label">Total Connections</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value{% if summary.avg_bitrate and summary.avg_bitrate < 500 %} warn{% endif %}">
+            {{ summary.avg_bitrate|floatformat:0|default:"--" }}
+        </div>
+        <div class="metric-label">Avg Bitrate (kbps)</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value{% if summary.avg_rtt and summary.avg_rtt > 200 %} warn{% endif %}">
+            {{ summary.avg_rtt|floatformat:0|default:"--" }}
+        </div>
+        <div class="metric-label">Avg RTT (ms)</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value{% if summary.avg_packet_loss and summary.avg_packet_loss > 3 %} danger{% elif summary.avg_packet_loss and summary.avg_packet_loss > 1 %} warn{% else %} good{% endif %}">
+            {{ summary.avg_packet_loss|floatformat:2|default:"--" }}%
+        </div>
+        <div class="metric-label">Avg Packet Loss</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value{% if summary.total_reconnections and summary.total_reconnections > 50 %} warn{% endif %}">
+            {{ summary.total_reconnections|default:"0" }}
+        </div>
+        <div class="metric-label">Total Reconnections</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value">
+            {% if summary.avg_duration %}
+                {{ summary.avg_duration|floatformat:0 }}s
+            {% else %}
+                --
+            {% endif %}
+        </div>
+        <div class="metric-label">Avg Duration</div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="chart-row">
+    <div class="chart-container">
+        <h3>Quality Trend (48h)</h3>
+        <canvas id="qualityChart" height="200"></canvas>
+    </div>
+    <div class="chart-container">
+        <h3>Daily Connections</h3>
+        <canvas id="dailyChart" height="200"></canvas>
+    </div>
+</div>
+
+<!-- Problem Rooms -->
+{% if problem_rooms %}
+<div class="section-title">Problem Rooms (Avg Packet Loss > 2%)</div>
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Room ID</th>
+            <th>Connections</th>
+            <th>Avg Packet Loss</th>
+            <th>Avg RTT</th>
+            <th>Avg Bitrate</th>
+            <th>Reconnections</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for room in problem_rooms %}
+        <tr>
+            <td><code>{{ room.room_id }}</code></td>
+            <td>{{ room.connections }}</td>
+            <td>
+                <span class="badge {% if room.avg_loss > 5 %}badge-danger{% elif room.avg_loss > 2 %}badge-warn{% else %}badge-good{% endif %}">
+                    {{ room.avg_loss|floatformat:2 }}%
+                </span>
+            </td>
+            <td>{{ room.avg_rtt|floatformat:0 }} ms</td>
+            <td>{{ room.avg_bitrate|floatformat:0 }} kbps</td>
+            <td>{{ room.total_reconnects }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<!-- Browser & Device Breakdown -->
+<div class="chart-row">
+    <div>
+        <div class="section-title">Browser Breakdown</div>
+        <table class="data-table">
+            <thead>
+                <tr><th>Browser</th><th>Connections</th><th>Avg Bitrate</th><th>Avg Loss</th></tr>
+            </thead>
+            <tbody>
+                {% for b in browser_stats %}
+                <tr>
+                    <td>{{ b.browser|default:"Unknown" }}</td>
+                    <td>{{ b.count }}</td>
+                    <td>{{ b.avg_bitrate|floatformat:0 }} kbps</td>
+                    <td>{{ b.avg_loss|floatformat:2 }}%</td>
+                </tr>
+                {% endfor %}
+                {% if not browser_stats %}
+                <tr><td colspan="4" style="text-align:center;color:#999;">No data</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    <div>
+        <div class="section-title">Device Breakdown</div>
+        <table class="data-table">
+            <thead>
+                <tr><th>Device</th><th>Connections</th><th>Avg Bitrate</th><th>Avg Loss</th></tr>
+            </thead>
+            <tbody>
+                {% for d in device_stats %}
+                <tr>
+                    <td>{{ d.device_type|default:"Unknown" }}</td>
+                    <td>{{ d.count }}</td>
+                    <td>{{ d.avg_bitrate|floatformat:0 }} kbps</td>
+                    <td>{{ d.avg_loss|floatformat:2 }}%</td>
+                </tr>
+                {% endfor %}
+                {% if not device_stats %}
+                <tr><td colspan="4" style="text-align:center;color:#999;">No data</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Recent Connections -->
+<div class="section-title">Recent Connections</div>
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Room</th>
+            <th>User</th>
+            <th>Bitrate</th>
+            <th>RTT</th>
+            <th>Loss</th>
+            <th>Duration</th>
+            <th>Reconnects</th>
+            <th>Browser</th>
+            <th>Device</th>
+            <th>Time</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in recent %}
+        <tr>
+            <td><code>{{ c.room_id }}</code></td>
+            <td>{{ c.user_id|truncatechars:20 }}</td>
+            <td>{{ c.avg_bitrate_kbps|floatformat:0 }}</td>
+            <td>{{ c.avg_rtt_ms|floatformat:0 }} ms</td>
+            <td>
+                <span class="badge {% if c.packet_loss_pct > 5 %}badge-danger{% elif c.packet_loss_pct > 1 %}badge-warn{% else %}badge-good{% endif %}">
+                    {{ c.packet_loss_pct|floatformat:2 }}%
+                </span>
+            </td>
+            <td>{{ c.duration_seconds }}s</td>
+            <td>{{ c.reconnection_count }}</td>
+            <td>{{ c.browser|truncatechars:15 }}</td>
+            <td>{{ c.device_type }}</td>
+            <td>{{ c.created_at|date:"M d H:i" }}</td>
+        </tr>
+        {% endfor %}
+        {% if not recent %}
+        <tr><td colspan="10" style="text-align:center;color:#999;">No connections logged yet</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+
+<!-- Charts JS -->
+<script>
+(function() {
+    var trend = {{ hourly_trend_json|safe }};
+    var daily = {{ daily_counts_json|safe }};
+
+    if (trend.length > 0) {
+        new Chart(document.getElementById('qualityChart'), {
+            type: 'line',
+            data: {
+                labels: trend.map(function(r) { return r.hour; }),
+                datasets: [
+                    {
+                        label: 'Bitrate (kbps)',
+                        data: trend.map(function(r) { return r.bitrate; }),
+                        borderColor: '#7c3aed',
+                        backgroundColor: 'rgba(124, 58, 237, 0.1)',
+                        yAxisID: 'y',
+                        tension: 0.3,
+                    },
+                    {
+                        label: 'RTT (ms)',
+                        data: trend.map(function(r) { return r.rtt; }),
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        yAxisID: 'y',
+                        tension: 0.3,
+                    },
+                    {
+                        label: 'Packet Loss (%)',
+                        data: trend.map(function(r) { return r.loss; }),
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        yAxisID: 'y1',
+                        tension: 0.3,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'kbps / ms' } },
+                    y1: { type: 'linear', position: 'right', beginAtZero: true, max: 10, title: { display: true, text: 'Loss %' }, grid: { drawOnChartArea: false } },
+                    x: { ticks: { maxTicksLimit: 12 } }
+                }
+            }
+        });
+    }
+
+    if (daily.length > 0) {
+        new Chart(document.getElementById('dailyChart'), {
+            type: 'bar',
+            data: {
+                labels: daily.map(function(r) { return r.day; }),
+                datasets: [{
+                    label: 'Connections',
+                    data: daily.map(function(r) { return r.count; }),
+                    backgroundColor: 'rgba(124, 58, 237, 0.6)',
+                    borderColor: '#7c3aed',
+                    borderWidth: 1,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+        });
+    }
+})();
+</script>
+
+{% endblock %}

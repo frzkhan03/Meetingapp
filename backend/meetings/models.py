@@ -301,3 +301,39 @@ class MeetingTranscript(models.Model):
 
     def __str__(self):
         return f"Transcript - {self.room_id} - {self.created_at}"
+
+
+class ConnectionLog(models.Model):
+    """Logs WebRTC connection quality metrics for analytics and debugging."""
+    room_id = models.CharField(max_length=50, db_index=True)
+    user_id = models.CharField(max_length=100, help_text='PeerJS user ID or display name')
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.SET_NULL,
+        related_name='connection_logs',
+        null=True,
+        blank=True,
+    )
+    connected_at = models.DateTimeField()
+    disconnected_at = models.DateTimeField(auto_now_add=True)
+    duration_seconds = models.PositiveIntegerField(default=0)
+    avg_bitrate_kbps = models.FloatField(default=0)
+    min_bitrate_kbps = models.FloatField(default=0)
+    max_bitrate_kbps = models.FloatField(default=0)
+    avg_rtt_ms = models.FloatField(default=0)
+    packet_loss_pct = models.FloatField(default=0)
+    quality_tier_changes = models.JSONField(default=list, blank=True)
+    reconnection_count = models.PositiveIntegerField(default=0)
+    browser = models.CharField(max_length=100, blank=True, default='')
+    device_type = models.CharField(max_length=20, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['room_id', '-created_at']),
+            models.Index(fields=['organization', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Connection - {self.user_id} in {self.room_id}"

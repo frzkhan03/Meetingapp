@@ -209,6 +209,9 @@ class RoomConsumer(AsyncWebsocketConsumer):
             pass
 
         if hasattr(self, 'user_id') and self.user_id:
+            # Save connection analytics log
+            await self._save_connection_log()
+
             # Notify others of disconnect
             await self.channel_layer.group_send(
                 self.room_group_name,
@@ -223,6 +226,43 @@ class RoomConsumer(AsyncWebsocketConsumer):
             self.room_group_name,
             self.channel_name
         )
+
+    # WebSocket message rate limits: {event_type: (max_requests, window_seconds)}
+    WS_RATE_LIMITS = {
+        'new-chat': (30, 60),
+        'caption': (60, 60),
+        'quality-tier': (10, 60),
+        'create-breakout': (5, 60),
+        'close-breakouts': (5, 60),
+        'assign-to-breakout': (20, 60),
+        'broadcast-to-breakouts': (10, 60),
+        'kick-user': (10, 60),
+        'mute-all': (5, 60),
+        'alert': (20, 60),
+        'connection-stats': (5, 60),
+    }
+    WS_RATE_LIMIT_DEFAULT = (120, 60)
+
+    async def _check_ws_rate_limit(self, event_type):
+        """Check per-event WebSocket rate limit using Redis INCR. Returns True if limited."""
+        try:
+            from django.core.cache import cache
+            max_reqs, window = self.WS_RATE_LIMITS.get(event_type, self.WS_RATE_LIMIT_DEFAULT)
+            user_key = self.user_id or 'anon'
+            rate_key = f'ws:msg:{user_key}:{event_type}'
+            try:
+                count = cache.incr(rate_key)
+            except ValueError:
+                cache.set(rate_key, 1, window)
+                return False
+            if count == 1:
+                cache.expire(rate_key, window)
+            if count > max_reqs:
+                logger.warning(f'WS rate limit: {user_key} exceeded {max_reqs}/{window}s on {event_type}')
+                return True
+            return False
+        except Exception:
+            return False  # Fail open
 
     async def receive(self, text_data):
         # Validate message size
@@ -239,6 +279,16 @@ class RoomConsumer(AsyncWebsocketConsumer):
             if event_type == 'ping':
                 await self.send(text_data=json.dumps({'type': 'pong'}))
                 return
+
+            # Rate limit check (skip join-room, ping, share-info, request-info)
+            if event_type not in ('join-room', 'share-info', 'request-info', 'video-off', 'on-the-video', 'screen-share-off'):
+                if await self._check_ws_rate_limit(event_type):
+                    await self.send(text_data=json.dumps({
+                        'type': 'rate-limit-error',
+                        'message': f'Too many {event_type} requests. Please slow down.',
+                        'event_type': event_type,
+                    }))
+                    return
 
             if event_type == 'join-room':
                 await self.handle_join_room(payload)
@@ -288,11 +338,26 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 await self.handle_quality_tier(payload)
             elif event_type == 'caption':
                 await self.handle_caption(payload)
+            # Connection analytics
+            elif event_type == 'connection-stats':
+                await self.handle_connection_stats(payload)
 
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON received from {self.user_id}")
         except Exception as e:
             logger.exception(f"Error handling message from {self.user_id}: {e}")
+
+    @database_sync_to_async
+    def _get_organization_id(self):
+        """Look up the organization ID for this room (for analytics)."""
+        from meetings.models import Meeting, PersonalRoom
+        try:
+            return Meeting.objects.get(room_id=self.room_id).organization_id
+        except Meeting.DoesNotExist:
+            try:
+                return PersonalRoom.objects.get(room_id=self.room_id).organization_id
+            except PersonalRoom.DoesNotExist:
+                return None
 
     # Event Handlers
     async def handle_join_room(self, payload):
@@ -300,6 +365,30 @@ class RoomConsumer(AsyncWebsocketConsumer):
         username = payload.get('username', '')
         is_moderator = payload.get('is_moderator', False)
         self.user_id = user_id
+
+        # Cache organization ID for analytics
+        try:
+            self._organization_id = await self._get_organization_id()
+        except Exception:
+            self._organization_id = None
+
+        # Get or set meeting start time
+        try:
+            from django.core.cache import cache
+            start_key = f'ws:room:start:{self.room_id}'
+            meeting_start = cache.get(start_key)
+            if not meeting_start:
+                meeting_start = time.time()
+                cache.set(start_key, meeting_start, 86400)  # 24h TTL
+            meeting_start_ms = int(meeting_start * 1000)
+        except Exception:
+            meeting_start_ms = int(time.time() * 1000)
+
+        # Send meeting start time directly to joining user
+        await self.send(text_data=json.dumps({
+            'type': 'meeting-start-time',
+            'meeting_start_time': meeting_start_ms,
+        }))
 
         # Notify others that new user joined (include username)
         await self.channel_layer.group_send(
@@ -1260,3 +1349,81 @@ class UserConsumer(AsyncWebsocketConsumer):
             'breakout_name': event['breakout_name'],
             'main_room_id': event['main_room_id']
         }))
+
+    # ---- Connection Analytics ----
+
+    async def handle_connection_stats(self, payload):
+        """Store latest connection stats in Redis for aggregation on disconnect."""
+        try:
+            stats_data = {
+                'avg_bitrate': payload.get('avg_bitrate', 0),
+                'min_bitrate': payload.get('min_bitrate', 0),
+                'max_bitrate': payload.get('max_bitrate', 0),
+                'avg_rtt': payload.get('avg_rtt', 0),
+                'packet_loss': payload.get('packet_loss', 0),
+                'quality_changes': payload.get('quality_changes', []),
+                'reconnections': payload.get('reconnections', 0),
+                'browser': payload.get('browser', ''),
+                'device_type': payload.get('device_type', ''),
+                'connected_at': payload.get('connected_at', 0),
+            }
+            stats_key = f'ws:stats:{self.room_id}:{self.user_id}'
+            serialized = json.dumps(stats_data)
+            await database_sync_to_async(self._cache_set)(stats_key, serialized, 7200)
+        except Exception as e:
+            logger.warning(f"Failed to store connection stats: {e}")
+
+    @staticmethod
+    def _cache_set(key, value, timeout):
+        from django.core.cache import cache
+        cache.set(key, value, timeout)
+
+    async def _save_connection_log(self):
+        """Flush Redis stats to ConnectionLog model on disconnect."""
+        try:
+            await database_sync_to_async(self._save_connection_log_sync)()
+        except Exception as e:
+            logger.warning(f"Failed to save connection log: {e}")
+
+    def _save_connection_log_sync(self):
+        """Synchronous helper to flush Redis stats to ConnectionLog."""
+        from django.core.cache import cache
+        from django.utils import timezone
+        from datetime import datetime
+
+        stats_key = f'ws:stats:{self.room_id}:{self.user_id}'
+        raw = cache.get(stats_key)
+        if not raw:
+            return
+        stats = json.loads(raw) if isinstance(raw, str) else raw
+
+        connected_ts = stats.get('connected_at', 0)
+        if connected_ts:
+            connected_at = datetime.fromtimestamp(connected_ts / 1000, tz=timezone.utc)
+        else:
+            connected_at = timezone.now()
+
+        now = timezone.now()
+        duration = int((now - connected_at).total_seconds())
+
+        org_id = getattr(self, '_organization_id', None)
+
+        from .models import ConnectionLog
+        ConnectionLog.objects.create(
+            room_id=self.room_id,
+            user_id=self.user_id or 'unknown',
+            organization_id=org_id,
+            connected_at=connected_at,
+            disconnected_at=now,
+            duration_seconds=max(duration, 0),
+            avg_bitrate_kbps=stats.get('avg_bitrate', 0),
+            min_bitrate_kbps=stats.get('min_bitrate', 0),
+            max_bitrate_kbps=stats.get('max_bitrate', 0),
+            avg_rtt_ms=stats.get('avg_rtt', 0),
+            packet_loss_pct=stats.get('packet_loss', 0),
+            quality_tier_changes=stats.get('quality_changes', []),
+            reconnection_count=stats.get('reconnections', 0),
+            browser=stats.get('browser', '')[:100],
+            device_type=stats.get('device_type', '')[:20],
+        )
+        cache.delete(stats_key)
