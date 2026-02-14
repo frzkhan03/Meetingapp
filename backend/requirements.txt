@@ -21,3 +21,6 @@ reportlab>=4.0  # PDF invoice generation
 argon2-cffi>=21.0  # Argon2 password hashing (most secure)
 cryptography>=41.0  # Encryption library for data at rest
 bleach>=6.0  # HTML sanitization
+
+# Admin UI
+django-unfold>=0.40  # Modern Tailwind-based admin theme

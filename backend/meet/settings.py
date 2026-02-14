@@ -90,6 +90,8 @@ CSP_CHILD_SRC = ("'self'", "blob:")
 # Application definition
 INSTALLED_APPS = [
     'daphne',
+    'unfold',
+    'unfold.contrib.filters',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -420,3 +422,138 @@ WEBSOCKET_ALLOWED_ORIGINS = os.getenv(
     'WEBSOCKET_ALLOWED_ORIGINS',
     'http://localhost:8000,http://127.0.0.1:8000,ws://localhost:8000,ws://127.0.0.1:8000'
 ).split(',')
+
+# ==================== ADMIN (Unfold) ====================
+from django.urls import reverse_lazy  # noqa: E402
+
+UNFOLD = {
+    "SITE_TITLE": "PyTalk Admin",
+    "SITE_HEADER": "PyTalk",
+    "SITE_URL": "/",
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": True,
+    "COLORS": {
+        "primary": {
+            "50": "#f5f3ff",
+            "100": "#ede9fe",
+            "200": "#ddd6fe",
+            "300": "#c4b5fd",
+            "400": "#a78bfa",
+            "500": "#8b5cf6",
+            "600": "#7c3aed",
+            "700": "#6d28d9",
+            "800": "#5b21b6",
+            "900": "#4c1d95",
+            "950": "#2e1065",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": True,
+        "navigation": [
+            {
+                "title": "Dashboard",
+                "items": [
+                    {
+                        "title": "Billing Dashboard",
+                        "icon": "monitoring",
+                        "link": reverse_lazy("admin:billing_dashboard"),
+                    },
+                ],
+            },
+            {
+                "title": "Users & Organizations",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Organizations",
+                        "icon": "corporate_fare",
+                        "link": reverse_lazy("admin:users_organization_changelist"),
+                    },
+                    {
+                        "title": "Memberships",
+                        "icon": "group",
+                        "link": reverse_lazy("admin:users_organizationmembership_changelist"),
+                    },
+                    {
+                        "title": "Profiles",
+                        "icon": "person",
+                        "link": reverse_lazy("admin:users_profile_changelist"),
+                    },
+                    {
+                        "title": "Users",
+                        "icon": "manage_accounts",
+                        "link": reverse_lazy("admin:auth_user_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "Meetings",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Scheduled Meetings",
+                        "icon": "videocam",
+                        "link": reverse_lazy("admin:meetings_meeting_changelist"),
+                    },
+                    {
+                        "title": "Personal Rooms",
+                        "icon": "meeting_room",
+                        "link": reverse_lazy("admin:meetings_personalroom_changelist"),
+                    },
+                    {
+                        "title": "Breakout Rooms",
+                        "icon": "call_split",
+                        "link": reverse_lazy("admin:meetings_breakoutroom_changelist"),
+                    },
+                    {
+                        "title": "Recordings",
+                        "icon": "fiber_manual_record",
+                        "link": reverse_lazy("admin:meetings_meetingrecording_changelist"),
+                    },
+                    {
+                        "title": "Meeting Packets",
+                        "icon": "assignment",
+                        "link": reverse_lazy("admin:meetings_usermeetingpacket_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": "Billing & Subscriptions",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Plans",
+                        "icon": "sell",
+                        "link": reverse_lazy("admin:billing_plan_changelist"),
+                    },
+                    {
+                        "title": "Subscriptions",
+                        "icon": "credit_card",
+                        "link": reverse_lazy("admin:billing_subscription_changelist"),
+                    },
+                    {
+                        "title": "Payments",
+                        "icon": "payments",
+                        "link": reverse_lazy("admin:billing_payment_changelist"),
+                    },
+                    {
+                        "title": "Invoices",
+                        "icon": "receipt_long",
+                        "link": reverse_lazy("admin:billing_invoice_changelist"),
+                    },
+                    {
+                        "title": "Usage Records",
+                        "icon": "bar_chart",
+                        "link": reverse_lazy("admin:billing_usagerecord_changelist"),
+                    },
+                    {
+                        "title": "Billing Info",
+                        "icon": "business",
+                        "link": reverse_lazy("admin:billing_billinginfo_changelist"),
+                    },
+                ],
+            },
+        ],
+    },
+}

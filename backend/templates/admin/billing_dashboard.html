@@ -14,8 +14,8 @@
         margin-bottom: 24px;
     }
     .metric-card {
-        background: #fff;
-        border: 1px solid #ddd;
+        background: var(--body-bg, #fff);
+        border: 1px solid var(--hairline-color, #ddd);
         border-radius: 8px;
         padding: 20px;
         text-align: center;
@@ -23,16 +23,16 @@
     .metric-value {
         font-size: 2rem;
         font-weight: 700;
-        color: #417690;
+        color: #7c3aed;
     }
     .metric-label {
         font-size: 0.85rem;
-        color: #666;
+        color: var(--body-quiet-color, #666);
         margin-top: 4px;
     }
     .chart-container {
-        background: #fff;
-        border: 1px solid #ddd;
+        background: var(--body-bg, #fff);
+        border: 1px solid var(--hairline-color, #ddd);
         border-radius: 8px;
         padding: 20px;
         margin-bottom: 24px;
@@ -40,17 +40,17 @@
     .chart-container h3 {
         margin-top: 0;
         font-size: 1.1rem;
-        color: #333;
+        color: var(--body-fg, #333);
     }
     .section-title {
         font-size: 1.2rem;
         font-weight: 600;
         margin: 24px 0 12px 0;
-        color: #333;
+        color: var(--body-fg, #333);
     }
     .plan-breakdown {
-        background: #fff;
-        border: 1px solid #ddd;
+        background: var(--body-bg, #fff);
+        border: 1px solid var(--hairline-color, #ddd);
         border-radius: 8px;
         padding: 20px;
         margin-bottom: 24px;
@@ -59,7 +59,8 @@
         display: flex;
         justify-content: space-between;
         padding: 8px 0;
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px solid var(--hairline-color, #eee);
+        color: var(--body-fg, #333);
     }
     .plan-row:last-child { border-bottom: none; }
 </style>
@@ -174,8 +175,8 @@
             datasets: [{
                 label: 'Revenue ($)',
                 data: values,
-                borderColor: '#417690',
-                backgroundColor: 'rgba(65, 118, 144, 0.1)',
+                borderColor: '#7c3aed',
+                backgroundColor: 'rgba(124, 58, 237, 0.1)',
                 fill: true,
                 tension: 0.3,
             }]
