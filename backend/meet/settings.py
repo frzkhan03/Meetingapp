@@ -77,10 +77,10 @@ SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
 # Content Security Policy
 CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'wasm-unsafe-eval'", "blob:", "https://unpkg.com", "https://cdn.jsdelivr.net")
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'", "blob:", "https://unpkg.com", "https://cdn.jsdelivr.net")
 CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://fonts.googleapis.com")
-CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net")
-CSP_IMG_SRC = ("'self'", "data:", "blob:", "https://*.s3.*.amazonaws.com")
+CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net")
+CSP_IMG_SRC = ("'self'", "data:", "blob:", "https://*.s3.amazonaws.com", "https://*.s3.ap-south-1.amazonaws.com")
 CSP_CONNECT_SRC = ("'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://*.peerjs.com", "https://0.peerjs.com", "https://storage.googleapis.com")
 CSP_MEDIA_SRC = ("'self'", "blob:")
 CSP_FRAME_ANCESTORS = ("'none'",)
