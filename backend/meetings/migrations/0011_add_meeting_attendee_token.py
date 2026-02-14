@@ -19,16 +19,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameIndex(
-            model_name="breakoutroom",
-            new_name="meetings_br_parent__caabfb_idx",
-            old_name="meetings_br_parent__8f3a9c_idx",
-        ),
-        migrations.RenameIndex(
-            model_name="breakoutroom",
-            new_name="meetings_br_parent__e65c1d_idx",
-            old_name="meetings_br_parent__2c7e4d_idx",
-        ),
         migrations.AddField(
             model_name="meeting",
             name="attendee_token",
