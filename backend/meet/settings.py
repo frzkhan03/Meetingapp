@@ -407,6 +407,14 @@ PAYU_CURRENCY = os.getenv('PAYU_CURRENCY', 'PLN')  # Must match POS currency con
 PAYU_ENABLED = bool(PAYU_POS_ID)
 SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000')
 
+# ==================== TURN SERVER (WebRTC Relay) ====================
+# Required for peer-to-peer video calls to work across the open internet.
+# Without TURN, connections fail when peers are behind symmetric NAT/firewalls.
+# Get free credentials at https://www.metered.ca/stun-turn or use your own TURN server.
+TURN_SERVER_URL = os.getenv('TURN_SERVER_URL', '')
+TURN_SERVER_USERNAME = os.getenv('TURN_SERVER_USERNAME', '')
+TURN_SERVER_CREDENTIAL = os.getenv('TURN_SERVER_CREDENTIAL', '')
+
 # ==================== WEBSOCKET SECURITY ====================
 WEBSOCKET_ALLOWED_ORIGINS = os.getenv(
     'WEBSOCKET_ALLOWED_ORIGINS',

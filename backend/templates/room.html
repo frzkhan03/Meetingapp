@@ -419,6 +419,9 @@
         var PLAN_TIER = "{{ plan_tier|default:'free' }}";
         var BREAKOUT_ROOMS_ALLOWED = {% if breakout_rooms_allowed %}true{% else %}false{% endif %};
         var CSRF_TOKEN = "{{ csrf_token }}";
+        var TURN_SERVER_URL = "{{ turn_server_url|default:'' }}";
+        var TURN_SERVER_USERNAME = "{{ turn_server_username|default:'' }}";
+        var TURN_SERVER_CREDENTIAL = "{{ turn_server_credential|default:'' }}";
 
         // Breakout rooms state
         var breakoutRooms = [];

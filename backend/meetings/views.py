@@ -130,6 +130,9 @@ def _get_plan_context(request):
         'can_use_waiting_room': plan_limits.can_use_waiting_room() if plan_limits else False,
         'breakout_rooms_allowed': plan_limits.can_use_breakout_rooms() if plan_limits else False,
         'plan_tier': getattr(request, 'plan_tier', 'free'),
+        'turn_server_url': settings.TURN_SERVER_URL,
+        'turn_server_username': settings.TURN_SERVER_USERNAME,
+        'turn_server_credential': settings.TURN_SERVER_CREDENTIAL,
     }
 
 
@@ -219,13 +222,15 @@ def pending_room_view(request):
 
     # Get the token for redirecting back after approval
     pending_token = request.session.get('pending_token', '')
+    pending_is_scheduled = request.session.get('pending_is_scheduled', False)
 
     return render(request, 'pending.html', {
         'room_id': room_id,
         'author_id': author_id,
         'user_id': user_id,
         'username': username,
-        'pending_token': pending_token
+        'pending_token': pending_token,
+        'is_scheduled_meeting': pending_is_scheduled,
     })
 
 
@@ -415,6 +420,108 @@ def join_personal_room_view(request, room_id):
     })
 
 
+def join_meeting_guest_view(request, room_id):
+    """Allow anyone (including unregistered users) to join a scheduled meeting via token link"""
+    import uuid
+
+    token = request.GET.get('token', '') or request.POST.get('token', '')
+
+    if not token:
+        messages.error(request, 'Invalid meeting link. Token is required.')
+        return redirect('home')
+
+    meeting = get_object_or_404(Meeting.objects.select_related('organization', 'author'), room_id=room_id)
+
+    # Validate token
+    if token != meeting.attendee_token:
+        messages.error(request, 'Invalid meeting link. Please check your link and try again.')
+        return redirect('home')
+
+    # For unauthenticated users (guests), show pre-join screen to enter name
+    if request.method == 'GET':
+        name_key = f'display_name_meeting_{room_id}'
+        if name_key not in request.session:
+            suggested_name = ''
+            if request.user.is_authenticated:
+                suggested_name = request.user.username
+
+            return render(request, 'prejoin.html', {
+                'room_id': room_id,
+                'token': token,
+                'room_name': meeting.name,
+                'room_owner': meeting.author_name,
+                'is_locked': meeting.require_approval,
+                'suggested_name': suggested_name,
+                'is_scheduled_meeting': True,
+            })
+
+    # Process pre-join form submission
+    if request.method == 'POST':
+        display_name = request.POST.get('display_name', '').strip()
+        if display_name:
+            name_key = f'display_name_meeting_{room_id}'
+            request.session[name_key] = display_name
+
+    # Get user ID and username
+    if request.user.is_authenticated:
+        user_id = str(request.user.id)
+        name_key = f'display_name_meeting_{room_id}'
+        username = request.session.get(name_key, request.user.username)
+    else:
+        session_key = f'guest_id_meeting_{room_id}'
+        name_key = f'display_name_meeting_{room_id}'
+
+        if session_key in request.session:
+            user_id = request.session[session_key]
+        else:
+            user_id = f"guest_{uuid.uuid4().hex[:8]}"
+            request.session[session_key] = user_id
+
+        username = request.session.get(name_key, f"Guest_{user_id[-4:]}")
+
+    # Check if meeting requires approval
+    if meeting.require_approval:
+        # Check if user has been approved
+        is_approved = False
+
+        approved_key = f'approved_for_{room_id}'
+        is_approved = request.session.get(approved_key, False)
+
+        if not is_approved and request.user.is_authenticated:
+            packet = UserMeetingPacket.objects.filter(
+                room_id=room_id,
+                user__id=request.user.id
+            ).first()
+            is_approved = packet is not None
+
+        # Meeting author is always approved
+        if request.user.is_authenticated and meeting.author == request.user:
+            is_approved = True
+
+        if not is_approved:
+            request.session['pending_room_id'] = str(room_id)
+            request.session['pending_author_id'] = meeting.author.id
+            request.session['pending_user_id'] = user_id
+            request.session['pending_username'] = username
+            request.session['pending_token'] = token
+            request.session['pending_is_scheduled'] = True
+            return redirect('pending_room')
+
+    is_moderator = request.user.is_authenticated and meeting.author == request.user
+    org = meeting.organization
+
+    return render(request, 'room.html', {
+        'room_id': str(room_id),
+        'user_id': user_id,
+        'username': username,
+        'organization': org,
+        'is_moderator': is_moderator,
+        'author_id': str(meeting.author.id),
+        'recording_to_s3': org.recording_to_s3 if org else False,
+        **_get_plan_context(request),
+    })
+
+
 @login_required
 @require_organization
 def all_rooms_view(request):
@@ -494,9 +601,13 @@ def send_join_alert_view(request, room_id):
         from channels.layers import get_channel_layer
         from asgiref.sync import async_to_sync
 
-        personal_room = get_object_or_404(PersonalRoom, room_id=room_id)
+        # Verify room exists (could be PersonalRoom or Meeting)
+        room_exists = PersonalRoom.objects.filter(room_id=room_id).exists() or \
+                      Meeting.objects.filter(room_id=room_id).exists()
+        if not room_exists:
+            return JsonResponse({'error': 'Room not found'}, status=404)
 
-        # Get user info from session (set by join_personal_room_view)
+        # Get user info from session (set by join view)
         author_id = request.session.get('pending_author_id', '')
         user_id = request.session.get('pending_user_id', '')
         alert_username = request.session.get('pending_username', 'Guest')
@@ -541,8 +652,11 @@ def send_join_alert_view(request, room_id):
 def mark_guest_approved_view(request, room_id):
     """Mark a guest as approved for a room (stores in session)"""
     try:
-        # Verify the room exists
-        personal_room = get_object_or_404(PersonalRoom, room_id=room_id)
+        # Verify the room exists (could be PersonalRoom or Meeting)
+        room_exists = PersonalRoom.objects.filter(room_id=room_id).exists() or \
+                      Meeting.objects.filter(room_id=room_id).exists()
+        if not room_exists:
+            return JsonResponse({'error': 'Room not found'}, status=404)
 
         # Verify approval token from the pending session
         # This ensures only users who went through the approval flow can be marked approved
@@ -555,7 +669,7 @@ def mark_guest_approved_view(request, room_id):
         request.session[approved_key] = True
 
         # Clean up pending session data
-        for key in ['pending_room_id', 'pending_author_id', 'pending_user_id', 'pending_username', 'pending_token']:
+        for key in ['pending_room_id', 'pending_author_id', 'pending_user_id', 'pending_username', 'pending_token', 'pending_is_scheduled']:
             request.session.pop(key, None)
 
         return JsonResponse({'success': True})

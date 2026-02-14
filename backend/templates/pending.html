@@ -33,6 +33,7 @@
     const userId = "{{ user_id }}";
     const username = "{{ username }}";
     const pendingToken = "{{ pending_token|default:'' }}";
+    const isScheduledMeeting = {% if is_scheduled_meeting %}true{% else %}false{% endif %};
     let responseHandled = false;
 
     function getCookie(name) {
@@ -77,6 +78,8 @@
         // Prevent duplicate handling
         if (responseHandled) return;
         responseHandled = true;
+        clearInterval(alertInterval);
+        clearInterval(pollInterval);
 
         if (approved) {
             document.getElementById('status-message').innerHTML =
@@ -103,7 +106,9 @@
             }
 
             setTimeout(() => {
-                if (pendingToken) {
+                if (pendingToken && isScheduledMeeting) {
+                    window.location.href = '/meeting/join/' + roomId + '/?token=' + pendingToken;
+                } else if (pendingToken) {
                     window.location.href = '/meeting/room/' + roomId + '/join/?token=' + pendingToken;
                 } else {
                     window.location.href = '/meeting/startmeeting/' + roomId + '/';
@@ -115,39 +120,143 @@
         }
     }
 
-    // User WebSocket for receiving approval response
+    // ========== WebSocket with heartbeat and reconnection ==========
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const userSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/user/`);
+    const WS_HEARTBEAT_INTERVAL = 25000;
+    const WS_HEARTBEAT_TIMEOUT = 10000;
+    const WS_MAX_RECONNECT = 15;
+    let userSocket = null;
+    let pingTimer = null;
+    let pongTimer = null;
+    let reconnectAttempts = 0;
+    let reconnectTimer = null;
+    let wsRegistered = false;
 
-    userSocket.onopen = function() {
-        console.log('UserSocket connected');
-        // Register guest ID if it's a guest user
-        if (userId.startsWith('guest_')) {
-            userSocket.send(JSON.stringify({
-                type: 'register',
-                user_id: userId
-            }));
+    function connectUserSocket() {
+        if (responseHandled) return;
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+
+        userSocket = new WebSocket(wsProtocol + '//' + window.location.host + '/ws/user/');
+
+        userSocket.onopen = function() {
+            console.log('UserSocket connected');
+            reconnectAttempts = 0;
+            wsRegistered = false;
+
+            // Start heartbeat
+            startHeartbeat();
+
+            // Register guest ID if it's a guest user
+            if (userId.startsWith('guest_')) {
+                userSocket.send(JSON.stringify({
+                    type: 'register',
+                    user_id: userId
+                }));
+            } else {
+                wsRegistered = true;
+            }
+
+            // Send join alert via HTTP after userSocket is ready
+            sendJoinAlert();
+        };
+
+        userSocket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+
+            // Handle heartbeat pong
+            if (data.type === 'pong') {
+                if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
+                return;
+            }
+
+            console.log('UserSocket received:', data);
+
+            if (data.type === 'registered') {
+                wsRegistered = true;
+                console.log('Successfully registered for notifications as:', data.user_id);
+            }
+
+            if (data.type === 'alert-response') {
+                handleApprovalResponse(data.approved);
+            }
+        };
+
+        userSocket.onerror = function(e) {
+            console.error('WebSocket error:', e);
+        };
+
+        userSocket.onclose = function(e) {
+            console.log('UserSocket closed:', e.code);
+            stopHeartbeat();
+
+            if (!responseHandled && reconnectAttempts < WS_MAX_RECONNECT) {
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000);
+                const jitter = Math.random() * delay * 0.3;
+                console.log('Reconnecting in ' + Math.round(delay + jitter) + 'ms...');
+                reconnectTimer = setTimeout(function() {
+                    reconnectAttempts++;
+                    connectUserSocket();
+                }, delay + jitter);
+            }
+        };
+    }
+
+    function startHeartbeat() {
+        stopHeartbeat();
+        pingTimer = setInterval(function() {
+            if (userSocket && userSocket.readyState === WebSocket.OPEN) {
+                userSocket.send(JSON.stringify({ type: 'ping' }));
+                pongTimer = setTimeout(function() {
+                    console.warn('No pong received, closing for reconnect');
+                    userSocket.close(4000, 'Heartbeat timeout');
+                }, WS_HEARTBEAT_TIMEOUT);
+            }
+        }, WS_HEARTBEAT_INTERVAL);
+    }
+
+    function stopHeartbeat() {
+        if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+        if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
+    }
+
+    connectUserSocket();
+
+    // ========== HTTP polling fallback ==========
+    // Polls the approval status via HTTP in case WebSocket drops and response is missed.
+    // This checks if the session has been marked as approved by the moderator.
+    async function pollApprovalStatus() {
+        if (responseHandled) return;
+        try {
+            // Try to access the room join URL - if we're approved, it will return 200
+            // If not approved, it will redirect to pending (302)
+            let checkUrl;
+            if (pendingToken && isScheduledMeeting) {
+                checkUrl = '/meeting/join/' + roomId + '/?token=' + pendingToken;
+            } else if (pendingToken) {
+                checkUrl = '/meeting/room/' + roomId + '/join/?token=' + pendingToken;
+            } else {
+                checkUrl = '/meeting/startmeeting/' + roomId + '/';
+            }
+            const resp = await fetch(checkUrl, {
+                method: 'GET',
+                redirect: 'manual',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            // If we get 200, the session-based approval or packet exists
+            // opaqueredirect means redirect (still pending)
+            if (resp.type === 'opaqueredirect' || resp.status === 302) {
+                // Still pending
+                return;
+            }
+            if (resp.ok) {
+                // We've been approved! Handle it.
+                console.log('Polling detected approval');
+                handleApprovalResponse(true);
+            }
+        } catch (err) {
+            // Polling errors are non-fatal, just retry next interval
         }
-        // Send join alert via HTTP after userSocket is ready
-        sendJoinAlert();
-    };
-
-    userSocket.onmessage = function(e) {
-        const data = JSON.parse(e.data);
-        console.log('UserSocket received:', data);
-
-        if (data.type === 'registered') {
-            console.log('Successfully registered for notifications as:', data.user_id);
-        }
-
-        if (data.type === 'alert-response') {
-            handleApprovalResponse(data.approved);
-        }
-    };
-
-    userSocket.onerror = function(e) {
-        console.error('WebSocket error:', e);
-    };
+    }
 
     // Resend alert periodically in case moderator joined after initial alert
     let alertInterval = setInterval(() => {
@@ -157,5 +266,14 @@
             clearInterval(alertInterval);
         }
     }, 15000);
+
+    // Poll for approval every 5 seconds as HTTP fallback
+    let pollInterval = setInterval(() => {
+        if (!responseHandled) {
+            pollApprovalStatus();
+        } else {
+            clearInterval(pollInterval);
+        }
+    }, 5000);
 </script>
 {% endblock %}

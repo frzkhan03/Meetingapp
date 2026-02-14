@@ -10,6 +10,7 @@ urlpatterns = [
     path('meetings/', views.meetings_list_view, name='meetings_list'),
     re_path(rf'^meetingdetails/(?P<room_id>{MEETING_CODE_PATTERN})/$', views.meeting_details_view, name='meeting_details'),
     re_path(rf'^startmeeting/(?P<room_id>{MEETING_CODE_PATTERN})/$', views.start_meeting_view, name='start_meeting'),
+    re_path(rf'^join/(?P<room_id>{MEETING_CODE_PATTERN})/$', views.join_meeting_guest_view, name='join_meeting_guest'),
     path('pendingroom/', views.pending_room_view, name='pending_room'),
     path('organization-meetings/', views.organization_meetings_view, name='organization_meetings'),
 

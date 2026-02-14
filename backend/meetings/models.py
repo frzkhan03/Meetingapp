@@ -84,6 +84,7 @@ class Meeting(models.Model):
 
     name = models.CharField(max_length=255)
     room_id = models.CharField(max_length=20, unique=True, editable=False)
+    attendee_token = models.CharField(max_length=64, unique=True, editable=False, null=True, blank=True)
     organization = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
@@ -127,7 +128,12 @@ class Meeting(models.Model):
     def save(self, *args, **kwargs):
         if not self.room_id:
             self.room_id = get_unique_meeting_code()
+        if not self.attendee_token:
+            self.attendee_token = secrets.token_urlsafe(32)
         super().save(*args, **kwargs)
+
+    def get_guest_join_link(self):
+        return f"/meeting/join/{self.room_id}/?token={self.attendee_token}"
 
     def __str__(self):
         org_name = self.organization.name if self.organization else 'No Org'

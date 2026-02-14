@@ -204,16 +204,37 @@ let pinnedVideoId = null;
 let layoutBeforeScreenShare = null; // saved layout to restore when screen share ends
 
 // PeerJS Setup with ICE servers for production
+// TURN servers are required for connections across the open internet
+// when peers are behind symmetric NAT or firewalls.
+const iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun.relay.metered.ca:80' },
+];
+
+// Add TURN servers if configured (critical for production)
+if (typeof TURN_SERVER_URL !== 'undefined' && TURN_SERVER_URL) {
+    iceServers.push({
+        urls: TURN_SERVER_URL,
+        username: TURN_SERVER_USERNAME || '',
+        credential: TURN_SERVER_CREDENTIAL || ''
+    });
+    // Also add TURNS (TLS) variant if it's a turn: URL
+    if (TURN_SERVER_URL.startsWith('turn:')) {
+        iceServers.push({
+            urls: TURN_SERVER_URL.replace('turn:', 'turns:'),
+            username: TURN_SERVER_USERNAME || '',
+            credential: TURN_SERVER_CREDENTIAL || ''
+        });
+    }
+    console.log('TURN server configured for reliable connectivity');
+} else {
+    console.warn('No TURN server configured - connections may fail behind strict NAT/firewalls');
+}
+
 const iceConfig = {
     config: {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-            { urls: 'stun:stun.relay.metered.ca:80' },
-        ]
+        iceServers: iceServers
     }
 };
 const myPeer = new Peer(undefined, iceConfig);
@@ -270,6 +291,23 @@ myPeer.on('open', async function(id) {
             }
         });
     });
+});
+
+// PeerJS error and disconnection handling
+myPeer.on('error', function(err) {
+    console.error('PeerJS error:', err.type, err.message);
+    if (err.type === 'network' || err.type === 'server-error') {
+        console.warn('PeerJS connection lost, attempting reconnect...');
+    }
+});
+
+myPeer.on('disconnected', function() {
+    console.warn('PeerJS disconnected from signaling server, reconnecting...');
+    if (!myPeer.destroyed) {
+        setTimeout(function() {
+            try { myPeer.reconnect(); } catch (e) { console.error('PeerJS reconnect failed:', e); }
+        }, 2000);
+    }
 });
 
 // Button and Video State
@@ -494,7 +532,15 @@ myPeer.on('call', async function(call) {
     if (!mediaReady) {
         await mediaReadyPromise;
     }
-    await call.answer(VideoDetails.myVideoStream);
+    try {
+        await call.answer(VideoDetails.myVideoStream);
+    } catch (err) {
+        console.error('Error answering call from ' + userId + ':', err);
+        return;
+    }
+    call.on('error', function(err) {
+        console.error('Incoming call error from ' + userId + ':', err);
+    });
     call.on('stream', async function(stream) {
         if (stream) {
             await addVideoStream(stream, userId);
@@ -504,33 +550,92 @@ myPeer.on('call', async function(call) {
     });
 });
 
-// Connect to New User
-async function ConnecttonewUser(userId, stream, isScreenShare) {
+// Connect to New User with retry logic
+const PEER_CALL_MAX_RETRIES = 3;
+const PEER_CALL_RETRY_DELAY = 2000;
+const PEER_CALL_STREAM_TIMEOUT = 10000; // 10s to receive stream
+
+async function ConnecttonewUser(userId, stream, isScreenShare, retryCount) {
     if (!stream) return;
+    retryCount = retryCount || 0;
 
     if (isScreenShare) {
         let ScreenShareUser = userId + 'ScreenShare';
         if (ScreenShareUser === USER_ID_ScreenShare) return;
 
-        let call = await myPeer2.call(ScreenShareUser, stream);
-        if (call) {
-            call.on('stream', async function(stream) {
-                if (stream) {
-                    await addVideoStream(stream, userId, 1);
-                }
-            });
+        try {
+            let call = await myPeer2.call(ScreenShareUser, stream);
+            if (call) {
+                let streamReceived = false;
+                call.on('stream', async function(remoteStream) {
+                    streamReceived = true;
+                    if (remoteStream) {
+                        await addVideoStream(remoteStream, userId, 1);
+                    }
+                });
+                call.on('error', function(err) {
+                    console.error('Screen share call error with ' + userId + ':', err);
+                });
+                call.on('close', function() {
+                    if (!streamReceived) {
+                        console.warn('Screen share call closed without stream from ' + userId);
+                    }
+                });
+            }
+        } catch (err) {
+            console.error('Error calling screen share peer ' + userId + ':', err);
         }
     } else {
         if (userId === USER_ID) return;
 
-        let call = await myPeer.call(userId, stream);
-        if (call) {
-            call.on('stream', async function(stream) {
-                if (stream) {
-                    UserStreamwithId[userId] = stream;
-                    await addVideoStream(stream, userId);
-                }
-            });
+        try {
+            let call = await myPeer.call(userId, stream);
+            if (call) {
+                let streamReceived = false;
+
+                call.on('stream', async function(remoteStream) {
+                    streamReceived = true;
+                    if (remoteStream) {
+                        UserStreamwithId[userId] = remoteStream;
+                        await addVideoStream(remoteStream, userId);
+                    }
+                });
+
+                call.on('error', function(err) {
+                    console.error('Peer call error with ' + userId + ':', err);
+                    // Retry on error if under max retries
+                    if (retryCount < PEER_CALL_MAX_RETRIES && ActiveUsers[userId]) {
+                        console.log('Retrying call to ' + userId + ' (attempt ' + (retryCount + 1) + ')');
+                        setTimeout(function() {
+                            ConnecttonewUser(userId, stream, isScreenShare, retryCount + 1);
+                        }, PEER_CALL_RETRY_DELAY * (retryCount + 1));
+                    }
+                });
+
+                call.on('close', function() {
+                    if (!streamReceived && retryCount < PEER_CALL_MAX_RETRIES && ActiveUsers[userId]) {
+                        console.warn('Call to ' + userId + ' closed without stream, retrying...');
+                        setTimeout(function() {
+                            ConnecttonewUser(userId, stream, isScreenShare, retryCount + 1);
+                        }, PEER_CALL_RETRY_DELAY * (retryCount + 1));
+                    }
+                });
+
+                // Timeout: if no stream received within timeout, retry
+                setTimeout(function() {
+                    if (!streamReceived && retryCount < PEER_CALL_MAX_RETRIES && ActiveUsers[userId]) {
+                        console.warn('No stream from ' + userId + ' within timeout, retrying...');
+                        ConnecttonewUser(userId, stream, isScreenShare, retryCount + 1);
+                    }
+                }, PEER_CALL_STREAM_TIMEOUT);
+            }
+        } catch (err) {
+            console.error('Error calling peer ' + userId + ':', err);
+            if (retryCount < PEER_CALL_MAX_RETRIES && ActiveUsers[userId]) {
+                setTimeout(function() {
+                    ConnecttonewUser(userId, stream, isScreenShare, retryCount + 1);
+                }, PEER_CALL_RETRY_DELAY * (retryCount + 1));
+            }
         }
     }
 }
