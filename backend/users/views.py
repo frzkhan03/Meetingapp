@@ -53,6 +53,10 @@ def register_view(request):
         if selected_cycle not in valid_cycles:
             selected_cycle = 'monthly'
 
+        # Only validate/use subdomain for business plan (only tier that supports custom subdomains)
+        if selected_plan != 'business':
+            subdomain = ''
+
         # Validate subdomain if org name is provided
         if org_name and subdomain:
             subdomain_pattern = re.compile(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
@@ -80,8 +84,8 @@ def register_view(request):
             # Create or join organization
             if org_name:
                 slug = _create_unique_slug(org_name)
-                # Use provided subdomain or fall back to slug
-                final_subdomain = subdomain if subdomain else slug
+                # Only set subdomain for business plan users
+                final_subdomain = subdomain if subdomain else ''
                 org = Organization.objects.create(name=org_name, slug=slug, subdomain=final_subdomain)
             else:
                 slug = _create_unique_slug(f"{user.username}-org")
@@ -158,12 +162,20 @@ def _get_subdomain_redirect_url(request, org):
 
 def _get_post_login_redirect(request, user):
     """Determine where to redirect user after login."""
+    from billing.plan_limits import get_plan_limits
+
     # Get user's organizations
     memberships = user.memberships.filter(is_active=True).select_related('organization')
-    orgs_with_subdomain = [m.organization for m in memberships if m.organization.subdomain]
+    # Only consider orgs that have a subdomain AND an active plan that supports it
+    orgs_with_subdomain = []
+    for m in memberships:
+        if m.organization.subdomain:
+            plan_limits = get_plan_limits(m.organization)
+            if plan_limits.can_use_custom_subdomain():
+                orgs_with_subdomain.append(m.organization)
 
     if len(orgs_with_subdomain) == 1:
-        # User has exactly one org with subdomain - redirect there
+        # User has exactly one org with active subdomain support - redirect there
         org = orgs_with_subdomain[0]
         # Set session and profile
         request.session['current_organization_id'] = str(org.id)

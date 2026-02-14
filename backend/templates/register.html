@@ -66,6 +66,7 @@
                                    placeholder="e.g., Acme Inc." value="{{ organization_name_value }}">
                             <div class="form-text">Create a new organization or leave blank for a personal workspace.</div>
                         </div>
+                        {% if selected_plan == 'business' %}
                         <div class="mb-4" id="subdomainField" style="display: none;">
                             <label for="subdomain" class="form-label">Your Subdomain</label>
                             <div class="input-group">
@@ -116,6 +117,7 @@
                             updateSubdomain();
                         })();
                         </script>
+                        {% endif %}
                         <div class="d-grid mb-4">
                             <button type="submit" class="btn btn-primary btn-lg">Create Account</button>
                         </div>

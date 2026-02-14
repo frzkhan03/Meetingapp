@@ -32,9 +32,9 @@ class Organization(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
-        # Auto-populate subdomain from slug if not set
-        if not self.subdomain and self.slug:
-            self.subdomain = self.slug
+        # Normalize empty subdomain to None (for unique constraint with nullable field)
+        if not self.subdomain:
+            self.subdomain = None
         super().save(*args, **kwargs)
 
 
