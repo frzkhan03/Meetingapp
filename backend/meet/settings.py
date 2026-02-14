@@ -418,6 +418,7 @@ TURN_SERVER_USERNAME = os.getenv('TURN_SERVER_USERNAME', '')
 TURN_SERVER_CREDENTIAL = os.getenv('TURN_SERVER_CREDENTIAL', '')
 
 # ==================== WEBSOCKET SECURITY ====================
+# Supports wildcard subdomains: https://*.pytalk.veriright.com
 WEBSOCKET_ALLOWED_ORIGINS = os.getenv(
     'WEBSOCKET_ALLOWED_ORIGINS',
     'http://localhost:8000,http://127.0.0.1:8000,ws://localhost:8000,ws://127.0.0.1:8000'

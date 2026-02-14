@@ -274,14 +274,26 @@ class WebSocketSecurityMiddleware:
             allowed_origins = getattr(settings, 'WEBSOCKET_ALLOWED_ORIGINS', [])
 
             # Check if origin matches any allowed origin
+            # Supports wildcard subdomains: https://*.example.com matches
+            # https://foo.example.com, https://bar.baz.example.com, etc.
             origin_allowed = False
             if not origin:
                 origin_allowed = True  # Allow connections without origin header
             else:
                 for allowed in allowed_origins:
+                    allowed = allowed.strip()
                     if origin == allowed or origin.startswith(allowed.rstrip('/')):
                         origin_allowed = True
                         break
+                    # Wildcard subdomain matching: https://*.domain.com
+                    if '://*.' in allowed:
+                        scheme, wildcard_domain = allowed.split('://*', 1)
+                        if origin.startswith(scheme + '://') and origin.endswith(wildcard_domain):
+                            # Verify there's actually a subdomain part
+                            origin_host = origin.split('://')[1]
+                            if origin_host.endswith(wildcard_domain) and len(origin_host) > len(wildcard_domain):
+                                origin_allowed = True
+                                break
 
             if not origin_allowed:
                 security_logger.warning(f'WebSocket connection rejected from origin: {origin}')
