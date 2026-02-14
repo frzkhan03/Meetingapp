@@ -81,13 +81,13 @@ class PlanAdmin(ModelAdmin):
     @admin.display(description='Monthly', ordering='monthly_price_cents')
     def formatted_monthly(self, obj):
         if obj.monthly_price_cents == 0:
-            return format_html('<span style="color:#22c55e;font-weight:600;">Free</span>')
+            return format_html('<span style="color:#22c55e;font-weight:600;">{}</span>', 'Free')
         return f"${obj.monthly_price_cents / 100:.2f}"
 
     @admin.display(description='Annual', ordering='annual_price_cents')
     def formatted_annual(self, obj):
         if obj.annual_price_cents == 0:
-            return format_html('<span style="color:#22c55e;font-weight:600;">Free</span>')
+            return format_html('<span style="color:#22c55e;font-weight:600;">{}</span>', 'Free')
         return f"${obj.annual_price_cents / 100:.2f}"
 
     @admin.display(description='Rooms')

@@ -239,5 +239,5 @@ class MeetingRecordingAdmin(ModelAdmin):
     @admin.display(description='Storage')
     def storage_location(self, obj):
         if obj.s3_key:
-            return format_html('<span style="color:#22c55e;">S3</span>')
-        return format_html('<span style="color:#6b7280;">Local</span>')
+            return format_html('<span style="color:#22c55e;">{}</span>', 'S3')
+        return format_html('<span style="color:#6b7280;">{}</span>', 'Local')
