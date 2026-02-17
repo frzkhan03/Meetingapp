@@ -28,11 +28,11 @@
 </div>
 
 <script>
-    const roomId = "{{ room_id }}";
-    const authorId = "{{ author_id }}";
-    const userId = "{{ user_id }}";
-    const username = "{{ username }}";
-    const pendingToken = "{{ pending_token|default:'' }}";
+    const roomId = "{{ room_id|escapejs }}";
+    const authorId = "{{ author_id|escapejs }}";
+    const userId = "{{ user_id|escapejs }}";
+    const username = "{{ username|escapejs }}";
+    const pendingToken = "{{ pending_token|default:''|escapejs }}";
     const isScheduledMeeting = {% if is_scheduled_meeting %}true{% else %}false{% endif %};
     let responseHandled = false;
 

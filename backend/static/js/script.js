@@ -133,7 +133,8 @@ function connectRoomSocket() {
             room_id: ROOM_ID,
             user_id: USER_ID,
             username: username,
-            is_moderator: IS_MODERATOR
+            is_moderator: IS_MODERATOR,
+            moderator_proof: (typeof MODERATOR_PROOF !== 'undefined') ? MODERATOR_PROOF : ''
         });
         // Share participant info after join
         setTimeout(function() {
@@ -551,7 +552,8 @@ myPeer.on('open', async function(id) {
         room_id: ROOM_ID,
         user_id: id,
         username: username,
-        is_moderator: IS_MODERATOR
+        is_moderator: IS_MODERATOR,
+        moderator_proof: (typeof MODERATOR_PROOF !== 'undefined') ? MODERATOR_PROOF : ''
     });
     console.log('My peer Id is:', id);
     ActiveUsers[id] = 1;
@@ -688,6 +690,33 @@ socketWrapper.on('newuserjoined', async (data) => {
         isModerator = data.is_moderator;
     } else {
         userId = data;
+    }
+
+    // Handle PeerJS ID update (second join-room from same user)
+    if (data.is_id_update && data.old_user_id) {
+        console.log(`User ID updated: ${data.old_user_id} -> ${userId}`);
+        // Migrate state from old ID to new PeerJS ID
+        if (UserIdName[data.old_user_id]) {
+            UserIdName[userId] = UserIdName[data.old_user_id];
+            delete UserIdName[data.old_user_id];
+        }
+        if (ParticipantsInfo[data.old_user_id]) {
+            ParticipantsInfo[userId] = ParticipantsInfo[data.old_user_id];
+            ParticipantsInfo[userId].id = userId;
+            delete ParticipantsInfo[data.old_user_id];
+        }
+        if (ActiveUsers[data.old_user_id]) {
+            delete ActiveUsers[data.old_user_id];
+        }
+        // Update video element ID
+        var oldDiv = document.getElementById(data.old_user_id);
+        if (oldDiv) oldDiv.setAttribute('id', userId);
+        ActiveUsers[userId] = 1;
+        updateParticipantsPanel();
+        // Connect to new PeerJS ID for media
+        ConnecttonewUser(userId, VideoDetails.myVideoStream);
+        ConnecttonewUser(userId, VideoDetails.myScreenStream, 1);
+        return;
     }
 
     console.log(`New user joined: ${userId}, username: ${newUsername}`);

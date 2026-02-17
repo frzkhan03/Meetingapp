@@ -567,6 +567,7 @@
         var USER_ID = "{{ user_id|escapejs }}";
         var username = "{{ username|escapejs }}";
         var IS_MODERATOR = {% if is_moderator %}true{% else %}false{% endif %};
+        var MODERATOR_PROOF = "{{ moderator_proof|default:''|escapejs }}";
         var ROOM_OWNER = "{{ room_owner|default:''|escapejs }}";
         var ROOM_OWNER_ID = "{{ room_owner_id|default:''|escapejs }}";
         var ROOM_NAME = "{{ room_name|default:''|escapejs }}";

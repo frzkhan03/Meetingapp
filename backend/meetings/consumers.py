@@ -202,11 +202,18 @@ class RoomConsumer(AsyncWebsocketConsumer):
         room_count_key = f'ws:room:count:{self.room_id}'
         try:
             from django.core.cache import cache
-            new_val = cache.decr(room_count_key)
-            if new_val <= 0:
+            current = cache.get(room_count_key)
+            if current and int(current) > 0:
+                new_val = cache.decr(room_count_key)
+                if new_val <= 0:
+                    cache.delete(room_count_key)
+            else:
                 cache.delete(room_count_key)
-        except (ValueError, Exception):
-            pass
+        except Exception:
+            try:
+                cache.delete(room_count_key)
+            except Exception:
+                pass
 
         if hasattr(self, 'user_id') and self.user_id:
             # Save connection analytics log
@@ -364,8 +371,30 @@ class RoomConsumer(AsyncWebsocketConsumer):
         user_id = payload.get('user_id')
         username = payload.get('username', '')
         is_moderator = payload.get('is_moderator', False)
+        moderator_proof = payload.get('moderator_proof', '')
+        is_peer_id_update = hasattr(self, '_has_joined')
         self.user_id = user_id
-        self._is_moderator_flag = is_moderator
+
+        # Only verify moderator status on FIRST join (with Django-assigned user_id).
+        # The second join (PeerJS ID update) inherits the verified status.
+        if not is_peer_id_update:
+            self._has_joined = True
+            self._verified_moderator = False
+
+            if is_moderator and moderator_proof:
+                # Verify the cryptographically signed proof from the Django view
+                self._verified_moderator = await self._verify_moderator_proof(
+                    moderator_proof
+                )
+                if not self._verified_moderator:
+                    logger.warning(
+                        f"Invalid moderator proof for room {self.room_id} "
+                        f"from user {user_id}"
+                    )
+            elif is_moderator:
+                # Fallback: DB check with original Django user_id
+                self._verified_moderator = await self._check_moderator_db(user_id)
+            # For non-moderators, _verified_moderator stays False
 
         # Cache organization ID for analytics
         try:
@@ -391,17 +420,34 @@ class RoomConsumer(AsyncWebsocketConsumer):
             'meeting_start_time': meeting_start_ms,
         }))
 
-        # Notify others that new user joined (include username)
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                'type': 'new_user_joined',
-                'user_id': user_id,
-                'username': username,
-                'is_moderator': is_moderator,
-                'sender_channel': self.channel_name
-            }
-        )
+        if is_peer_id_update:
+            # Second join (PeerJS ID update) - send ID update, not duplicate join
+            old_user_id = getattr(self, '_previous_user_id', None)
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'new_user_joined',
+                    'user_id': user_id,
+                    'old_user_id': old_user_id,
+                    'username': username,
+                    'is_moderator': getattr(self, '_verified_moderator', False),
+                    'is_id_update': True,
+                    'sender_channel': self.channel_name
+                }
+            )
+        else:
+            # First join - broadcast new user
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'new_user_joined',
+                    'user_id': user_id,
+                    'username': username,
+                    'is_moderator': getattr(self, '_verified_moderator', False),
+                    'sender_channel': self.channel_name
+                }
+            )
+        self._previous_user_id = user_id
 
     async def handle_video_off(self, payload):
         await self.channel_layer.group_send(
@@ -512,8 +558,15 @@ class RoomConsumer(AsyncWebsocketConsumer):
         logger.info(f"Alert response: approved={approved}, user_id={requesting_user_id}")
 
         if approved:
+            # Store server-side approval in Redis so mark_guest_approved_view can verify
+            try:
+                from django.core.cache import cache
+                approval_key = f'room_approval:{self.room_id}:{requesting_user_id}'
+                cache.set(approval_key, True, 3600)  # 1 hour TTL
+            except Exception:
+                pass
+
             # Create meeting packet asynchronously via Celery task
-            # Wrapped in try/except so a Celery failure doesn't block the response
             try:
                 from .tasks import create_meeting_packet
                 create_meeting_packet.delay(requesting_user_id, self.room_id)
@@ -807,38 +860,57 @@ class RoomConsumer(AsyncWebsocketConsumer):
 
     # ========== Breakout Room Handlers ==========
 
-    @database_sync_to_async
-    def _is_moderator(self, user_id):
+    async def _is_moderator(self, user_id):
         """Check if the given user_id is a moderator for this room.
 
-        Supports both authenticated users (matched by DB user ID) and
-        guest moderators (matched by the is_moderator flag set during join).
+        Uses the server-verified moderator status from handle_join_room.
+        Only falls back to DB check if the user_id matches a known DB user.
         """
+        if not user_id:
+            return False
+
+        # Primary check: use the server-verified moderator flag
+        # This was validated via signed proof or DB check during first join
+        if str(user_id) == str(self.user_id) and getattr(self, '_verified_moderator', False):
+            return True
+
+        # Fallback: DB check for the given user_id (handles edge cases)
+        return await self._check_moderator_db(user_id)
+
+    @database_sync_to_async
+    def _check_moderator_db(self, user_id):
+        """Check if user_id matches the room owner/author in the database."""
         from meetings.models import Meeting, PersonalRoom
 
         if not user_id:
             return False
 
-        # Check if this is the same user who joined as moderator via token
-        # (covers guest moderators with guest_xxx IDs)
-        if str(user_id) == str(self.user_id) and getattr(self, '_is_moderator_flag', False):
-            return True
-
         try:
-            # For PersonalRoom, the owner is the moderator
             room = PersonalRoom.objects.select_related('user').get(room_id=self.room_id)
             return str(room.user_id) == str(user_id)
         except PersonalRoom.DoesNotExist:
             pass
 
         try:
-            # For Meeting, the author is the moderator
             meeting = Meeting.objects.get(room_id=self.room_id)
             return str(meeting.author_id) == str(user_id)
         except Meeting.DoesNotExist:
             pass
 
         return False
+
+    @database_sync_to_async
+    def _verify_moderator_proof(self, proof):
+        """Verify the signed moderator proof token from the Django view."""
+        from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+
+        signer = TimestampSigner(salt='moderator-proof')
+        try:
+            # Token is valid for 6 hours (covers long meetings)
+            value = signer.unsign(proof, max_age=21600)
+            return value == self.room_id
+        except (BadSignature, SignatureExpired):
+            return False
 
     @database_sync_to_async
     def _can_use_breakout_rooms(self):
@@ -1151,12 +1223,16 @@ class RoomConsumer(AsyncWebsocketConsumer):
     # Message senders (called by channel_layer.group_send)
     async def new_user_joined(self, event):
         if self.channel_name != event['sender_channel']:
-            await self.send(text_data=json.dumps({
+            msg = {
                 'type': 'newuserjoined',
                 'user_id': event['user_id'],
                 'username': event.get('username', ''),
-                'is_moderator': event.get('is_moderator', False)
-            }))
+                'is_moderator': event.get('is_moderator', False),
+            }
+            if event.get('is_id_update'):
+                msg['old_user_id'] = event.get('old_user_id', '')
+                msg['is_id_update'] = True
+            await self.send(text_data=json.dumps(msg))
 
     async def user_disconnected(self, event):
         await self.send(text_data=json.dumps({

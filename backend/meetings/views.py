@@ -7,10 +7,18 @@ from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.conf import settings
+from django.core.signing import TimestampSigner
 import json
 import uuid
 from .models import Meeting, UserMeetingPacket, PersonalRoom, MeetingRecording, MeetingTranscript
 from .forms import MeetingForm
+
+_moderator_signer = TimestampSigner(salt='moderator-proof')
+
+
+def _sign_moderator_proof(room_id):
+    """Create a signed token proving the user is a verified moderator for this room."""
+    return _moderator_signer.sign(room_id)
 
 
 def home_view(request):
@@ -158,6 +166,7 @@ def start_meeting_view(request, room_id):
             'username': request.user.username,
             'organization': org,
             'is_moderator': True,
+            'moderator_proof': _sign_moderator_proof(str(room_id)),
             'author_id': str(meeting.author.id),
             'recording_to_s3': org.recording_to_s3 if org else False,
             **_get_plan_context(request),
@@ -410,6 +419,7 @@ def join_personal_room_view(request, room_id):
         'user_id': user_id,
         'username': username,
         'is_moderator': is_moderator,
+        'moderator_proof': _sign_moderator_proof(str(room_id)) if is_moderator else '',
         'room_owner': personal_room.user.username,
         'room_owner_id': str(personal_room.user.id),
         'room_name': personal_room.room_name,
@@ -516,6 +526,7 @@ def join_meeting_guest_view(request, room_id):
         'username': username,
         'organization': org,
         'is_moderator': is_moderator,
+        'moderator_proof': _sign_moderator_proof(str(room_id)) if is_moderator else '',
         'author_id': str(meeting.author.id),
         'recording_to_s3': org.recording_to_s3 if org else False,
         **_get_plan_context(request),
@@ -664,17 +675,27 @@ def mark_guest_approved_view(request, room_id):
         if not room_exists:
             return JsonResponse({'error': 'Room not found'}, status=404)
 
-        # Verify approval token from the pending session
-        # This ensures only users who went through the approval flow can be marked approved
+        # Verify the pending session matches this room
         pending_room_id = request.session.get('pending_room_id')
         if str(pending_room_id) != str(room_id):
             return JsonResponse({'error': 'Invalid approval request'}, status=403)
+
+        # Verify server-side approval exists in Redis (set by moderator via WebSocket)
+        user_id = request.session.get('pending_user_id', '')
+        if request.user.is_authenticated:
+            user_id = str(request.user.id)
+
+        from django.core.cache import cache
+        approval_key = f'room_approval:{room_id}:{user_id}'
+        if not cache.get(approval_key):
+            return JsonResponse({'error': 'Approval not found. Please wait for the moderator.'}, status=403)
 
         # Set approval in session
         approved_key = f'approved_for_{room_id}'
         request.session[approved_key] = True
 
-        # Clean up pending session data
+        # Clean up pending session data and Redis approval key
+        cache.delete(approval_key)
         for key in ['pending_room_id', 'pending_author_id', 'pending_user_id', 'pending_username', 'pending_token', 'pending_is_scheduled']:
             request.session.pop(key, None)
 
