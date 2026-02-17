@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+
+{% block title %}Privacy Settings - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 700px;">
+    <h1 class="mb-4">Privacy &amp; Compliance Settings</h1>
+
+    {% if deletion_request %}
+    <div class="alert alert-warning mb-4">
+        <strong>Account Deletion Pending:</strong> You have a deletion request submitted on {{ deletion_request.requested_at|date:"N j, Y" }}. Status: {{ deletion_request.get_status_display }}.
+    </div>
+    {% endif %}
+
+    <!-- Consent Preferences -->
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Consent Preferences</h2>
+            <p class="text-muted small">Manage what data processing you consent to. Changes take effect immediately.</p>
+
+            <div id="consent-message" style="display: none;" class="alert mb-3"></div>
+
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color: var(--border-color) !important;">
+                <div>
+                    <strong>Analytics Cookies</strong>
+                    <br><small class="text-muted">Help us understand how the platform is used</small>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input consent-toggle" type="checkbox" data-consent-type="cookies_analytics" {% if consents.cookies_analytics %}checked{% endif %} id="consent_cookies_analytics">
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color: var(--border-color) !important;">
+                <div>
+                    <strong>Marketing Cookies</strong>
+                    <br><small class="text-muted">Used for relevant communications</small>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input consent-toggle" type="checkbox" data-consent-type="cookies_marketing" {% if consents.cookies_marketing %}checked{% endif %} id="consent_cookies_marketing">
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color: var(--border-color) !important;">
+                <div>
+                    <strong>Marketing Communications</strong>
+                    <br><small class="text-muted">Receive product updates and announcements via email</small>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input consent-toggle" type="checkbox" data-consent-type="communications" {% if consents.communications %}checked{% endif %} id="consent_communications">
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color: var(--border-color) !important;">
+                <div>
+                    <strong>Meeting Recording Consent</strong>
+                    <br><small class="text-muted">Allow your meetings to be recorded</small>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input consent-toggle" type="checkbox" data-consent-type="recording" {% if consents.recording %}checked{% endif %} id="consent_recording">
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center py-2" style="border-color: var(--border-color) !important;">
+                <div>
+                    <strong>Transcript Processing</strong>
+                    <br><small class="text-muted">Allow transcription of your meeting audio</small>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input consent-toggle" type="checkbox" data-consent-type="transcript" {% if consents.transcript %}checked{% endif %} id="consent_transcript">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Actions -->
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Your Data</h2>
+
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color: var(--border-color) !important;">
+                <div>
+                    <strong>Export Your Data</strong>
+                    <br><small class="text-muted">Download all your personal data (GDPR Article 20)</small>
+                </div>
+                <a href="{% url 'data_export' %}" class="btn btn-outline-primary btn-sm">Export</a>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color: var(--border-color) !important;">
+                <div>
+                    <strong>Privacy Policy</strong>
+                    <br><small class="text-muted">Read our full privacy policy</small>
+                </div>
+                <a href="{% url 'privacy_policy' %}" class="btn btn-outline-secondary btn-sm">View</a>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center py-2">
+                <div>
+                    <strong>Delete Your Account</strong>
+                    <br><small class="text-muted">Permanently delete your account and all data (GDPR Article 17)</small>
+                </div>
+                <a href="{% url 'delete_account' %}" class="btn btn-outline-danger btn-sm">Delete</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('.consent-toggle').forEach(function(toggle) {
+    toggle.addEventListener('change', function() {
+        var consentType = this.getAttribute('data-consent-type');
+        var granted = this.checked;
+        var msgEl = document.getElementById('consent-message');
+
+        var formData = new FormData();
+        formData.append('consent_type', consentType);
+        formData.append('granted', granted ? 'true' : 'false');
+
+        fetch('{% url "update_consent" %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+            body: formData,
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            msgEl.style.display = 'block';
+            if (data.success) {
+                msgEl.className = 'alert alert-success mb-3';
+                msgEl.textContent = 'Preference updated successfully.';
+            } else {
+                msgEl.className = 'alert alert-danger mb-3';
+                msgEl.textContent = data.error || 'Failed to update preference.';
+            }
+            setTimeout(function() { msgEl.style.display = 'none'; }, 3000);
+        })
+        .catch(function() {
+            msgEl.style.display = 'block';
+            msgEl.className = 'alert alert-danger mb-3';
+            msgEl.textContent = 'Network error. Please try again.';
+        });
+    });
+});
+</script>
+{% endblock %}
+{% endblock %}

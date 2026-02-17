@@ -102,6 +102,7 @@ INSTALLED_APPS = [
     'users',
     'meetings',
     'billing',
+    'compliance',
 ]
 
 MIDDLEWARE = [
@@ -119,6 +120,7 @@ MIDDLEWARE = [
     'users.middleware.TenantMiddleware',
     'billing.middleware.SubscriptionMiddleware',  # Plan limits injection
     'meet.middleware.SecurityLoggingMiddleware',  # Security logging
+    'compliance.middleware.AuditTrailMiddleware',  # SOC 2 audit trail
 ]
 
 ROOT_URLCONF = 'meet.urls'
@@ -396,6 +398,14 @@ CELERY_BEAT_SCHEDULE = {
     'record-daily-usage': {
         'task': 'billing.tasks.record_daily_usage',
         'schedule': crontab(hour=1, minute=0),
+    },
+    'enforce-data-retention': {
+        'task': 'compliance.tasks.enforce_data_retention',
+        'schedule': crontab(hour=3, minute=0),
+    },
+    'process-deletion-requests': {
+        'task': 'compliance.tasks.process_deletion_requests',
+        'schedule': crontab(hour=4, minute=0),
     },
 }
 

@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+
+{% block title %}Export Your Data - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 700px;">
+    <h1 class="mb-4">Export Your Data</h1>
+    <p class="text-muted">GDPR Article 20 - Right to Data Portability</p>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <p>You can download a copy of all your personal data in machine-readable format (JSON). The export includes:</p>
+            <ul>
+                <li>Profile information</li>
+                <li>Organization memberships</li>
+                <li>Meetings you've created</li>
+                <li>Recordings metadata</li>
+                <li>Transcripts</li>
+                <li>Consent records</li>
+            </ul>
+
+            <div id="export-status" class="mb-3" style="display: none;"></div>
+
+            <button id="requestExport" class="btn btn-primary" onclick="requestExport()">
+                Request Data Export
+            </button>
+            <p class="text-muted mt-2 small">Limit: 1 export per 24 hours. Exports are available for 7 days.</p>
+        </div>
+    </div>
+
+    {% if recent_exports %}
+    <div class="card" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Recent Exports</h2>
+            <div class="table-responsive">
+                <table class="table table-sm" style="color: var(--text-primary);">
+                    <thead>
+                        <tr>
+                            <th>Requested</th>
+                            <th>Status</th>
+                            <th>Expires</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for export in recent_exports %}
+                        <tr>
+                            <td>{{ export.requested_at|date:"N j, Y H:i" }}</td>
+                            <td>
+                                {% if export.status == 'ready' %}
+                                    <span class="badge bg-success">Ready</span>
+                                {% elif export.status == 'processing' or export.status == 'pending' %}
+                                    <span class="badge bg-warning text-dark">Processing</span>
+                                {% elif export.status == 'downloaded' %}
+                                    <span class="badge bg-info">Downloaded</span>
+                                {% elif export.status == 'expired' %}
+                                    <span class="badge bg-secondary">Expired</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if export.expires_at %}
+                                    {{ export.expires_at|date:"N j, Y" }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if export.status == 'ready' %}
+                                    <a href="{% url 'download_data_export' export.id %}" class="btn btn-sm btn-outline-primary">Download ZIP</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% block extra_js %}
+<script>
+function requestExport() {
+    const btn = document.getElementById('requestExport');
+    const status = document.getElementById('export-status');
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+
+    fetch('{% url "request_data_export" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        status.style.display = 'block';
+        if (data.success) {
+            status.className = 'alert alert-success mb-3';
+            status.textContent = 'Export ready! Refresh the page to see the download link.';
+            setTimeout(function() { location.reload(); }, 2000);
+        } else {
+            status.className = 'alert alert-warning mb-3';
+            status.textContent = data.error || 'Export request submitted. Please check back later.';
+            btn.disabled = false;
+            btn.textContent = 'Request Data Export';
+        }
+    })
+    .catch(function() {
+        status.style.display = 'block';
+        status.className = 'alert alert-danger mb-3';
+        status.textContent = 'Request failed. Please try again later.';
+        btn.disabled = false;
+        btn.textContent = 'Request Data Export';
+    });
+}
+</script>
+{% endblock %}
+{% endblock %}

@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+
+{% block title %}Privacy Policy - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 800px;">
+    <h1 class="mb-4">Privacy Policy</h1>
+    <p class="text-muted">Last updated: February 2026</p>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">1. Introduction</h2>
+            <p>{{ organization_name }} ("we", "us", "our") is committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard your information when you use our video conferencing platform.</p>
+            <p>This policy complies with the General Data Protection Regulation (GDPR), the Health Insurance Portability and Accountability Act (HIPAA), and other applicable data protection laws.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">2. Data We Collect</h2>
+            <ul>
+                <li><strong>Account Information:</strong> Username, email address, password (hashed)</li>
+                <li><strong>Meeting Data:</strong> Meeting names, schedules, room IDs, participant lists</li>
+                <li><strong>Recordings &amp; Transcripts:</strong> Only when explicitly initiated by the meeting host</li>
+                <li><strong>Usage Data:</strong> Connection logs, session duration, feature usage</li>
+                <li><strong>Technical Data:</strong> IP address, browser type, device information</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">3. Legal Basis for Processing (GDPR Article 6)</h2>
+            <ul>
+                <li><strong>Consent:</strong> Cookie preferences, marketing communications, recording consent</li>
+                <li><strong>Contract:</strong> Account creation, meeting services, billing</li>
+                <li><strong>Legitimate Interest:</strong> Security monitoring, service improvement</li>
+                <li><strong>Legal Obligation:</strong> Audit logging, compliance record-keeping</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">4. Your Rights (GDPR Articles 15-22)</h2>
+            <p>You have the right to:</p>
+            <ul>
+                <li><strong>Access</strong> your personal data (Article 15)</li>
+                <li><strong>Rectify</strong> inaccurate data (Article 16)</li>
+                <li><strong>Erase</strong> your data - "Right to be Forgotten" (Article 17)</li>
+                <li><strong>Restrict</strong> processing (Article 18)</li>
+                <li><strong>Data Portability</strong> - export your data (Article 20)</li>
+                <li><strong>Object</strong> to processing (Article 21)</li>
+                <li><strong>Withdraw consent</strong> at any time (Article 7)</li>
+            </ul>
+            {% if user.is_authenticated %}
+            <p class="mt-3">
+                <a href="{% url 'compliance_settings' %}" class="btn btn-outline-primary btn-sm">Manage Your Privacy Settings</a>
+                <a href="{% url 'data_export' %}" class="btn btn-outline-primary btn-sm ms-2">Export Your Data</a>
+                <a href="{% url 'delete_account' %}" class="btn btn-outline-danger btn-sm ms-2">Delete Account</a>
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">5. Data Retention</h2>
+            <p>We retain your data only as long as necessary for the purposes described in this policy:</p>
+            <ul>
+                <li><strong>Account data:</strong> Until account deletion is requested</li>
+                <li><strong>Meeting recordings:</strong> Per your organization's retention policy</li>
+                <li><strong>Audit logs:</strong> Minimum 1 year (SOC 2 / HIPAA requirement)</li>
+                <li><strong>Session data:</strong> Automatically cleared after expiry</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">6. Data Security</h2>
+            <ul>
+                <li>All data transmitted over HTTPS/TLS 1.2+</li>
+                <li>WebRTC media encrypted with SRTP/DTLS</li>
+                <li>Passwords hashed using PBKDF2-SHA256</li>
+                <li>Database encrypted at rest (AWS RDS)</li>
+                <li>File storage encrypted at rest (AWS S3 SSE)</li>
+                <li>Regular security audits and access logging</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">7. HIPAA Compliance</h2>
+            <p>For healthcare organizations using PyTalk:</p>
+            <ul>
+                <li>We offer Business Associate Agreements (BAAs)</li>
+                <li>All access to Protected Health Information (PHI) is logged</li>
+                <li>Data encryption in transit and at rest</li>
+                <li>Minimum necessary access controls</li>
+                <li>Breach notification procedures in place</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">8. Cookies</h2>
+            <p>We use the following categories of cookies:</p>
+            <ul>
+                <li><strong>Essential:</strong> Required for the platform to function (session, CSRF protection)</li>
+                <li><strong>Analytics:</strong> Help us understand how the platform is used (optional)</li>
+                <li><strong>Marketing:</strong> Used for relevant communications (optional)</li>
+            </ul>
+            <p>You can manage your cookie preferences at any time using the cookie settings banner or through your <a href="{% url 'compliance_settings' %}">privacy settings</a>.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">9. Third-Party Services</h2>
+            <ul>
+                <li><strong>AWS (Amazon Web Services):</strong> Cloud hosting, storage, database</li>
+                <li><strong>PayU:</strong> Payment processing (PCI DSS Level 1 compliant - we never store card data)</li>
+                <li><strong>PeerJS:</strong> WebRTC signaling (no user data stored)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">10. Contact Us</h2>
+            <p>For privacy inquiries or to exercise your data rights:</p>
+            <ul>
+                <li><strong>Privacy Team:</strong> <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></li>
+                <li><strong>Data Protection Officer:</strong> <a href="mailto:{{ dpo_email }}">{{ dpo_email }}</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

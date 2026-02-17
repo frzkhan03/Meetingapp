@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+
+{% block title %}Compliance Dashboard - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <h1 class="mb-4">Compliance Dashboard</h1>
+    <p class="text-muted">SOC 2 / HIPAA / GDPR overview for administrators</p>
+
+    <!-- Stats Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+                <div class="card-body text-center">
+                    <div class="h2 mb-1">{{ stats.total_users }}</div>
+                    <small class="text-muted">Total Users</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+                <div class="card-body text-center">
+                    <div class="h2 mb-1">{{ stats.audit_logs_30d }}</div>
+                    <small class="text-muted">Audit Events (30d)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+                <div class="card-body text-center">
+                    <div class="h2 mb-1" style="color: {% if stats.failed_logins_30d > 10 %}#ef4444{% else %}inherit{% endif %};">{{ stats.failed_logins_30d }}</div>
+                    <small class="text-muted">Failed Logins (30d)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+                <div class="card-body text-center">
+                    <div class="h2 mb-1">{{ stats.phi_access_30d }}</div>
+                    <small class="text-muted">PHI Access Events (30d)</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+                <div class="card-body text-center">
+                    <div class="h3 mb-1">{{ stats.deletion_requests_pending }}</div>
+                    <small class="text-muted">Pending Deletion Requests</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+                <div class="card-body text-center">
+                    <div class="h3 mb-1">{{ stats.export_requests_pending }}</div>
+                    <small class="text-muted">Pending Data Exports</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+                <div class="card-body text-center">
+                    <div class="h3 mb-1">{{ stats.active_baas }}</div>
+                    <small class="text-muted">Active BAAs</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Retention Policies -->
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Data Retention Policies</h2>
+            {% if stats.retention_policies %}
+            <div class="table-responsive">
+                <table class="table table-sm" style="color: var(--text-primary);">
+                    <thead>
+                        <tr>
+                            <th>Data Type</th>
+                            <th>Retention (days)</th>
+                            <th>Active</th>
+                            <th>Last Cleanup</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for policy in stats.retention_policies %}
+                        <tr>
+                            <td>{{ policy.data_type }}</td>
+                            <td>{% if policy.retention_days == 0 %}Indefinite{% else %}{{ policy.retention_days }}{% endif %}</td>
+                            <td>{% if policy.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Disabled</span>{% endif %}</td>
+                            <td>{% if policy.last_cleanup_at %}{{ policy.last_cleanup_at|date:"N j, Y H:i" }}{% else %}Never{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No retention policies configured. <a href="{% url 'admin:compliance_dataretentionpolicy_changelist' %}">Configure in Admin</a></p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Recent Audit Events -->
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Recent Audit Events</h2>
+            <div class="table-responsive">
+                <table class="table table-sm" style="color: var(--text-primary);">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Category</th>
+                            <th>Action</th>
+                            <th>User</th>
+                            <th>IP</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in recent_audit %}
+                        <tr>
+                            <td>{{ log.timestamp|date:"M j H:i:s" }}</td>
+                            <td><span class="badge bg-primary">{{ log.category }}</span></td>
+                            <td>{{ log.action }}</td>
+                            <td>{{ log.user_email|default:"system" }}</td>
+                            <td>{{ log.ip_address|default:"-" }}</td>
+                            <td>{% if log.success %}<span class="badge bg-success">OK</span>{% else %}<span class="badge bg-danger">FAIL</span>{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent PHI Access -->
+    {% if recent_phi %}
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Recent PHI Access (HIPAA)</h2>
+            <div class="table-responsive">
+                <table class="table table-sm" style="color: var(--text-primary);">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Type</th>
+                            <th>Resource</th>
+                            <th>User</th>
+                            <th>Justification</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for phi in recent_phi %}
+                        <tr>
+                            <td>{{ phi.timestamp|date:"M j H:i:s" }}</td>
+                            <td><span class="badge bg-warning text-dark">{{ phi.access_type }}</span></td>
+                            <td>{{ phi.resource_type }} #{{ phi.resource_id|truncatechars:12 }}</td>
+                            <td>{{ phi.user_email }}</td>
+                            <td>{{ phi.justification|default:"-"|truncatechars:40 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

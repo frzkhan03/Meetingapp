@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+
+{% block title %}Terms of Service - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 800px;">
+    <h1 class="mb-4">Terms of Service</h1>
+    <p class="text-muted">Last updated: February 2026</p>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">1. Acceptance of Terms</h2>
+            <p>By accessing or using PyTalk ("the Service"), you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">2. Service Description</h2>
+            <p>PyTalk provides a video conferencing platform that enables users to create and join virtual meetings, record sessions, generate transcripts, and manage organizational teams.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">3. User Accounts</h2>
+            <ul>
+                <li>You must provide accurate information when creating an account</li>
+                <li>You are responsible for maintaining the security of your account credentials</li>
+                <li>You must notify us immediately of any unauthorized access</li>
+                <li>One person may not maintain more than one account</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">4. Acceptable Use</h2>
+            <p>You agree not to:</p>
+            <ul>
+                <li>Use the Service for any illegal purpose</li>
+                <li>Record meetings without the consent of all participants</li>
+                <li>Share meeting links with unauthorized individuals</li>
+                <li>Attempt to circumvent security measures</li>
+                <li>Upload malicious content or malware</li>
+                <li>Use the Service to transmit spam or unsolicited communications</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">5. Subscriptions &amp; Billing</h2>
+            <ul>
+                <li>Free tier is available with limited features</li>
+                <li>Paid subscriptions are billed according to the selected plan</li>
+                <li>Payment processing is handled by PayU (PCI DSS Level 1 compliant)</li>
+                <li>We do not store credit card numbers on our servers</li>
+                <li>Refund requests are handled on a case-by-case basis</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">6. Data &amp; Privacy</h2>
+            <p>Your use of the Service is also governed by our <a href="{% url 'privacy_policy' %}">Privacy Policy</a>. By using the Service, you consent to the collection and use of information as described therein.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">7. Limitation of Liability</h2>
+            <p>The Service is provided "as is" without warranties of any kind. We shall not be liable for any indirect, incidental, special, or consequential damages arising from the use of the Service.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">8. Termination</h2>
+            <p>We reserve the right to suspend or terminate your access to the Service at any time for violation of these Terms. You may terminate your account at any time through the <a href="{% url 'delete_account' %}">account deletion</a> page.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">9. Changes to Terms</h2>
+            <p>We may update these Terms from time to time. Continued use of the Service after changes constitutes acceptance of the updated Terms.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

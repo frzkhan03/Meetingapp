@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+
+{% block title %}PCI DSS Compliance - PyTalk{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 800px;">
+    <h1 class="mb-4">PCI DSS Compliance</h1>
+    <p class="text-muted">Payment Card Industry Data Security Standard - SAQ A</p>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">Our Payment Security Approach</h2>
+            <p>PyTalk uses a <strong>SAQ A (Self-Assessment Questionnaire A)</strong> compliance model. This means we <strong>never store, process, or transmit cardholder data</strong> on our servers. All payment processing is fully outsourced to our PCI DSS Level 1 certified payment processor.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">Payment Processor: PayU</h2>
+            <ul>
+                <li><strong>PCI DSS Level 1 Certified</strong> - The highest level of payment security certification</li>
+                <li>All card data is entered directly on PayU's secure payment page</li>
+                <li>PyTalk servers never see or handle credit card numbers, CVVs, or full card details</li>
+                <li>Payment confirmations are received via secure server-to-server callbacks</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">What We Store</h2>
+            <p>We only store non-sensitive payment reference data:</p>
+            <ul>
+                <li>Transaction IDs (for reconciliation)</li>
+                <li>Payment status (success/failure)</li>
+                <li>Plan and billing period information</li>
+                <li>Invoice records</li>
+            </ul>
+            <p>We do <strong>NOT</strong> store:</p>
+            <ul>
+                <li>Credit/debit card numbers</li>
+                <li>CVV/CVC codes</li>
+                <li>Card expiration dates</li>
+                <li>Full cardholder names for payment purposes</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">SAQ A Requirements Met</h2>
+            <table class="table table-sm" style="color: var(--text-primary);">
+                <thead>
+                    <tr>
+                        <th>Requirement</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>No electronic storage of cardholder data</td>
+                        <td><span class="badge bg-success">Compliant</span></td>
+                    </tr>
+                    <tr>
+                        <td>All payment pages served by PCI-compliant provider</td>
+                        <td><span class="badge bg-success">Compliant</span></td>
+                    </tr>
+                    <tr>
+                        <td>HTTPS/TLS for all web traffic</td>
+                        <td><span class="badge bg-success">Compliant</span></td>
+                    </tr>
+                    <tr>
+                        <td>No direct processing of cardholder data</td>
+                        <td><span class="badge bg-success">Compliant</span></td>
+                    </tr>
+                    <tr>
+                        <td>Redirect-based payment flow (no iframes with card fields)</td>
+                        <td><span class="badge bg-success">Compliant</span></td>
+                    </tr>
+                    <tr>
+                        <td>Secure callback verification for payment confirmations</td>
+                        <td><span class="badge bg-success">Compliant</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card mb-4" style="background: var(--bg-card); border: 1px solid var(--border-color);">
+        <div class="card-body">
+            <h2 class="h5">Security Measures</h2>
+            <ul>
+                <li>All communication encrypted with TLS 1.2+</li>
+                <li>HSTS (HTTP Strict Transport Security) enabled</li>
+                <li>CSRF protection on all forms</li>
+                <li>Content Security Policy headers enforced</li>
+                <li>Regular security audits and penetration testing</li>
+                <li>Comprehensive audit logging of all billing operations</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
