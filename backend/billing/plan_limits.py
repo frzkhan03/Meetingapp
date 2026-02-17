@@ -60,6 +60,13 @@ class PlanLimits:
             else:
                 limits = defaults
         except Exception:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                'Unexpected error resolving plan limits for org %s',
+                self.organization.pk,
+                exc_info=True,
+            )
             limits = defaults
 
         cache.set(cache_key, limits, 300)

@@ -563,25 +563,25 @@
     {% endif %}
 
     <script>
-        const ROOM_ID = "{{ room_id }}";
-        var USER_ID = "{{ user_id }}";
-        var username = "{{ username }}";
+        const ROOM_ID = "{{ room_id|escapejs }}";
+        var USER_ID = "{{ user_id|escapejs }}";
+        var username = "{{ username|escapejs }}";
         var IS_MODERATOR = {% if is_moderator %}true{% else %}false{% endif %};
-        var ROOM_OWNER = "{{ room_owner|default:'' }}";
-        var ROOM_OWNER_ID = "{{ room_owner_id|default:'' }}";
-        var ROOM_NAME = "{{ room_name|default:'' }}";
+        var ROOM_OWNER = "{{ room_owner|default:''|escapejs }}";
+        var ROOM_OWNER_ID = "{{ room_owner_id|default:''|escapejs }}";
+        var ROOM_NAME = "{{ room_name|default:''|escapejs }}";
         var IS_ROOM_LOCKED = {% if is_locked %}true{% else %}false{% endif %};
         var MODERATOR_TOKEN = new URLSearchParams(window.location.search).get('token') || '';
         var RECORDING_TO_S3 = {% if recording_to_s3 %}true{% else %}false{% endif %};
         var RECORDING_ALLOWED = {% if recording_allowed %}true{% else %}false{% endif %};
         var MAX_PARTICIPANTS = {{ max_participants|default:100 }};
         var DURATION_LIMIT = {% if duration_limit_seconds %}{{ duration_limit_seconds }}{% else %}null{% endif %};
-        var PLAN_TIER = "{{ plan_tier|default:'free' }}";
+        var PLAN_TIER = "{{ plan_tier|default:'free'|escapejs }}";
         var BREAKOUT_ROOMS_ALLOWED = {% if breakout_rooms_allowed %}true{% else %}false{% endif %};
         var CSRF_TOKEN = "{{ csrf_token }}";
-        var TURN_SERVER_URL = "{{ turn_server_url|default:'' }}";
-        var TURN_SERVER_USERNAME = "{{ turn_server_username|default:'' }}";
-        var TURN_SERVER_CREDENTIAL = "{{ turn_server_credential|default:'' }}";
+        var TURN_SERVER_URL = "{{ turn_server_url|default:''|escapejs }}";
+        var TURN_SERVER_USERNAME = "{{ turn_server_username|default:''|escapejs }}";
+        var TURN_SERVER_CREDENTIAL = "{{ turn_server_credential|default:''|escapejs }}";
 
         // Breakout rooms state
         var breakoutRooms = [];

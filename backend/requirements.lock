@@ -1,0 +1,30 @@
+# Pinned dependency versions for reproducible installs
+# Generated from requirements.txt - use `pip install -r requirements.lock`
+# To update: modify requirements.txt, then run `pip-compile requirements.txt -o requirements.lock`
+
+django==5.2.10
+channels==4.3.2
+channels-redis==4.3.0
+daphne==4.0.0
+celery==5.3.4
+psycopg2-binary==2.9.11
+python-dotenv==1.0.0
+whitenoise==6.6.0
+django-redis==6.0.0
+
+# AWS
+boto3==1.38.43
+
+# Payments
+requests==2.31.0
+
+# PDF Generation
+reportlab==4.4.9
+
+# Security packages
+argon2-cffi==25.1.0
+cryptography==46.0.3
+bleach==6.3.0
+
+# Admin UI
+django-unfold>=0.40

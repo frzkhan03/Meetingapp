@@ -243,7 +243,8 @@ def verify_payu_signature(body_bytes, signature_header, second_key=None):
     concat = body_bytes + second_key.encode('utf-8')
     computed = hashlib.md5(concat).hexdigest()
 
-    return computed == expected_sig
+    import hmac as hmac_module
+    return hmac_module.compare_digest(computed, expected_sig)
 
 
 def cancel_subscription(organization):

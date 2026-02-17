@@ -33,11 +33,12 @@ class DataEncryption:
 
     def _create_fernet(self):
         """Create Fernet instance with derived key"""
-        # Use PBKDF2 to derive a proper Fernet key from the settings key
+        # Derive a deployment-specific salt from the key itself
+        salt = hashlib.sha256(f'pytalk_salt_v1:{self._key}'.encode()).digest()[:16]
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=b'pytalk_salt_v1',  # Static salt (key should be unique per deployment)
+            salt=salt,
             iterations=100000,
         )
         key = base64.urlsafe_b64encode(kdf.derive(self._key.encode()))

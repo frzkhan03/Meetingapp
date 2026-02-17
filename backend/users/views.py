@@ -112,7 +112,9 @@ def register_view(request):
             # Redirect to checkout if a paid plan was selected
             # Only redirect to subdomain URL if user selected Business plan (which enables subdomain feature)
             if selected_plan == 'business' and org.subdomain:
-                redirect_url = f'https://{org.subdomain}.pytalk.veriright.com/billing/checkout/{selected_plan}/{selected_cycle}/'
+                base_domain = getattr(settings, 'BASE_DOMAIN', 'pytalk.veriright.com')
+                protocol = 'https' if settings.PRODUCTION else 'http'
+                redirect_url = f'{protocol}://{org.subdomain}.{base_domain}/billing/checkout/{selected_plan}/{selected_cycle}/'
                 return redirect(redirect_url)
             elif selected_plan:
                 return redirect('billing_checkout', plan_tier=selected_plan, billing_cycle=selected_cycle)
@@ -327,7 +329,9 @@ def organization_settings_view(request, org_id):
         return redirect('organization_list')
 
     if request.method == 'POST':
-        org.name = request.POST.get('name', org.name)
+        from meet.validators import sanitize_input
+        name = request.POST.get('name', org.name)
+        org.name = sanitize_input(name, max_length=255) or org.name
         org.recording_to_s3 = request.POST.get('recording_to_s3') == 'on'
         org.save()
         messages.success(request, 'Organization updated successfully!')
@@ -440,10 +444,19 @@ def organization_add_member_view(request, org_id):
         # Create personal room in background
         setup_user_in_org.delay(user.id, str(org.id))
 
-        messages.success(
-            request,
-            f'Member "{username}" created successfully! Temporary password: {temp_password} (Please share this securely with the user)'
-        )
+        # Send temporary password via email to the new user
+        try:
+            from django.core.mail import send_mail
+            send_mail(
+                'Your PyTalk Account',
+                f'Hello {username},\n\nYour account has been created.\nTemporary password: {temp_password}\n\nPlease change your password after first login.',
+                settings.EMAIL_HOST_USER or 'noreply@pytalk.com',
+                [email],
+                fail_silently=True,
+            )
+            messages.success(request, f'Member "{username}" created successfully! Temporary password sent to {email}.')
+        except Exception:
+            messages.success(request, f'Member "{username}" created successfully! Please reset their password from the settings page.')
 
     return redirect('organization_settings', org_id=org.id)
 

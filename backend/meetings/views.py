@@ -52,13 +52,13 @@ def schedule_meeting_view(request):
             start_time = form.cleaned_data['start_time']
             end_time = form.cleaned_data['end_time']
 
-            meeting.start_time = datetime.combine(start_date, start_time)
-            meeting.end_time = datetime.combine(start_date, end_time)
+            meeting.start_time = timezone.make_aware(datetime.combine(start_date, start_time))
+            meeting.end_time = timezone.make_aware(datetime.combine(start_date, end_time))
 
             # Handle all-day meetings
             if meeting.is_all_day:
-                meeting.start_time = datetime.combine(start_date, datetime.min.time())
-                meeting.end_time = datetime.combine(start_date, datetime.max.time().replace(microsecond=0))
+                meeting.start_time = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+                meeting.end_time = timezone.make_aware(datetime.combine(start_date, datetime.max.time().replace(microsecond=0)))
 
             meeting.save()
             meeting.users.add(request.user)
@@ -548,18 +548,18 @@ def all_rooms_view(request):
     })
 
 
+@login_required
 @require_POST
 def toggle_room_lock_view(request, room_id):
     """Toggle lock state of a personal room"""
     try:
         data = json.loads(request.body)
         is_locked = data.get('is_locked', False)
-        token = data.get('token', '')
 
         personal_room = get_object_or_404(PersonalRoom, room_id=room_id)
 
-        # Verify the request is from the moderator
-        if token != personal_room.moderator_token:
+        # Verify the request is from the room owner
+        if personal_room.user != request.user:
             return JsonResponse({'error': 'Unauthorized'}, status=403)
 
         # Check if organization has waiting room feature
@@ -763,9 +763,15 @@ def upload_recording_view(request):
         })
 
     except ClientError as e:
-        return JsonResponse({'error': f'S3 upload failed: {str(e)}'}, status=500)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error('S3 upload failed for room %s: %s', room_id, e, exc_info=True)
+        return JsonResponse({'error': 'Recording upload failed. Please try again later.'}, status=500)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error('Unexpected error in upload_recording for room %s: %s', room_id, e, exc_info=True)
+        return JsonResponse({'error': 'An unexpected error occurred.'}, status=500)
 
 
 @login_required
@@ -841,6 +847,7 @@ def download_recording_view(request, recording_id):
 
 # ==================== TRANSCRIPT VIEWS ====================
 
+@login_required
 @require_POST
 def save_transcript_view(request, room_id):
     """Flush Redis-buffered transcript entries to database."""
@@ -898,12 +905,13 @@ def save_transcript_view(request, room_id):
     })
 
 
+@login_required
 def view_transcript_view(request, transcript_id):
     """View transcript as JSON or plain text download."""
     transcript = get_object_or_404(MeetingTranscript, id=transcript_id)
 
-    # Access control for authenticated users
-    if request.user.is_authenticated and transcript.organization:
+    # Access control - always enforce for org transcripts
+    if transcript.organization:
         from users.models import OrganizationMembership
         if not OrganizationMembership.objects.filter(
             user=request.user, organization=transcript.organization, is_active=True
@@ -922,7 +930,7 @@ def view_transcript_view(request, transcript_id):
             text = entry.get('text', '')
             if ts:
                 try:
-                    dt = datetime.fromtimestamp(int(ts) / 1000)
+                    dt = datetime.fromtimestamp(int(ts) / 1000, tz=timezone.utc)
                     ts_str = dt.strftime('%H:%M:%S')
                 except (ValueError, TypeError, OSError):
                     ts_str = str(ts)

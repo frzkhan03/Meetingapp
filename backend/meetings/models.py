@@ -1,6 +1,6 @@
 import uuid
 import secrets
-import random
+import secrets as secrets_module
 import string
 from django.db import models
 from django.contrib.auth.models import User
@@ -10,7 +10,7 @@ from users.models import Organization
 def generate_meeting_code():
     """Generate a Google Meet-style meeting code like 'abc-defg-hij'"""
     def random_letters(length):
-        return ''.join(random.choices(string.ascii_lowercase, k=length))
+        return ''.join(secrets_module.choice(string.ascii_lowercase) for _ in range(length))
 
     return f"{random_letters(3)}-{random_letters(4)}-{random_letters(3)}"
 
@@ -28,7 +28,7 @@ def get_unique_meeting_code():
             return code
 
     # Fallback to longer code if we can't find unique one
-    return f"{generate_meeting_code()}-{random.randint(100, 999)}"
+    return f"{generate_meeting_code()}-{secrets_module.randbelow(900) + 100}"
 
 
 class PersonalRoom(models.Model):
@@ -315,7 +315,7 @@ class ConnectionLog(models.Model):
         blank=True,
     )
     connected_at = models.DateTimeField()
-    disconnected_at = models.DateTimeField(auto_now_add=True)
+    disconnected_at = models.DateTimeField()
     duration_seconds = models.PositiveIntegerField(default=0)
     avg_bitrate_kbps = models.FloatField(default=0)
     min_bitrate_kbps = models.FloatField(default=0)

@@ -13,12 +13,16 @@ class MeetingRecordingInline(TabularInline):
 
     @admin.display(description='Size')
     def formatted_size(self, obj):
+        if not obj.file_size:
+            return '-'
         if obj.file_size < 1024 * 1024:
             return f"{obj.file_size / 1024:.1f} KB"
         return f"{obj.file_size / (1024 * 1024):.1f} MB"
 
     @admin.display(description='Duration')
     def formatted_duration(self, obj):
+        if not obj.duration:
+            return '-'
         if obj.duration < 60:
             return f"{obj.duration}s"
         minutes = obj.duration // 60

@@ -47,7 +47,8 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         response['Permissions-Policy'] = 'geolocation=(), microphone=(self), camera=(self)'
 
         # Prevent caching of sensitive pages
-        if request.path.startswith('/user/') or request.path.startswith('/secure-admin/'):
+        admin_path = f'/{getattr(settings, "ADMIN_URL", "secure-admin/").strip("/")}'
+        if request.path.startswith('/user/') or request.path.startswith(admin_path):
             response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
             response['Pragma'] = 'no-cache'
             response['Expires'] = '0'

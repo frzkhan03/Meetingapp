@@ -27,7 +27,7 @@ def get_secret_key():
 SECRET_KEY = get_secret_key()
 
 # Environment mode
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 PRODUCTION = os.getenv('PRODUCTION', 'False') == 'True'
 
 # For custom subdomain support, add '.pytalk.veriright.com' to ALLOWED_HOSTS in env
