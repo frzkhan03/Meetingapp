@@ -191,6 +191,13 @@ function connectUserSocket() {
         console.log('User WebSocket connected for alerts');
         userReconnectAttempts = 0;
         userHeartbeat.start();
+        // Register guest ID for user-specific notifications (kick, breakout)
+        if (USER_ID && USER_ID.startsWith('guest_')) {
+            userSocket.send(JSON.stringify({
+                type: 'register',
+                user_id: USER_ID
+            }));
+        }
     };
 
     userSocket.onmessage = function(e) {

@@ -548,18 +548,20 @@ def all_rooms_view(request):
     })
 
 
-@login_required
 @require_POST
 def toggle_room_lock_view(request, room_id):
     """Toggle lock state of a personal room"""
     try:
         data = json.loads(request.body)
         is_locked = data.get('is_locked', False)
+        token = data.get('token', '')
 
         personal_room = get_object_or_404(PersonalRoom, room_id=room_id)
 
-        # Verify the request is from the room owner
-        if personal_room.user != request.user:
+        # Allow authenticated room owner OR valid moderator token
+        is_owner = request.user.is_authenticated and personal_room.user == request.user
+        is_token_moderator = token and token == personal_room.moderator_token
+        if not is_owner and not is_token_moderator:
             return JsonResponse({'error': 'Unauthorized'}, status=403)
 
         # Check if organization has waiting room feature
@@ -847,7 +849,6 @@ def download_recording_view(request, recording_id):
 
 # ==================== TRANSCRIPT VIEWS ====================
 
-@login_required
 @require_POST
 def save_transcript_view(request, room_id):
     """Flush Redis-buffered transcript entries to database."""
