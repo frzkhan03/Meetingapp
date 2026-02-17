@@ -365,6 +365,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
         username = payload.get('username', '')
         is_moderator = payload.get('is_moderator', False)
         self.user_id = user_id
+        self._is_moderator_flag = is_moderator
 
         # Cache organization ID for analytics
         try:
@@ -808,11 +809,20 @@ class RoomConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _is_moderator(self, user_id):
-        """Check if the given user_id is a moderator for this room."""
+        """Check if the given user_id is a moderator for this room.
+
+        Supports both authenticated users (matched by DB user ID) and
+        guest moderators (matched by the is_moderator flag set during join).
+        """
         from meetings.models import Meeting, PersonalRoom
 
         if not user_id:
             return False
+
+        # Check if this is the same user who joined as moderator via token
+        # (covers guest moderators with guest_xxx IDs)
+        if str(user_id) == str(self.user_id) and getattr(self, '_is_moderator_flag', False):
+            return True
 
         try:
             # For PersonalRoom, the owner is the moderator
