@@ -63,3 +63,14 @@ class MeetingForm(forms.ModelForm):
         self.fields['description'].required = False
         self.fields['location'].required = False
         self.fields['recurrence'].label = 'Repeat'
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start_time = cleaned_data.get('start_time')
+        end_time = cleaned_data.get('end_time')
+        is_all_day = cleaned_data.get('is_all_day')
+
+        if not is_all_day and start_time and end_time and end_time <= start_time:
+            raise forms.ValidationError('End time must be after start time.')
+
+        return cleaned_data

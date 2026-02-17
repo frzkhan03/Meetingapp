@@ -12,15 +12,28 @@
                     <p class="text-secondary mb-0">Sign in to continue to PyTalk</p>
                 </div>
                 <div class="card-body">
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger" role="alert">
+                        {% for error in form.non_field_errors %}
+                        <div>{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                     <form method="post">
                         {% csrf_token %}
                         <div class="mb-4">
                             <label for="id_username" class="form-label">Username</label>
                             {{ form.username }}
+                            {% if form.username.errors %}
+                            <small class="text-danger">{{ form.username.errors.0 }}</small>
+                            {% endif %}
                         </div>
                         <div class="mb-4">
                             <label for="id_password" class="form-label">Password</label>
                             {{ form.password }}
+                            {% if form.password.errors %}
+                            <small class="text-danger">{{ form.password.errors.0 }}</small>
+                            {% endif %}
                         </div>
                         <div class="d-grid mb-4">
                             <button type="submit" class="btn btn-primary btn-lg">Sign In</button>

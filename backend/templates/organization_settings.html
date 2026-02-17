@@ -841,15 +841,9 @@
             </div>
             <div class="modal-body">
                 <div id="resetResultSuccess">
-                    <p class="mb-2">New password for <strong id="resetUsername"></strong>:</p>
+                    <p class="mb-2">Password reset for <strong id="resetUsername"></strong>:</p>
                     <div class="password-display">
-                        <code id="newPasswordText"></code>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyPassword(this)">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                            </svg>
-                        </button>
+                        <span id="newPasswordText"></span>
                     </div>
                     <div class="alert alert-warning mt-3 mb-0" style="font-size: 0.85rem;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;">
@@ -956,7 +950,7 @@ function performReset(orgId, userId) {
             successEl.style.display = 'block';
             errorEl.style.display = 'none';
             document.getElementById('resetUsername').textContent = data.username;
-            document.getElementById('newPasswordText').textContent = data.password;
+            document.getElementById('newPasswordText').textContent = data.message || 'Password reset successfully.';
         }
         new bootstrap.Modal(document.getElementById('resetPasswordModal')).show();
     })

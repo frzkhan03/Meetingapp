@@ -584,7 +584,9 @@ def toggle_room_lock_view(request, room_id):
             'is_locked': personal_room.is_locked
         })
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=400)
+        import logging
+        logging.getLogger(__name__).error('toggle_room_lock error: %s', e, exc_info=True)
+        return JsonResponse({'error': 'Failed to update room lock status.'}, status=400)
 
 
 def get_room_lock_status_view(request, room_id):
@@ -647,7 +649,9 @@ def send_join_alert_view(request, room_id):
 
         return JsonResponse({'success': True})
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=400)
+        import logging
+        logging.getLogger(__name__).error('send_join_alert error: %s', e, exc_info=True)
+        return JsonResponse({'error': 'Failed to send join alert.'}, status=400)
 
 
 @require_POST
@@ -676,7 +680,9 @@ def mark_guest_approved_view(request, room_id):
 
         return JsonResponse({'success': True})
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=400)
+        import logging
+        logging.getLogger(__name__).error('mark_guest_approved error: %s', e, exc_info=True)
+        return JsonResponse({'error': 'Failed to process approval.'}, status=400)
 
 
 @login_required
@@ -831,12 +837,16 @@ def download_recording_view(request, recording_id):
             region_name=settings.AWS_S3_REGION,
         )
 
+        # Sanitize filename for Content-Disposition header
+        import re
+        safe_name = re.sub(r'[^\w\-.]', '_', recording.recording_name or 'recording.webm')
+
         presigned_url = s3_client.generate_presigned_url(
             'get_object',
             Params={
                 'Bucket': settings.AWS_S3_BUCKET_NAME,
                 'Key': recording.s3_key,
-                'ResponseContentDisposition': f'attachment; filename="{recording.recording_name}"',
+                'ResponseContentDisposition': f'attachment; filename="{safe_name}"',
             },
             ExpiresIn=3600,  # 1 hour
         )
@@ -844,7 +854,9 @@ def download_recording_view(request, recording_id):
         return HttpResponseRedirect(presigned_url)
 
     except ClientError as e:
-        return JsonResponse({'error': f'Failed to generate download link: {str(e)}'}, status=500)
+        import logging
+        logging.getLogger(__name__).error('S3 download failed for recording %s: %s', recording_id, e, exc_info=True)
+        return JsonResponse({'error': 'Failed to generate download link. Please try again later.'}, status=500)
 
 
 # ==================== TRANSCRIPT VIEWS ====================

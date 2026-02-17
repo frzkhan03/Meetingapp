@@ -400,6 +400,10 @@ def organization_add_member_view(request, org_id):
         email = request.POST.get('email', '').strip()
         role = request.POST.get('role', 'member')
 
+        # Validate role
+        if role not in ('member', 'admin'):
+            role = 'member'
+
         # Validate inputs
         if not username or not email:
             messages.error(request, 'Username and email are required.')
@@ -486,7 +490,19 @@ def reset_member_password_view(request, org_id, user_id):
     target_user.set_password(new_password)
     target_user.save()
 
-    return JsonResponse({'password': new_password, 'username': target_user.username})
+    # Send new password via email instead of returning in response
+    try:
+        from django.core.mail import send_mail
+        send_mail(
+            'PyTalk Password Reset',
+            f'Hello {target_user.username},\n\nYour password has been reset.\nNew password: {new_password}\n\nPlease change your password after login.',
+            settings.EMAIL_HOST_USER or 'noreply@pytalk.com',
+            [target_user.email],
+            fail_silently=True,
+        )
+        return JsonResponse({'success': True, 'username': target_user.username, 'message': 'New password sent to user email.'})
+    except Exception:
+        return JsonResponse({'success': True, 'username': target_user.username, 'message': 'Password reset. Please inform the user of their new credentials.'})
 
 
 @login_required
@@ -568,10 +584,10 @@ def upload_organization_logo(request, org_id):
     if not logo_file:
         return JsonResponse({'error': 'No logo file provided.'}, status=400)
 
-    # Validate file type
-    allowed_types = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+    # Validate file type (SVG excluded due to XSS risk)
+    allowed_types = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
     if logo_file.content_type not in allowed_types:
-        return JsonResponse({'error': 'Invalid file type. Allowed: PNG, JPG, GIF, WebP, SVG'}, status=400)
+        return JsonResponse({'error': 'Invalid file type. Allowed: PNG, JPG, GIF, WebP'}, status=400)
 
     # Limit file size (2MB)
     if logo_file.size > 2 * 1024 * 1024:
@@ -590,7 +606,6 @@ def upload_organization_logo(request, org_id):
             'image/jpeg': 'jpg',
             'image/gif': 'gif',
             'image/webp': 'webp',
-            'image/svg+xml': 'svg',
         }
         ext = ext_map.get(logo_file.content_type, 'png')
 
@@ -620,7 +635,9 @@ def upload_organization_logo(request, org_id):
         return JsonResponse({'success': True, 'logo_url': logo_url})
 
     except Exception as e:
-        return JsonResponse({'error': f'Upload failed: {str(e)}'}, status=500)
+        import logging
+        logging.getLogger(__name__).error('Logo upload failed for org %s: %s', org_id, e, exc_info=True)
+        return JsonResponse({'error': 'Logo upload failed. Please try again later.'}, status=500)
 
 
 @login_required

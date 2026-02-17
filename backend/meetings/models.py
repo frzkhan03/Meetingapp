@@ -1,5 +1,4 @@
 import uuid
-import secrets
 import secrets as secrets_module
 import string
 from django.db import models
@@ -55,9 +54,9 @@ class PersonalRoom(models.Model):
         if not self.room_id:
             self.room_id = get_unique_meeting_code()
         if not self.moderator_token:
-            self.moderator_token = secrets.token_urlsafe(32)
+            self.moderator_token = secrets_module.token_urlsafe(32)
         if not self.attendee_token:
-            self.attendee_token = secrets.token_urlsafe(32)
+            self.attendee_token = secrets_module.token_urlsafe(32)
         if not self.room_name:
             self.room_name = f"{self.user.username}'s Room"
         super().save(*args, **kwargs)
@@ -129,7 +128,7 @@ class Meeting(models.Model):
         if not self.room_id:
             self.room_id = get_unique_meeting_code()
         if not self.attendee_token:
-            self.attendee_token = secrets.token_urlsafe(32)
+            self.attendee_token = secrets_module.token_urlsafe(32)
         super().save(*args, **kwargs)
 
     def get_guest_join_link(self):

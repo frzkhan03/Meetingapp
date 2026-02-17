@@ -556,6 +556,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
         """Moderator mutes all participants"""
         moderator_id = payload.get('moderatorId')
 
+        if not await self._is_moderator(moderator_id):
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Only moderators can mute all participants.'
+            }))
+            return
+
         await self.channel_layer.group_send(
             self.room_group_name,
             {
@@ -569,6 +576,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
         """Moderator kicks a user from the meeting"""
         moderator_id = payload.get('moderatorId')
         target_user_id = payload.get('targetUserId')
+
+        if not await self._is_moderator(moderator_id):
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Only moderators can kick users.'
+            }))
+            return
 
         # Send kick to the specific user via their user group
         await self.channel_layer.group_send(
@@ -620,6 +634,14 @@ class RoomConsumer(AsyncWebsocketConsumer):
     async def handle_end_meeting(self, payload):
         """Moderator ends the meeting for all participants"""
         moderator_id = payload.get('moderator_id')
+
+        if not await self._is_moderator(moderator_id):
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Only moderators can end the meeting.'
+            }))
+            return
+
         logger.info(f"Meeting {self.room_id} ended by moderator {moderator_id}")
 
         await self.channel_layer.group_send(
@@ -703,6 +725,84 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 'is_final': event['is_final'],
                 'timestamp': event['timestamp'],
             }))
+
+    # ========== Connection Analytics ==========
+
+    async def handle_connection_stats(self, payload):
+        """Store latest connection stats in Redis for aggregation on disconnect."""
+        try:
+            stats_data = {
+                'avg_bitrate': payload.get('avg_bitrate', 0),
+                'min_bitrate': payload.get('min_bitrate', 0),
+                'max_bitrate': payload.get('max_bitrate', 0),
+                'avg_rtt': payload.get('avg_rtt', 0),
+                'packet_loss': payload.get('packet_loss', 0),
+                'quality_changes': payload.get('quality_changes', []),
+                'reconnections': payload.get('reconnections', 0),
+                'browser': payload.get('browser', ''),
+                'device_type': payload.get('device_type', ''),
+                'connected_at': payload.get('connected_at', 0),
+            }
+            stats_key = f'ws:stats:{self.room_id}:{self.user_id}'
+            serialized = json.dumps(stats_data)
+            await database_sync_to_async(self._cache_set)(stats_key, serialized, 7200)
+        except Exception as e:
+            logger.warning(f"Failed to store connection stats: {e}")
+
+    @staticmethod
+    def _cache_set(key, value, timeout):
+        from django.core.cache import cache
+        cache.set(key, value, timeout)
+
+    async def _save_connection_log(self):
+        """Flush Redis stats to ConnectionLog model on disconnect."""
+        try:
+            await database_sync_to_async(self._save_connection_log_sync)()
+        except Exception as e:
+            logger.warning(f"Failed to save connection log: {e}")
+
+    def _save_connection_log_sync(self):
+        """Synchronous helper to flush Redis stats to ConnectionLog."""
+        from django.core.cache import cache
+        from django.utils import timezone
+        from datetime import datetime
+
+        stats_key = f'ws:stats:{self.room_id}:{self.user_id}'
+        raw = cache.get(stats_key)
+        if not raw:
+            return
+        stats = json.loads(raw) if isinstance(raw, str) else raw
+
+        connected_ts = stats.get('connected_at', 0)
+        if connected_ts:
+            connected_at = datetime.fromtimestamp(connected_ts / 1000, tz=timezone.utc)
+        else:
+            connected_at = timezone.now()
+
+        now = timezone.now()
+        duration = int((now - connected_at).total_seconds())
+
+        org_id = getattr(self, '_organization_id', None)
+
+        from .models import ConnectionLog
+        ConnectionLog.objects.create(
+            room_id=self.room_id,
+            user_id=self.user_id or 'unknown',
+            organization_id=org_id,
+            connected_at=connected_at,
+            disconnected_at=now,
+            duration_seconds=max(duration, 0),
+            avg_bitrate_kbps=stats.get('avg_bitrate', 0),
+            min_bitrate_kbps=stats.get('min_bitrate', 0),
+            max_bitrate_kbps=stats.get('max_bitrate', 0),
+            avg_rtt_ms=stats.get('avg_rtt', 0),
+            packet_loss_pct=stats.get('packet_loss', 0),
+            quality_tier_changes=stats.get('quality_changes', []),
+            reconnection_count=stats.get('reconnections', 0),
+            browser=stats.get('browser', '')[:100],
+            device_type=stats.get('device_type', '')[:20],
+        )
+        cache.delete(stats_key)
 
     # ========== Breakout Room Handlers ==========
 
@@ -1350,80 +1450,3 @@ class UserConsumer(AsyncWebsocketConsumer):
             'main_room_id': event['main_room_id']
         }))
 
-    # ---- Connection Analytics ----
-
-    async def handle_connection_stats(self, payload):
-        """Store latest connection stats in Redis for aggregation on disconnect."""
-        try:
-            stats_data = {
-                'avg_bitrate': payload.get('avg_bitrate', 0),
-                'min_bitrate': payload.get('min_bitrate', 0),
-                'max_bitrate': payload.get('max_bitrate', 0),
-                'avg_rtt': payload.get('avg_rtt', 0),
-                'packet_loss': payload.get('packet_loss', 0),
-                'quality_changes': payload.get('quality_changes', []),
-                'reconnections': payload.get('reconnections', 0),
-                'browser': payload.get('browser', ''),
-                'device_type': payload.get('device_type', ''),
-                'connected_at': payload.get('connected_at', 0),
-            }
-            stats_key = f'ws:stats:{self.room_id}:{self.user_id}'
-            serialized = json.dumps(stats_data)
-            await database_sync_to_async(self._cache_set)(stats_key, serialized, 7200)
-        except Exception as e:
-            logger.warning(f"Failed to store connection stats: {e}")
-
-    @staticmethod
-    def _cache_set(key, value, timeout):
-        from django.core.cache import cache
-        cache.set(key, value, timeout)
-
-    async def _save_connection_log(self):
-        """Flush Redis stats to ConnectionLog model on disconnect."""
-        try:
-            await database_sync_to_async(self._save_connection_log_sync)()
-        except Exception as e:
-            logger.warning(f"Failed to save connection log: {e}")
-
-    def _save_connection_log_sync(self):
-        """Synchronous helper to flush Redis stats to ConnectionLog."""
-        from django.core.cache import cache
-        from django.utils import timezone
-        from datetime import datetime
-
-        stats_key = f'ws:stats:{self.room_id}:{self.user_id}'
-        raw = cache.get(stats_key)
-        if not raw:
-            return
-        stats = json.loads(raw) if isinstance(raw, str) else raw
-
-        connected_ts = stats.get('connected_at', 0)
-        if connected_ts:
-            connected_at = datetime.fromtimestamp(connected_ts / 1000, tz=timezone.utc)
-        else:
-            connected_at = timezone.now()
-
-        now = timezone.now()
-        duration = int((now - connected_at).total_seconds())
-
-        org_id = getattr(self, '_organization_id', None)
-
-        from .models import ConnectionLog
-        ConnectionLog.objects.create(
-            room_id=self.room_id,
-            user_id=self.user_id or 'unknown',
-            organization_id=org_id,
-            connected_at=connected_at,
-            disconnected_at=now,
-            duration_seconds=max(duration, 0),
-            avg_bitrate_kbps=stats.get('avg_bitrate', 0),
-            min_bitrate_kbps=stats.get('min_bitrate', 0),
-            max_bitrate_kbps=stats.get('max_bitrate', 0),
-            avg_rtt_ms=stats.get('avg_rtt', 0),
-            packet_loss_pct=stats.get('packet_loss', 0),
-            quality_tier_changes=stats.get('quality_changes', []),
-            reconnection_count=stats.get('reconnections', 0),
-            browser=stats.get('browser', '')[:100],
-            device_type=stats.get('device_type', '')[:20],
-        )
-        cache.delete(stats_key)

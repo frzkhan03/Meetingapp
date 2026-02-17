@@ -118,29 +118,47 @@
 
 {% block extra_js %}
 <script>
-function copyToClipboard(path) {
-    const fullUrl = window.location.origin + path;
-    navigator.clipboard.writeText(fullUrl).then(() => {
-        // Show toast notification
-        const toast = document.createElement('div');
-        toast.className = 'position-fixed bottom-0 end-0 p-3';
-        toast.style.zIndex = '11';
-        toast.innerHTML = `
-            <div class="toast show" role="alert">
-                <div class="toast-header">
-                    <strong class="me-auto">Link Copied!</strong>
-                    <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-                </div>
-                <div class="toast-body">
-                    The link has been copied to your clipboard.
-                </div>
-            </div>
-        `;
-        document.body.appendChild(toast);
+function showToast(message) {
+    var toast = document.createElement('div');
+    toast.className = 'position-fixed bottom-0 end-0 p-3';
+    toast.style.zIndex = '11';
+    var toastEl = document.createElement('div');
+    toastEl.className = 'toast show';
+    toastEl.setAttribute('role', 'alert');
+    var header = document.createElement('div');
+    header.className = 'toast-header';
+    var strong = document.createElement('strong');
+    strong.className = 'me-auto';
+    strong.textContent = 'Success';
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn-close';
+    closeBtn.setAttribute('data-bs-dismiss', 'toast');
+    header.appendChild(strong);
+    header.appendChild(closeBtn);
+    var body = document.createElement('div');
+    body.className = 'toast-body';
+    body.textContent = message;
+    toastEl.appendChild(header);
+    toastEl.appendChild(body);
+    toast.appendChild(toastEl);
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.remove(); }, 3000);
+}
 
-        setTimeout(() => {
-            toast.remove();
-        }, 3000);
+function copyToClipboard(path) {
+    var fullUrl = window.location.origin + path;
+    navigator.clipboard.writeText(fullUrl).then(function() {
+        showToast('The link has been copied to your clipboard.');
+    }).catch(function() {
+        // Fallback
+        var tmp = document.createElement('textarea');
+        tmp.value = fullUrl;
+        document.body.appendChild(tmp);
+        tmp.select();
+        document.execCommand('copy');
+        tmp.remove();
+        showToast('The link has been copied to your clipboard.');
     });
 }
 </script>

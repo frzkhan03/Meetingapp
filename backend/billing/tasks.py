@@ -105,11 +105,21 @@ def record_daily_usage():
 
     today = timezone.now().date()
     yesterday = today - timedelta(days=1)
-    orgs = Organization.objects.all()
     created_count = 0
 
-    for org in orgs.iterator():
-        # Meeting count for yesterday
+    # Only process organizations that had activity yesterday
+    from django.db.models import Q
+    active_org_ids = set(
+        Meeting.objects.filter(created_at__date=yesterday).values_list('organization_id', flat=True)
+    ) | set(
+        MeetingRecording.objects.filter(created_at__date=yesterday).values_list('organization_id', flat=True)
+    )
+
+    for org_id in active_org_ids:
+        org = Organization.objects.filter(id=org_id).first()
+        if not org:
+            continue
+
         meeting_count = Meeting.objects.filter(
             organization=org,
             created_at__date=yesterday,
@@ -123,7 +133,6 @@ def record_daily_usage():
             )
             created_count += 1
 
-        # Recording count for yesterday
         recording_count = MeetingRecording.objects.filter(
             organization=org,
             created_at__date=yesterday,
@@ -137,7 +146,6 @@ def record_daily_usage():
             )
             created_count += 1
 
-        # Current total storage
         total_storage = MeetingRecording.objects.filter(
             organization=org,
         ).aggregate(total=Sum('file_size'))['total'] or 0
@@ -150,4 +158,4 @@ def record_daily_usage():
             )
             created_count += 1
 
-    logger.info('Recorded %d daily usage entries', created_count)
+    logger.info('Recorded %d daily usage entries for %d active orgs', created_count, len(active_org_ids))

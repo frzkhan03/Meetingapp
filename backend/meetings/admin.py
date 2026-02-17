@@ -220,6 +220,8 @@ class MeetingRecordingAdmin(ModelAdmin):
 
     @admin.display(description='Duration')
     def formatted_duration(self, obj):
+        if not obj.duration:
+            return '-'
         if obj.duration < 60:
             return f"{obj.duration}s"
         minutes = obj.duration // 60

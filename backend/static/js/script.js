@@ -1,3 +1,15 @@
+// ================== NOTIFICATION UTILITY ==================
+function showRoomNotification(msg, duration) {
+    var existing = document.querySelector('.room-notification');
+    if (existing) existing.remove();
+    var el = document.createElement('div');
+    el.className = 'room-notification';
+    el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10000;background:#1e1e2e;color:#fff;padding:12px 24px;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.3);transition:opacity 0.3s;';
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function() { el.style.opacity = '0'; setTimeout(function() { el.remove(); }, 300); }, duration || 5000);
+}
+
 // ================== WEBSOCKET CONNECTION WITH HEARTBEAT & RECONNECT ==================
 
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -238,6 +250,9 @@ function connectUserSocket() {
 // Socket wrapper to mimic Socket.io API
 const socketWrapper = {
     callbacks: {},
+    get connected() {
+        return socket && socket.readyState === WebSocket.OPEN;
+    },
     on: function(event, callback) {
         if (!this.callbacks[event]) {
             this.callbacks[event] = [];
@@ -643,7 +658,7 @@ let initializeVideoStreamSetup = async () => {
         window._resolveMediaReady();
     } catch (err) {
         console.error('Error accessing media devices:', err);
-        alert('Could not access camera/microphone. Please check permissions.');
+        showRoomNotification('Could not access camera/microphone. Please check permissions.');
         mediaReady = true;
         window._resolveMediaReady();
     }
@@ -1461,7 +1476,7 @@ async function startRecording() {
 
     } catch (err) {
         console.error('Error starting recording:', err);
-        alert('Failed to start recording: ' + err.message);
+        showRoomNotification('Failed to start recording: ' + err.message);
     }
 }
 
@@ -2329,11 +2344,7 @@ socketWrapper.on('user-returned-from-breakout', (data) => {
 });
 
 socketWrapper.on('breakout-error', (data) => {
-    if (typeof showToast === 'function') {
-        showToast(data.message || 'Breakout room error', 5000);
-    } else {
-        alert(data.message || 'Breakout room error');
-    }
+    showRoomNotification(data.message || 'Breakout room error');
 });
 
 function showMeetingEndedOverlay() {

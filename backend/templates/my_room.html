@@ -269,17 +269,30 @@ function showToast(message, isError = false) {
     const toast = document.createElement('div');
     toast.className = 'position-fixed bottom-0 end-0 p-3';
     toast.style.zIndex = '11';
-    toast.innerHTML = `
-        <div class="toast show" role="alert">
-            <div class="toast-header ${isError ? 'bg-danger text-white' : ''}">
-                <strong class="me-auto">${isError ? 'Error' : 'Success'}</strong>
-                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-            </div>
-            <div class="toast-body">
-                ${message}
-            </div>
-        </div>
-    `;
+
+    const toastEl = document.createElement('div');
+    toastEl.className = 'toast show';
+    toastEl.setAttribute('role', 'alert');
+
+    const header = document.createElement('div');
+    header.className = 'toast-header' + (isError ? ' bg-danger text-white' : '');
+    const strong = document.createElement('strong');
+    strong.className = 'me-auto';
+    strong.textContent = isError ? 'Error' : 'Success';
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn-close';
+    closeBtn.setAttribute('data-bs-dismiss', 'toast');
+    header.appendChild(strong);
+    header.appendChild(closeBtn);
+
+    const body = document.createElement('div');
+    body.className = 'toast-body';
+    body.textContent = message;
+
+    toastEl.appendChild(header);
+    toastEl.appendChild(body);
+    toast.appendChild(toastEl);
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
 }
@@ -290,26 +303,12 @@ function copyLink(inputId) {
     input.setSelectionRange(0, 99999);
 
     navigator.clipboard.writeText(input.value).then(() => {
-        // Show toast notification
-        const toast = document.createElement('div');
-        toast.className = 'position-fixed bottom-0 end-0 p-3';
-        toast.style.zIndex = '11';
-        toast.innerHTML = `
-            <div class="toast show" role="alert">
-                <div class="toast-header">
-                    <strong class="me-auto">Link Copied!</strong>
-                    <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-                </div>
-                <div class="toast-body">
-                    The link has been copied to your clipboard.
-                </div>
-            </div>
-        `;
-        document.body.appendChild(toast);
-
-        setTimeout(() => {
-            toast.remove();
-        }, 3000);
+        showToast('The link has been copied to your clipboard.');
+    }).catch(() => {
+        // Fallback for older browsers
+        input.select();
+        document.execCommand('copy');
+        showToast('The link has been copied to your clipboard.');
     });
 }
 

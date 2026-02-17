@@ -225,18 +225,8 @@ class SessionSecurityMiddleware(MiddlewareMixin):
 
         return None
 
-    def process_response(self, request, response):
-        # Ensure secure session cookie flags
-        if hasattr(request, 'session') and request.session.modified:
-            response.set_cookie(
-                settings.SESSION_COOKIE_NAME,
-                request.session.session_key,
-                max_age=settings.SESSION_COOKIE_AGE,
-                secure=settings.SESSION_COOKIE_SECURE,
-                httponly=settings.SESSION_COOKIE_HTTPONLY,
-                samesite=settings.SESSION_COOKIE_SAMESITE,
-            )
-        return response
+    # Session cookie flags are managed by Django's SessionMiddleware.
+    # No custom process_response needed - avoids duplicate/conflicting cookie settings.
 
 
 class SecurityLoggingMiddleware(MiddlewareMixin):
@@ -244,7 +234,10 @@ class SecurityLoggingMiddleware(MiddlewareMixin):
     Logs security-relevant events for monitoring and auditing.
     """
 
-    SENSITIVE_PATHS = ['/user/login/', '/user/register/', '/secure-admin/']
+    @property
+    def sensitive_paths(self):
+        admin_path = f'/{getattr(settings, "ADMIN_URL", "secure-admin/").strip("/")}'
+        return ['/user/login/', '/user/register/', admin_path + '/']
 
     def get_client_ip(self, request):
         """Get client IP address"""
@@ -262,7 +255,7 @@ class SecurityLoggingMiddleware(MiddlewareMixin):
 
     def process_response(self, request, response):
         # Log security-relevant requests
-        if any(request.path.startswith(p) for p in self.SENSITIVE_PATHS):
+        if any(request.path.startswith(p) for p in self.sensitive_paths):
             duration = time.time() - getattr(request, '_security_start_time', time.time())
             user = request.user.username if request.user.is_authenticated else 'anonymous'
 
