@@ -478,6 +478,7 @@ function stopConnectionStatsCollection() {
 let currentLayout = 'grid'; // 'grid', 'spotlight', or 'sidebar'
 let pinnedVideoId = null;
 let layoutBeforeScreenShare = null; // saved layout to restore when screen share ends
+let userChoseLayout = false; // true if user manually picked a layout
 
 // PeerJS Setup with ICE servers for production
 // TURN servers are required for connections across the open internet
@@ -1980,6 +1981,7 @@ document.addEventListener('click', function(e) {
 if (layoutPicker) {
     layoutPicker.querySelectorAll('.layout-picker-option').forEach(function(opt) {
         opt.addEventListener('click', function() {
+            userChoseLayout = true;
             switchLayout(this.dataset.layout);
             layoutPicker.classList.remove('open');
         });
@@ -2196,7 +2198,20 @@ addVideoStream = async function(stream, userId, isScreenShare) {
             }
         }, 100);
     }
+
+    // Auto-switch to spotlight on mobile when many participants
+    checkMobileLayoutSwitch();
 };
+
+// Auto-switch to spotlight layout on mobile with 5+ participants
+function checkMobileLayoutSwitch() {
+    if (window.innerWidth > 768) return;
+    if (userChoseLayout) return;
+    var videoCount = document.querySelectorAll('#video-area .innervideo').length;
+    if (videoCount >= 5 && currentLayout === 'grid') {
+        switchLayout('spotlight');
+    }
+}
 
 // ================== END MEETING ==================
 
@@ -3472,8 +3487,13 @@ document.addEventListener('DOMContentLoaded', function() {
             item.className = 'overflow-item';
             if (btn.classList.contains('active')) item.classList.add('active');
             var svgClone = btn.querySelector('svg');
+            // Clean up label: strip "Toggle " prefix and keyboard shortcut hints like "(M)"
+            var label = (btn.getAttribute('title') || 'Option')
+                .replace(/^Toggle\s+/i, '')
+                .replace(/\s*\([A-Z]\)\s*$/g, '')
+                .trim();
             item.innerHTML = (svgClone ? svgClone.outerHTML : '') +
-                '<span>' + (btn.getAttribute('title') || 'Option') + '</span>';
+                '<span>' + label + '</span>';
             item.onclick = function() {
                 btn.click();
                 panel.classList.remove('visible');

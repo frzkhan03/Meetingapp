@@ -483,16 +483,38 @@ body {
     margin: 0 8px;
 }
 
-/* End call button */
+/* End call button - red pill shape */
 .btn-end-call {
     background: var(--danger) !important;
     padding: 14px 24px !important;
-    border-radius: 12px !important;
+    border-radius: 28px !important;
+    min-width: 72px !important;
     width: auto !important;
 }
 
 .btn-end-call:hover {
     background: #dc2626 !important;
+}
+
+/* Chat close button - hidden on desktop, shown on mobile */
+.chat-close-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    margin-left: auto;
+    transition: all 0.2s ease;
+}
+
+.chat-close-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
 }
 
 /* ===== CHAT SIDEBAR ===== */
@@ -760,20 +782,31 @@ body {
         height: calc(33.333% - 3px);
     }
 
+    /* Video area: leave room for control bar */
+    #video-area {
+        padding-bottom: 80px;
+    }
+
+    /* Control bar: flush to bottom edge */
     .allbuttons {
-        padding: 8px 10px;
-        gap: 4px;
-        border-radius: 12px;
-        bottom: 12px;
-        max-width: calc(100vw - 16px);
+        padding: 10px 12px;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+        gap: 6px;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        border-radius: 0;
+        max-width: 100%;
         flex-wrap: nowrap;
         justify-content: center;
+        border-top: 1px solid var(--border);
+        transform: none;
     }
 
     .primary-controls {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 6px;
     }
 
     .secondary-controls {
@@ -784,12 +817,13 @@ body {
         display: flex !important;
     }
 
+    /* 48px touch targets — Android standard */
     .control-btn {
-        width: 44px;
-        height: 44px;
-        min-width: 44px;
-        min-height: 44px;
-        border-radius: 10px;
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+        min-height: 48px;
+        border-radius: 12px;
     }
 
     .control-btn svg {
@@ -801,16 +835,36 @@ body {
         display: none;
     }
 
+    /* End call pill */
     .btn-end-call {
-        padding: 10px 16px !important;
+        padding: 10px 18px !important;
+        min-width: 64px !important;
+        min-height: 48px !important;
+        border-radius: 24px !important;
     }
 
+    /* Chat close button visible on mobile */
+    .chat-close-btn {
+        display: flex;
+    }
+
+    /* Chat sidebar: full-screen overlay with safe areas */
     #sidebar.active {
         width: 100%;
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
     }
 
+    /* Participants panel: full-screen overlay */
     .participants-panel {
         width: 100%;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 250;
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
     }
 
     /* Popups as bottom sheets on mobile */
@@ -843,6 +897,11 @@ body {
         height: 56px;
         font-size: 1.5rem;
     }
+
+    /* Top bar safe area */
+    .top-bar {
+        padding-top: env(safe-area-inset-top, 0px);
+    }
 }
 
 /* Phone portrait (small) */
@@ -873,31 +932,41 @@ body {
         white-space: nowrap;
     }
 
+    /* Control bar: flush to bottom */
     .allbuttons {
-        padding: 6px 8px;
-        gap: 3px;
-        bottom: 8px;
+        padding: 8px 8px;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        gap: 4px;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        border-radius: 0;
+    }
+
+    /* 48px touch targets — matches Android standard */
+    .control-btn {
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+        min-height: 48px;
         border-radius: 10px;
     }
 
-    .control-btn {
-        width: 38px;
-        height: 38px;
-        border-radius: 8px;
-    }
-
     .control-btn svg {
-        width: 18px;
-        height: 18px;
+        width: 20px;
+        height: 20px;
     }
 
     .control-divider {
-        height: 20px;
-        margin: 0 2px;
+        display: none;
     }
 
+    /* End call pill */
     .btn-end-call {
-        padding: 8px 12px !important;
+        padding: 8px 14px !important;
+        min-width: 56px !important;
+        min-height: 48px !important;
+        border-radius: 24px !important;
     }
 
     /* Single column for 2 participants */
@@ -971,29 +1040,42 @@ body {
         height: calc(50% - 1px);
     }
 
+    /* Control bar: flush to bottom with landscape safe areas */
     .allbuttons {
-        bottom: 6px;
+        bottom: 0;
+        left: 0;
+        right: 0;
         padding: 6px 10px;
+        padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+        padding-left: calc(10px + env(safe-area-inset-left, 0px));
+        padding-right: calc(10px + env(safe-area-inset-right, 0px));
         gap: 4px;
+        border-radius: 0;
+        border-top: 1px solid var(--border);
     }
 
+    /* 44px touch targets — iOS minimum, compromise for limited vertical space */
     .control-btn {
-        width: 36px;
-        height: 36px;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
     }
 
     .control-btn svg {
-        width: 18px;
-        height: 18px;
+        width: 20px;
+        height: 20px;
     }
 
     .control-divider {
-        height: 20px;
-        margin: 0 3px;
+        display: none;
     }
 
+    /* End call pill */
     .btn-end-call {
-        padding: 8px 12px !important;
+        padding: 8px 14px !important;
+        min-height: 44px !important;
+        border-radius: 22px !important;
     }
 
     .innervideo p {
@@ -1008,15 +1090,59 @@ body {
     }
 }
 
-/* Safe area insets for notched phones */
+/* Comprehensive safe area insets for notched/dynamic island phones */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
     .allbuttons {
         padding-bottom: calc(10px + env(safe-area-inset-bottom));
     }
 
+    .top-bar {
+        padding-top: env(safe-area-inset-top);
+        padding-left: calc(24px + env(safe-area-inset-left));
+        padding-right: calc(24px + env(safe-area-inset-right));
+    }
+
+    #sidebar.active {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .participants-panel {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .mobile-overflow-panel {
+        padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    }
+
+    .caption-overlay {
+        bottom: calc(100px + env(safe-area-inset-bottom));
+    }
+
     @media (max-width: 768px) {
         .allbuttons {
-            padding-bottom: calc(8px + env(safe-area-inset-bottom));
+            padding-bottom: calc(10px + env(safe-area-inset-bottom));
+        }
+
+        .top-bar {
+            padding-left: calc(12px + env(safe-area-inset-left));
+            padding-right: calc(12px + env(safe-area-inset-right));
+        }
+
+        .caption-overlay {
+            bottom: calc(80px + env(safe-area-inset-bottom));
+        }
+    }
+
+    /* Landscape: handle rotated notch on left/right */
+    @media (max-height: 500px) and (orientation: landscape) {
+        .allbuttons {
+            padding-left: calc(10px + env(safe-area-inset-left));
+            padding-right: calc(10px + env(safe-area-inset-right));
+        }
+
+        .top-bar {
+            padding-left: calc(12px + env(safe-area-inset-left));
+            padding-right: calc(12px + env(safe-area-inset-right));
         }
     }
 }
@@ -1261,14 +1387,7 @@ body {
     background: var(--accent-light);
 }
 
-/* Responsive adjustments for participants panel */
-@media (max-width: 768px) {
-    .participants-panel {
-        width: 100%;
-        top: 44px;
-        bottom: 80px;
-    }
-}
+/* Responsive adjustments for participants panel — consolidated into main 768px block */
 
 /* Responsive spotlight layout on mobile */
 @media (max-width: 768px) {
@@ -2532,7 +2651,8 @@ body {
     right: 0;
     background: var(--bg-elevated, #1e1e2e);
     border-radius: 16px 16px 0 0;
-    padding: 0 16px 24px;
+    padding: 0 16px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     max-height: 70vh;
     overflow-y: auto;
     transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2550,7 +2670,7 @@ body {
     align-items: center;
     padding: 16px 0 12px;
     border-bottom: 1px solid var(--border, #333);
-    margin-bottom: 8px;
+    margin-bottom: 12px;
     font-weight: 600;
     color: var(--text-primary, #fff);
 }
@@ -2563,19 +2683,29 @@ body {
     padding: 4px;
 }
 
+/* 4-column grid layout (Zoom-style "More" sheet) */
+.mobile-overflow-items {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+}
+
 .mobile-overflow-panel .overflow-item {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
+    justify-content: center;
+    gap: 6px;
     width: 100%;
-    padding: 14px 12px;
+    padding: 12px 4px;
     background: none;
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
     color: var(--text-primary, #fff);
-    font-size: 0.95rem;
+    font-size: 0.75rem;
     cursor: pointer;
-    text-align: left;
+    text-align: center;
+    line-height: 1.2;
 }
 
 .mobile-overflow-panel .overflow-item:hover,
@@ -2584,14 +2714,15 @@ body {
 }
 
 .mobile-overflow-panel .overflow-item svg {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     flex-shrink: 0;
     opacity: 0.8;
 }
 
 .mobile-overflow-panel .overflow-item.active {
     color: var(--accent, #6366f1);
+    background: rgba(99, 102, 241, 0.1);
 }
 
 .mobile-overflow-backdrop {
@@ -2607,11 +2738,4 @@ body {
 
 .mobile-overflow-backdrop.visible {
     display: block;
-}
-
-@media (max-width: 768px) {
-    .mobile-overflow-panel,
-    .mobile-overflow-backdrop {
-        /* Enable on mobile */
-    }
 }
