@@ -60,36 +60,36 @@
 
                 <ul class="plan-features">
                     <li class="feature-item">
-                        <span class="feature-check">&#10003;</span>
+                        <span class="feature-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                         {% if plan.has_unlimited_rooms %}Unlimited rooms{% else %}{{ plan.max_rooms }} room{{ plan.max_rooms|pluralize }}{% endif %}
                     </li>
                     <li class="feature-item">
-                        <span class="feature-check">&#10003;</span>
+                        <span class="feature-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                         Up to {{ plan.max_participants }} participants
                     </li>
                     <li class="feature-item">
-                        <span class="feature-check">&#10003;</span>
+                        <span class="feature-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                         {% if plan.has_unlimited_duration %}Unlimited meeting duration{% else %}{{ plan.max_meeting_duration_minutes }}-minute meetings{% endif %}
                     </li>
                     <li class="feature-item {% if not plan.recording_enabled %}feature-disabled{% endif %}">
-                        <span class="feature-check">{% if plan.recording_enabled %}&#10003;{% else %}&#10007;{% endif %}</span>
+                        <span class="feature-check">{% if plan.recording_enabled %}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>{% else %}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>{% endif %}</span>
                         Meeting recording
                     </li>
                     {% if plan.tier == 'business' %}
                     <li class="feature-item">
-                        <span class="feature-check">&#10003;</span>
+                        <span class="feature-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                         Waiting rooms
                     </li>
                     <li class="feature-item">
-                        <span class="feature-check">&#10003;</span>
+                        <span class="feature-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                         Custom branding
                     </li>
                     <li class="feature-item">
-                        <span class="feature-check">&#10003;</span>
+                        <span class="feature-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                         Custom subdomain
                     </li>
                     <li class="feature-item">
-                        <span class="feature-check">&#10003;</span>
+                        <span class="feature-check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
                         Breakout rooms
                     </li>
                     {% endif %}
