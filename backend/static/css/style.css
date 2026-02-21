@@ -91,7 +91,7 @@ body {
 }
 
 /* Push footer to bottom on short pages */
-footer {
+.site-footer {
     margin-top: auto !important;
 }
 
