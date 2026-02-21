@@ -2642,16 +2642,19 @@ body {
 }
 
 /* ================== MOBILE OVERFLOW MENU ================== */
-.primary-controls {
-    display: contents;
-}
+/* Desktop: make control groups transparent for flex layout */
+@media (min-width: 769px) {
+    .primary-controls {
+        display: contents;
+    }
 
-.secondary-controls {
-    display: contents;
-}
+    .secondary-controls {
+        display: contents;
+    }
 
-.mobile-more-btn {
-    display: none !important;
+    .mobile-more-btn {
+        display: none !important;
+    }
 }
 
 .mobile-overflow-panel {
