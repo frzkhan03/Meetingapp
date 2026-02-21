@@ -626,6 +626,8 @@
         }
 
         function hideControls() {
+            // Never hide controls on mobile — they should always be visible
+            if (window.innerWidth <= 768) return;
             if (document.querySelector('#sidebar.active')) return;
             topBar.classList.remove('visible');
             controlBar.classList.remove('visible');

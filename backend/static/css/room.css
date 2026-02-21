@@ -782,6 +782,16 @@ body {
         height: calc(33.333% - 3px);
     }
 
+    /* Top bar & control bar: always visible on mobile (no auto-hide) */
+    .top-bar,
+    .allbuttons {
+        opacity: 1 !important;
+    }
+
+    .top-bar {
+        background: var(--bg-glass);
+    }
+
     /* Video area: leave room for control bar */
     #video-area {
         padding-bottom: 80px;
