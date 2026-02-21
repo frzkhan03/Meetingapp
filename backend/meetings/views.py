@@ -168,6 +168,7 @@ def start_meeting_view(request, room_id):
             'is_moderator': True,
             'moderator_proof': _sign_moderator_proof(str(room_id)),
             'author_id': str(meeting.author.id),
+            'is_locked': meeting.require_approval,
             'recording_to_s3': org.recording_to_s3 if org else False,
             **_get_plan_context(request),
         })
@@ -187,6 +188,7 @@ def start_meeting_view(request, room_id):
             'organization': org,
             'is_moderator': False,
             'author_id': str(meeting.author.id),
+            'is_locked': meeting.require_approval,
             'recording_to_s3': org.recording_to_s3 if org else False,
             **_get_plan_context(request),
         })
@@ -201,6 +203,7 @@ def start_meeting_view(request, room_id):
             'organization': org,
             'is_moderator': False,
             'author_id': str(meeting.author.id),
+            'is_locked': meeting.require_approval,
             'recording_to_s3': org.recording_to_s3 if org else False,
             **_get_plan_context(request),
         })
@@ -537,6 +540,7 @@ def join_meeting_guest_view(request, room_id):
         'is_moderator': is_moderator,
         'moderator_proof': _sign_moderator_proof(str(room_id)) if is_moderator else '',
         'author_id': str(meeting.author.id),
+        'is_locked': meeting.require_approval,
         'recording_to_s3': org.recording_to_s3 if org else False,
         **_get_plan_context(request),
     })
@@ -570,39 +574,73 @@ def all_rooms_view(request):
 
 @require_POST
 def toggle_room_lock_view(request, room_id):
-    """Toggle lock state of a personal room"""
+    """Toggle lock state of a personal room or scheduled meeting"""
     try:
         data = json.loads(request.body)
         is_locked = data.get('is_locked', False)
         token = data.get('token', '')
 
-        personal_room = get_object_or_404(PersonalRoom, room_id=room_id)
+        # Try PersonalRoom first, then Meeting
+        personal_room = PersonalRoom.objects.filter(room_id=room_id).first()
+        meeting = None
+        if not personal_room:
+            meeting = Meeting.objects.filter(room_id=room_id).first()
 
-        # Allow authenticated room owner OR valid moderator token
-        is_owner = request.user.is_authenticated and personal_room.user == request.user
-        is_token_moderator = token and token == personal_room.moderator_token
-        if not is_owner and not is_token_moderator:
-            return JsonResponse({'error': 'Unauthorized'}, status=403)
+        if not personal_room and not meeting:
+            return JsonResponse({'error': 'Room not found'}, status=404)
 
-        # Check if organization has waiting room feature
-        if is_locked:
-            from billing.plan_limits import get_plan_limits
-            org = personal_room.organization
-            if org:
-                limits = get_plan_limits(org)
-                if not limits.can_use_waiting_room():
-                    return JsonResponse({
-                        'error': 'Waiting room feature requires a Business plan',
-                        'upgrade_required': True
-                    }, status=403)
+        if personal_room:
+            # Allow authenticated room owner OR valid moderator token
+            is_owner = request.user.is_authenticated and personal_room.user == request.user
+            is_token_moderator = token and token == personal_room.moderator_token
+            if not is_owner and not is_token_moderator:
+                return JsonResponse({'error': 'Unauthorized'}, status=403)
 
-        personal_room.is_locked = is_locked
-        personal_room.save()
+            # Check if organization has waiting room feature
+            if is_locked:
+                from billing.plan_limits import get_plan_limits
+                org = personal_room.organization
+                if org:
+                    limits = get_plan_limits(org)
+                    if not limits.can_use_waiting_room():
+                        return JsonResponse({
+                            'error': 'Waiting room feature requires a Business plan',
+                            'upgrade_required': True
+                        }, status=403)
 
-        return JsonResponse({
-            'success': True,
-            'is_locked': personal_room.is_locked
-        })
+            personal_room.is_locked = is_locked
+            personal_room.save()
+
+            return JsonResponse({
+                'success': True,
+                'is_locked': personal_room.is_locked
+            })
+        else:
+            # Scheduled meeting — only author can toggle
+            is_author = request.user.is_authenticated and meeting.author == request.user
+            if not is_author:
+                return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+            if is_locked:
+                from billing.plan_limits import get_plan_limits
+                org = meeting.organization
+                if org:
+                    limits = get_plan_limits(org)
+                    if not limits.can_use_waiting_room():
+                        return JsonResponse({
+                            'error': 'Waiting room feature requires a Business plan',
+                            'upgrade_required': True
+                        }, status=403)
+
+            meeting.require_approval = is_locked
+            meeting.save()
+
+            return JsonResponse({
+                'success': True,
+                'is_locked': meeting.require_approval
+            })
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
         import logging
         logging.getLogger(__name__).error('toggle_room_lock error: %s', e, exc_info=True)
@@ -610,11 +648,16 @@ def toggle_room_lock_view(request, room_id):
 
 
 def get_room_lock_status_view(request, room_id):
-    """Get lock status of a personal room"""
-    personal_room = get_object_or_404(PersonalRoom, room_id=room_id)
-    return JsonResponse({
-        'is_locked': personal_room.is_locked
-    })
+    """Get lock status of a personal room or scheduled meeting"""
+    personal_room = PersonalRoom.objects.filter(room_id=room_id).first()
+    if personal_room:
+        return JsonResponse({'is_locked': personal_room.is_locked})
+
+    meeting = Meeting.objects.filter(room_id=room_id).first()
+    if meeting:
+        return JsonResponse({'is_locked': meeting.require_approval})
+
+    return JsonResponse({'error': 'Room not found'}, status=404)
 
 
 @ensure_csrf_cookie
