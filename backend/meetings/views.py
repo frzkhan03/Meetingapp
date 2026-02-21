@@ -405,6 +405,15 @@ def join_personal_room_view(request, room_id):
             ).first()
             is_approved = packet is not None
 
+        # Check Redis cache as fallback (survives session race conditions)
+        if not is_approved:
+            from django.core.cache import cache
+            cache_approval_key = f'room_approval:{room_id}:{user_id}'
+            if cache.get(cache_approval_key):
+                is_approved = True
+                # Persist to session so future checks are fast
+                request.session[approved_key] = True
+
         if not is_approved:
             # User needs approval - store room info in session and redirect to pending
             request.session['pending_room_id'] = str(room_id)
@@ -694,8 +703,8 @@ def mark_guest_approved_view(request, room_id):
         approved_key = f'approved_for_{room_id}'
         request.session[approved_key] = True
 
-        # Clean up pending session data and Redis approval key
-        cache.delete(approval_key)
+        # Clean up pending session data (keep Redis approval key as fallback
+        # against session race conditions — it expires naturally after 1 hour)
         for key in ['pending_room_id', 'pending_author_id', 'pending_user_id', 'pending_username', 'pending_token', 'pending_is_scheduled']:
             request.session.pop(key, None)
 
