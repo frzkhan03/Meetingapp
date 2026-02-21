@@ -9,23 +9,23 @@
 }
 
 :root {
-    --bg-primary: #0f0f0f;
-    --bg-secondary: #1a1a1a;
-    --bg-elevated: #252525;
-    --bg-glass: rgba(30, 30, 30, 0.8);
-    --accent: #6366f1;
-    --accent-light: #818cf8;
-    --accent-glow: rgba(99, 102, 241, 0.3);
-    --text-primary: #ffffff;
-    --text-secondary: #a0a0a0;
-    --text-muted: #666666;
+    --bg-primary: #07070f;
+    --bg-secondary: #0c0c18;
+    --bg-elevated: #161625;
+    --bg-glass: rgba(15, 15, 26, 0.8);
+    --accent: #818cf8;
+    --accent-light: #a78bfa;
+    --accent-glow: rgba(129, 140, 248, 0.25);
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
     --success: #22c55e;
     --danger: #ef4444;
-    --border: rgba(255, 255, 255, 0.08);
-    --border-light: rgba(255, 255, 255, 0.12);
-    --video-bg: linear-gradient(145deg, #1a1a1a, #0f0f0f);
-    --video-placeholder-bg: linear-gradient(145deg, #252525, #1a1a1a);
-    --video-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-light: rgba(255, 255, 255, 0.1);
+    --video-bg: linear-gradient(145deg, #0c0c18, #07070f);
+    --video-placeholder-bg: linear-gradient(145deg, #161625, #0c0c18);
+    --video-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
 /* Light Theme for Meeting Room */
@@ -33,15 +33,15 @@
     --bg-primary: #f1f5f9;
     --bg-secondary: #e2e8f0;
     --bg-elevated: #ffffff;
-    --bg-glass: rgba(255, 255, 255, 0.9);
+    --bg-glass: rgba(255, 255, 255, 0.8);
     --accent: #6366f1;
     --accent-light: #818cf8;
-    --accent-glow: rgba(99, 102, 241, 0.25);
-    --text-primary: #1e293b;
-    --text-secondary: #64748b;
+    --accent-glow: rgba(99, 102, 241, 0.2);
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
     --text-muted: #94a3b8;
-    --success: #22c55e;
-    --danger: #ef4444;
+    --success: #16a34a;
+    --danger: #dc2626;
     --border: rgba(0, 0, 0, 0.08);
     --border-light: rgba(0, 0, 0, 0.12);
     --video-bg: linear-gradient(145deg, #374151, #1f2937);
@@ -50,7 +50,7 @@
 }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--bg-primary);
     color: var(--text-primary);
     height: 100vh;

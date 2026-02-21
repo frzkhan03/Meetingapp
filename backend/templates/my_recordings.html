@@ -5,6 +5,37 @@
 
 {% block extra_css %}
 <style>
+    .recordings-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+    }
+
+    .recordings-header h2 {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700;
+        font-size: 1.75rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .recordings-header p {
+        color: var(--text-secondary);
+        margin: 0;
+        font-size: 0.9rem;
+    }
+
+    /* Glass table wrapper */
+    .glass-recordings-wrapper {
+        background: var(--glass-bg);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-md);
+        overflow: hidden;
+    }
+
     .recordings-table {
         width: 100%;
         border-collapse: separate;
@@ -12,25 +43,29 @@
     }
 
     .recordings-table thead th {
-        background: var(--bg-hover, rgba(255,255,255,0.05));
-        padding: 0.75rem 1rem;
-        font-size: 0.8rem;
+        background: rgba(255, 255, 255, 0.02);
+        padding: 0.875rem 1.25rem;
+        font-size: 0.75rem;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.05em;
         color: var(--text-secondary);
         border-bottom: 1px solid var(--border-color);
     }
 
     .recordings-table tbody td {
-        padding: 0.875rem 1rem;
+        padding: 1rem 1.25rem;
         color: var(--text-primary);
         border-bottom: 1px solid var(--border-color);
         font-size: 0.9rem;
     }
 
+    .recordings-table tbody tr {
+        transition: background 0.2s ease;
+    }
+
     .recordings-table tbody tr:hover {
-        background: var(--bg-hover, rgba(255,255,255,0.03));
+        background: var(--glass-bg-hover);
     }
 
     .recordings-table tbody tr:last-child td {
@@ -38,7 +73,7 @@
     }
 
     .recording-name {
-        font-weight: 500;
+        font-weight: 600;
         color: var(--text-primary);
     }
 
@@ -52,19 +87,22 @@
         align-items: center;
         gap: 6px;
         padding: 6px 14px;
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         font-size: 0.85rem;
         font-weight: 500;
-        color: var(--accent-primary, #6366f1);
-        background: transparent;
-        border: 1px solid var(--accent-primary, #6366f1);
+        color: var(--accent-primary);
+        background: rgba(129, 140, 248, 0.08);
+        border: 1px solid rgba(129, 140, 248, 0.2);
         text-decoration: none;
         transition: all 0.2s ease;
     }
 
     .btn-download:hover {
-        background: var(--accent-primary, #6366f1);
+        background: var(--accent-primary);
         color: white;
+        border-color: var(--accent-primary);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 16px var(--accent-glow);
     }
 
     .empty-recordings {
@@ -74,25 +112,29 @@
 
     .empty-recordings svg {
         color: var(--text-muted);
-        margin-bottom: 1rem;
-        opacity: 0.5;
+        margin-bottom: 1.25rem;
+        opacity: 0.3;
     }
 
     .empty-recordings p {
         color: var(--text-muted);
         margin-bottom: 0;
+        max-width: 400px;
+        margin-left: auto;
+        margin-right: auto;
+        line-height: 1.6;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-5">
+<div class="container mt-5 fade-in">
     <div class="row">
         <div class="col-lg-10 mx-auto">
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="recordings-header">
                 <div>
-                    <h2 class="mb-1">My Recordings</h2>
-                    <p class="text-secondary mb-0">{{ organization.name }}</p>
+                    <h2>My Recordings</h2>
+                    <p>{{ organization.name }}</p>
                 </div>
                 <a href="{% url 'my_room' %}" class="btn btn-outline-secondary">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
@@ -103,59 +145,57 @@
                 </a>
             </div>
 
-            <div class="card">
-                <div class="card-body p-0">
-                    {% if recordings %}
-                    <div class="table-responsive">
-                        <table class="recordings-table">
-                            <thead>
-                                <tr>
-                                    <th>Recording</th>
-                                    <th>Date & Time</th>
-                                    <th>Duration</th>
-                                    <th>Size</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for recording in recordings %}
-                                <tr>
-                                    <td>
-                                        <div class="recording-name">{{ recording.recording_name }}</div>
-                                    </td>
-                                    <td>
-                                        <span>{{ recording.created_at|date:"M d, Y" }}</span>
-                                        <br>
-                                        <span class="recording-meta">{{ recording.created_at|time:"h:i A" }}</span>
-                                    </td>
-                                    <td>{{ recording.duration|duration_format }}</td>
-                                    <td>{{ recording.file_size|filesizeformat_mb }}</td>
-                                    <td>
-                                        <a href="{% url 'download_recording' recording.id %}" class="btn-download">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                                <polyline points="7 10 12 15 17 10"/>
-                                                <line x1="12" y1="15" x2="12" y2="3"/>
-                                            </svg>
-                                            Download
-                                        </a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% include 'includes/pagination.html' with page_obj=page_obj %}
-                    {% else %}
-                    <div class="empty-recordings">
-                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <circle cx="12" cy="12" r="10"/>
-                            <circle cx="12" cy="12" r="4"/>
-                        </svg>
-                        <p>No recordings yet. Recordings will appear here when you record meetings with cloud storage enabled.</p>
-                    </div>
-                    {% endif %}
+            <div class="glass-recordings-wrapper">
+                {% if recordings %}
+                <div class="table-responsive">
+                    <table class="recordings-table">
+                        <thead>
+                            <tr>
+                                <th>Recording</th>
+                                <th>Date & Time</th>
+                                <th>Duration</th>
+                                <th>Size</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for recording in recordings %}
+                            <tr>
+                                <td>
+                                    <div class="recording-name">{{ recording.recording_name }}</div>
+                                </td>
+                                <td>
+                                    <span>{{ recording.created_at|date:"M d, Y" }}</span>
+                                    <br>
+                                    <span class="recording-meta">{{ recording.created_at|time:"h:i A" }}</span>
+                                </td>
+                                <td>{{ recording.duration|duration_format }}</td>
+                                <td>{{ recording.file_size|filesizeformat_mb }}</td>
+                                <td>
+                                    <a href="{% url 'download_recording' recording.id %}" class="btn-download">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                            <polyline points="7 10 12 15 17 10"/>
+                                            <line x1="12" y1="15" x2="12" y2="3"/>
+                                        </svg>
+                                        Download
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
+                {% include 'includes/pagination.html' with page_obj=page_obj %}
+                {% else %}
+                <div class="empty-recordings">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="12" cy="12" r="10"/>
+                        <circle cx="12" cy="12" r="4"/>
+                    </svg>
+                    <p>No recordings yet. Recordings will appear here when you record meetings with cloud storage enabled.</p>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>

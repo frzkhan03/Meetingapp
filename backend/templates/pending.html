@@ -2,27 +2,232 @@
 
 {% block title %}Joining Meeting - PyTalk{% endblock %}
 
+{% block extra_css %}
+<style>
+    .pending-wrapper {
+        min-height: calc(100vh - 80px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        position: relative;
+    }
+
+    /* Ambient background glow */
+    .pending-wrapper::before {
+        content: '';
+        position: absolute;
+        top: 25%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 350px;
+        height: 350px;
+        background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.4;
+        animation: pending-glow-pulse 4s ease-in-out infinite;
+    }
+
+    @keyframes pending-glow-pulse {
+        0%, 100% { opacity: 0.4; transform: translateX(-50%) scale(1); }
+        50% { opacity: 0.6; transform: translateX(-50%) scale(1.05); }
+    }
+
+    .pending-container {
+        max-width: 440px;
+        width: 100%;
+        position: relative;
+        z-index: 1;
+    }
+
+    .pending-card {
+        background: var(--glass-bg);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-xl);
+        padding: 3rem 2.5rem;
+        text-align: center;
+        box-shadow: var(--shadow-lg), 0 0 60px rgba(129, 140, 248, 0.08);
+        position: relative;
+        overflow: hidden;
+    }
+
+    /* Subtle top-edge shine */
+    .pending-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 10%;
+        right: 10%;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.4), transparent);
+        pointer-events: none;
+    }
+
+    /* Custom spinner */
+    .pending-spinner-wrap {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 2rem;
+        position: relative;
+    }
+
+    .pending-spinner {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        border: 3px solid rgba(255, 255, 255, 0.06);
+        border-top-color: var(--accent-primary);
+        border-right-color: var(--accent-secondary);
+        animation: pending-spin 1s linear infinite;
+    }
+
+    .pending-spinner-inner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 28px;
+        height: 28px;
+        color: var(--accent-primary);
+        opacity: 0.7;
+    }
+
+    @keyframes pending-spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .pending-title {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.025em;
+    }
+
+    .pending-subtitle {
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+        margin-bottom: 0.5rem;
+        line-height: 1.5;
+    }
+
+    /* Animated dots */
+    .pending-dots {
+        display: inline-flex;
+        gap: 4px;
+        margin-bottom: 2rem;
+    }
+
+    .pending-dots span {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--accent-primary);
+        animation: pending-dot-bounce 1.4s ease-in-out infinite;
+    }
+
+    .pending-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .pending-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes pending-dot-bounce {
+        0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+        40% { opacity: 1; transform: scale(1.2); }
+    }
+
+    #status-message {
+        margin-bottom: 1.5rem;
+    }
+
+    #status-message .alert {
+        border-radius: var(--radius-md);
+        font-size: 0.9rem;
+        border: none;
+    }
+
+    #status-message .alert-success {
+        background: rgba(34, 197, 94, 0.12);
+        color: var(--success);
+        border: 1px solid rgba(34, 197, 94, 0.2);
+    }
+
+    #status-message .alert-danger {
+        background: rgba(239, 68, 68, 0.12);
+        color: var(--danger);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .pending-cancel-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.625rem 1.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        font-family: 'DM Sans', sans-serif;
+        color: var(--text-secondary);
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-md);
+        text-decoration: none;
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+
+    .pending-cancel-btn:hover {
+        color: var(--text-primary);
+        background: rgba(255, 255, 255, 0.08);
+        border-color: var(--border-light);
+    }
+
+    @media (max-width: 576px) {
+        .pending-card {
+            padding: 2rem 1.5rem;
+            border-radius: var(--radius-lg);
+        }
+
+        .pending-wrapper::before {
+            width: 250px;
+            height: 250px;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-5 text-center">
-            <div class="card fade-in">
-                <div class="card-body py-5">
-                    <div class="mb-4">
-                        <div class="spinner-border" style="width: 3rem; height: 3rem;" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
-                    <h3 class="mb-2">Waiting for Host</h3>
-                    <p class="text-secondary mb-4">
-                        The host will let you in soon. Please wait...
-                    </p>
-                    <div id="status-message" class="mb-3"></div>
-                    <a href="{% url 'home' %}" class="btn btn-outline-secondary">
-                        Cancel
-                    </a>
+<div class="pending-wrapper">
+    <div class="pending-container">
+        <div class="pending-card">
+            <div class="pending-spinner-wrap">
+                <div class="pending-spinner" role="status">
+                    <span class="visually-hidden">Loading...</span>
                 </div>
+                <svg class="pending-spinner-inner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
             </div>
+
+            <h3 class="pending-title">Waiting for Host</h3>
+            <p class="pending-subtitle">
+                The host will let you in soon
+            </p>
+            <div class="pending-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div id="status-message"></div>
+            <a href="{% url 'home' %}" class="pending-cancel-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+                Cancel
+            </a>
         </div>
     </div>
 </div>

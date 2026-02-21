@@ -4,91 +4,165 @@
 
 {% block extra_css %}
 <style>
+    .prejoin-wrapper {
+        min-height: calc(100vh - 80px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        position: relative;
+    }
+
+    /* Ambient background glow */
+    .prejoin-wrapper::before {
+        content: '';
+        position: absolute;
+        top: 20%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 400px;
+        height: 400px;
+        background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.5;
+    }
+
     .prejoin-container {
         max-width: 480px;
-        margin: 0 auto;
+        width: 100%;
+        position: relative;
+        z-index: 1;
     }
 
     .prejoin-card {
-        background: var(--bg-elevated);
-        border-radius: var(--radius-lg);
-        padding: 2.5rem;
+        background: var(--glass-bg);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-xl);
+        padding: 3rem 2.5rem;
         text-align: center;
+        box-shadow: var(--shadow-lg), 0 0 60px rgba(129, 140, 248, 0.08);
+        position: relative;
+        overflow: hidden;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .prejoin-card:hover {
+        border-color: var(--border-light);
+        box-shadow: var(--shadow-lg), 0 0 80px rgba(129, 140, 248, 0.12);
+    }
+
+    /* Subtle top-edge shine */
+    .prejoin-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 10%;
+        right: 10%;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.4), transparent);
+        pointer-events: none;
     }
 
     .prejoin-icon {
         width: 80px;
         height: 80px;
-        background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+        background: var(--accent-gradient);
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 1.5rem;
+        margin: 0 auto 1.75rem;
+        box-shadow: 0 8px 32px rgba(129, 140, 248, 0.3);
+        position: relative;
+    }
+
+    .prejoin-icon::after {
+        content: '';
+        position: absolute;
+        inset: -4px;
+        border-radius: 50%;
+        border: 1px solid rgba(129, 140, 248, 0.2);
+        pointer-events: none;
     }
 
     .prejoin-icon svg {
-        width: 40px;
-        height: 40px;
+        width: 36px;
+        height: 36px;
         color: white;
     }
 
     .prejoin-title {
-        font-size: 1.5rem;
-        font-weight: 600;
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 1.625rem;
+        font-weight: 700;
         margin-bottom: 0.5rem;
         color: var(--text-primary);
+        letter-spacing: -0.025em;
     }
 
     .prejoin-subtitle {
         color: var(--text-secondary);
         margin-bottom: 2rem;
+        font-size: 0.95rem;
     }
 
     .prejoin-room-info {
-        background: var(--bg-secondary);
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--glass-border);
         border-radius: var(--radius-md);
-        padding: 1rem;
-        margin-bottom: 1.5rem;
+        padding: 1.125rem 1.25rem;
+        margin-bottom: 1.75rem;
     }
 
     .prejoin-room-name {
+        font-family: 'Space Grotesk', sans-serif;
         font-weight: 600;
         color: var(--text-primary);
+        font-size: 1.05rem;
     }
 
     .prejoin-room-owner {
-        font-size: 0.875rem;
+        font-size: 0.85rem;
         color: var(--text-muted);
+        margin-top: 0.25rem;
     }
 
     .name-input-group {
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.75rem;
         text-align: left;
     }
 
     .name-input-group label {
         display: block;
-        font-size: 0.875rem;
-        font-weight: 500;
+        font-size: 0.8rem;
+        font-weight: 600;
         color: var(--text-secondary);
         margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
     .name-input {
         width: 100%;
-        padding: 0.875rem 1rem;
+        padding: 0.875rem 1.125rem;
         font-size: 1rem;
-        border: 2px solid var(--border-color);
+        font-family: 'DM Sans', sans-serif;
+        border: 1.5px solid var(--glass-border);
         border-radius: var(--radius-md);
-        background: var(--bg-primary);
+        background: rgba(255, 255, 255, 0.02);
         color: var(--text-primary);
-        transition: border-color 0.2s;
+        transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
     }
 
     .name-input:focus {
         outline: none;
         border-color: var(--accent-primary);
+        box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15);
+        background: rgba(255, 255, 255, 0.04);
     }
 
     .name-input::placeholder {
@@ -97,38 +171,50 @@
 
     .join-btn {
         width: 100%;
-        padding: 0.875rem;
+        padding: 0.9rem;
         font-size: 1rem;
         font-weight: 600;
-        background: var(--accent-primary);
+        font-family: 'Space Grotesk', sans-serif;
+        background: var(--accent-gradient);
         color: white;
         border: none;
         border-radius: var(--radius-md);
         cursor: pointer;
-        transition: background 0.2s, transform 0.1s;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 0.5rem;
+        box-shadow: 0 4px 20px rgba(129, 140, 248, 0.3);
+        letter-spacing: 0.01em;
     }
 
     .join-btn:hover {
-        background: var(--accent-secondary);
-        transform: translateY(-1px);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(129, 140, 248, 0.4);
+    }
+
+    .join-btn:active {
+        transform: translateY(0);
     }
 
     .join-btn:disabled {
-        background: var(--text-muted);
+        background: var(--bg-hover);
+        color: var(--text-muted);
         cursor: not-allowed;
         transform: none;
+        box-shadow: none;
     }
 
     .back-link {
-        display: inline-block;
-        margin-top: 1.5rem;
-        color: var(--text-secondary);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        margin-top: 1.75rem;
+        color: var(--text-muted);
         text-decoration: none;
-        font-size: 0.875rem;
+        font-size: 0.85rem;
+        transition: color 0.2s ease;
     }
 
     .back-link:hover {
@@ -138,25 +224,38 @@
     .lock-notice {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        background: rgba(99, 102, 241, 0.1);
+        gap: 0.625rem;
+        background: rgba(129, 140, 248, 0.08);
+        border: 1px solid rgba(129, 140, 248, 0.15);
         color: var(--accent-primary);
         padding: 0.75rem 1rem;
         border-radius: var(--radius-md);
         font-size: 0.875rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.75rem;
     }
 
     .lock-notice svg {
         flex-shrink: 0;
     }
+
+    @media (max-width: 576px) {
+        .prejoin-card {
+            padding: 2rem 1.5rem;
+            border-radius: var(--radius-lg);
+        }
+
+        .prejoin-wrapper::before {
+            width: 280px;
+            height: 280px;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-5">
+<div class="prejoin-wrapper">
     <div class="prejoin-container">
-        <div class="prejoin-card card">
+        <div class="prejoin-card">
             <div class="prejoin-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polygon points="23 7 16 12 23 17 23 7"/>
@@ -211,7 +310,11 @@
             </form>
 
             <a href="{% url 'home' %}" class="back-link">
-                &larr; Back to home
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="19" y1="12" x2="5" y2="12"/>
+                    <polyline points="12 19 5 12 12 5"/>
+                </svg>
+                Back to home
             </a>
         </div>
     </div>

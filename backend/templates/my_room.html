@@ -2,212 +2,475 @@
 
 {% block title %}My Room - PyTalk{% endblock %}
 
+{% block extra_css %}
+<style>
+    .room-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .room-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+    }
+
+    .room-header h2 {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700;
+        font-size: 1.75rem;
+        margin: 0;
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        background: rgba(34, 197, 94, 0.12);
+        color: var(--success);
+        border: 1px solid rgba(34, 197, 94, 0.2);
+    }
+
+    .status-badge::before {
+        content: '';
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--success);
+        animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
+    /* Glass card enhancements for this page */
+    .glass-panel {
+        background: var(--glass-bg);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-md);
+        transition: all 0.3s ease;
+        overflow: visible;
+        position: relative;
+    }
+
+    .glass-panel:hover {
+        border-color: var(--border-light);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .glass-panel-header {
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .glass-panel-header h5 {
+        margin: 0;
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .glass-panel-body {
+        padding: 1.5rem;
+    }
+
+    /* Moderator link panel - accent glow */
+    .panel-moderator {
+        border-color: rgba(129, 140, 248, 0.2);
+        box-shadow: var(--shadow-md), 0 0 30px rgba(129, 140, 248, 0.06);
+    }
+
+    .panel-moderator:hover {
+        border-color: rgba(129, 140, 248, 0.35);
+        box-shadow: var(--shadow-lg), 0 0 40px rgba(129, 140, 248, 0.1);
+    }
+
+    .panel-moderator .glass-panel-header {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(167, 139, 250, 0.05));
+        border-bottom: 1px solid rgba(129, 140, 248, 0.15);
+    }
+
+    .panel-moderator .glass-panel-header h5 {
+        background: var(--accent-gradient);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .panel-moderator .glass-panel-header svg {
+        color: var(--accent-primary);
+    }
+
+    /* Info row styling */
+    .info-row {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem 0;
+        gap: 1rem;
+    }
+
+    .info-row:not(:last-child) {
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .info-label {
+        min-width: 140px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .info-value {
+        color: var(--text-primary);
+        font-size: 0.9rem;
+    }
+
+    .info-value code {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 4px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 0.85rem;
+        color: var(--accent-secondary);
+    }
+
+    /* Link input group */
+    .link-input-group {
+        display: flex;
+        gap: 0;
+        border-radius: var(--radius-md);
+        overflow: hidden;
+        border: 1px solid var(--glass-border);
+        background: rgba(255, 255, 255, 0.03);
+        transition: border-color 0.2s ease;
+    }
+
+    .link-input-group:focus-within {
+        border-color: var(--accent-primary);
+        box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .link-input-group input {
+        flex: 1;
+        border: none !important;
+        background: transparent !important;
+        padding: 0.75rem 1rem;
+        color: var(--text-primary);
+        font-size: 0.9rem;
+        outline: none;
+        box-shadow: none !important;
+    }
+
+    .link-input-group .btn-copy {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0.75rem 1.25rem;
+        border: none;
+        border-left: 1px solid var(--glass-border);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--accent-primary);
+        cursor: pointer;
+        font-weight: 500;
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+    }
+
+    .link-input-group .btn-copy:hover {
+        background: rgba(129, 140, 248, 0.1);
+        color: var(--accent-secondary);
+    }
+
+    /* Capabilities list */
+    .capabilities-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 1.25rem 0;
+    }
+
+    .capabilities-list li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 0;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .capabilities-list li::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent-primary);
+        flex-shrink: 0;
+    }
+
+    /* Quick action buttons */
+    .quick-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .quick-actions .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9rem;
+    }
+
+    /* Settings toggle area */
+    .settings-toggle-area {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.25rem 0;
+    }
+
+    .settings-toggle-info strong {
+        display: block;
+        color: var(--text-primary);
+        font-size: 0.95rem;
+        margin-bottom: 2px;
+    }
+
+    .settings-toggle-info p {
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        margin: 0;
+    }
+
+    .settings-note {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .settings-note small {
+        color: var(--text-muted);
+        font-size: 0.825rem;
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        line-height: 1.5;
+    }
+
+    .settings-note svg {
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container mt-5">
-    <div class="row">
-        <div class="col-md-8 mx-auto">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2>{{ room.room_name }}</h2>
-                <span class="badge bg-success">Active</span>
-            </div>
+<div class="container mt-5 fade-in">
+    <div class="room-container">
+        <div class="room-header">
+            <h2>{{ room.room_name }}</h2>
+            <span class="status-badge">Active</span>
+        </div>
 
-            <!-- Room Information -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">Room Information</h5>
+        <!-- Room Information -->
+        <div class="glass-panel mb-4">
+            <div class="glass-panel-header">
+                <h5>Room Information</h5>
+            </div>
+            <div class="glass-panel-body">
+                <div class="info-row">
+                    <div class="info-label">Room Owner</div>
+                    <div class="info-value">{{ request.user.username }}</div>
                 </div>
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <strong>Room Owner:</strong>
-                        </div>
-                        <div class="col-md-8">
-                            {{ request.user.username }}
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <strong>Organization:</strong>
-                        </div>
-                        <div class="col-md-8">
-                            {{ organization.name }}
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-4">
-                            <strong>Room ID:</strong>
-                        </div>
-                        <div class="col-md-8">
-                            <code>{{ room.room_id }}</code>
-                        </div>
-                    </div>
+                <div class="info-row">
+                    <div class="info-label">Organization</div>
+                    <div class="info-value">{{ organization.name }}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Room ID</div>
+                    <div class="info-value"><code>{{ room.room_id }}</code></div>
                 </div>
             </div>
+        </div>
 
-            <!-- Room Settings -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
-                            <circle cx="12" cy="12" r="3"/>
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        <!-- Room Settings -->
+        <div class="glass-panel mb-4">
+            <div class="glass-panel-header">
+                <h5>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    Room Settings
+                </h5>
+            </div>
+            <div class="glass-panel-body">
+                {% if can_use_waiting_room %}
+                <div class="settings-toggle-area">
+                    <div class="settings-toggle-info">
+                        <strong>Require Approval to Join</strong>
+                        <p>Participants will wait in lobby until you admit them</p>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input type="checkbox" class="form-check-input" id="roomLockToggle"
+                               {% if room.is_locked %}checked{% endif %}
+                               onchange="toggleRoomLockFromSettings(this.checked)">
+                    </div>
+                </div>
+                <div class="settings-note">
+                    <small>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="16" x2="12" y2="12"/>
+                            <line x1="12" y1="8" x2="12.01" y2="8"/>
                         </svg>
-                        Room Settings
-                    </h5>
+                        Participants will enter their name before joining. You'll see their name in the approval request.
+                    </small>
                 </div>
-                <div class="card-body">
-                    {% if can_use_waiting_room %}
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>Require Approval to Join</strong>
-                            <p class="text-muted mb-0 small">Participants will wait in lobby until you admit them</p>
-                        </div>
-                        <div class="form-check form-switch">
-                            <input type="checkbox" class="form-check-input" id="roomLockToggle"
-                                   {% if room.is_locked %}checked{% endif %}
-                                   onchange="toggleRoomLockFromSettings(this.checked)">
-                        </div>
+                {% else %}
+                <div class="settings-toggle-area">
+                    <div class="settings-toggle-info">
+                        <strong>Waiting Room</strong>
+                        <p>Require participants to wait for approval before joining</p>
                     </div>
-                    <div class="mt-3 pt-3 border-top">
-                        <small class="text-muted">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: -2px;">
-                                <circle cx="12" cy="12" r="10"/>
-                                <line x1="12" y1="16" x2="12" y2="12"/>
-                                <line x1="12" y1="8" x2="12.01" y2="8"/>
-                            </svg>
-                            Participants will enter their name before joining. You'll see their name in the approval request.
-                        </small>
-                    </div>
-                    {% else %}
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>Waiting Room</strong>
-                            <p class="text-muted mb-0 small">Require participants to wait for approval before joining</p>
-                        </div>
-                        <span class="badge bg-secondary">Business Plan</span>
-                    </div>
-                    <div class="mt-3 pt-3 border-top">
-                        <small class="text-muted">
-                            <a href="{% url 'pricing' %}">Upgrade to Business</a> to enable waiting rooms and control who joins your meetings.
-                        </small>
-                    </div>
-                    {% endif %}
+                    <span class="badge bg-secondary">Business Plan</span>
+                </div>
+                <div class="settings-note">
+                    <small>
+                        <a href="{% url 'pricing' %}">Upgrade to Business</a> to enable waiting rooms and control who joins your meetings.
+                    </small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Moderator Link -->
+        <div class="glass-panel panel-moderator mb-4">
+            <div class="glass-panel-header">
+                <h5>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                    Moderator Link
+                </h5>
+            </div>
+            <div class="glass-panel-body">
+                <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">
+                    Use this link to join as a <strong style="color: var(--accent-primary);">moderator</strong>. You will have full control:
+                </p>
+                <ul class="capabilities-list">
+                    <li>Mute all participants</li>
+                    <li>Remove participants from the meeting</li>
+                    <li>Control meeting settings</li>
+                </ul>
+                <div class="link-input-group mb-4">
+                    <input type="text" id="moderatorLink" value="{{ moderator_link }}" readonly>
+                    <button class="btn-copy" type="button" onclick="copyLink('moderatorLink')">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+                <a href="{{ moderator_link }}" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                        <polygon points="23 7 16 12 23 17 23 7"/>
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                    </svg>
+                    Start Meeting as Moderator
+                </a>
+            </div>
+        </div>
+
+        <!-- Attendee Link -->
+        <div class="glass-panel mb-4">
+            <div class="glass-panel-header">
+                <h5>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    Attendee Link
+                </h5>
+            </div>
+            <div class="glass-panel-body">
+                <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem;">
+                    Share this link with people you want to invite. They will:
+                </p>
+                <ul class="capabilities-list" style="margin-bottom: 1.25rem;">
+                    <li>Enter their name before joining</li>
+                    <li>Wait for your approval (if room is locked)</li>
+                    <li>Join as regular attendees</li>
+                </ul>
+                <div class="link-input-group">
+                    <input type="text" id="attendeeLink" value="{{ attendee_link }}" readonly>
+                    <button class="btn-copy" type="button" onclick="copyLink('attendeeLink')">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        Copy
+                    </button>
                 </div>
             </div>
+        </div>
 
-            <!-- Moderator Link -->
-            <div class="card mb-4 border-primary">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
-                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                        </svg>
-                        Moderator Link
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted mb-3">
-                        Use this link to join as a <strong>moderator</strong>. You will have full control over the meeting including:
-                    </p>
-                    <ul class="mb-3">
-                        <li>Mute all participants</li>
-                        <li>Remove participants from the meeting</li>
-                        <li>Control meeting settings</li>
-                    </ul>
-                    <div class="input-group mb-3">
-                        <input type="text" class="form-control" id="moderatorLink" value="{{ moderator_link }}" readonly>
-                        <button class="btn btn-outline-primary" type="button" onclick="copyLink('moderatorLink')">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                            </svg>
-                            Copy
-                        </button>
-                    </div>
-                    <a href="{{ moderator_link }}" class="btn btn-primary">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+        <!-- Quick Actions -->
+        <div class="glass-panel">
+            <div class="glass-panel-header">
+                <h5>Quick Actions</h5>
+            </div>
+            <div class="glass-panel-body">
+                <div class="quick-actions">
+                    <a href="{{ moderator_link }}" class="btn btn-success">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polygon points="23 7 16 12 23 17 23 7"/>
                             <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
                         </svg>
-                        Start Meeting as Moderator
+                        Start Meeting Now
                     </a>
-                </div>
-            </div>
-
-            <!-- Attendee Link -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                            <circle cx="9" cy="7" r="4"/>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    <button class="btn btn-outline-primary" onclick="copyLink('attendeeLink')" data-bs-toggle="tooltip" title="Copy attendee link">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                            <polyline points="16 6 12 2 8 6"/>
+                            <line x1="12" y1="2" x2="12" y2="15"/>
                         </svg>
-                        Attendee Link
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted mb-3">
-                        Share this link with people you want to invite to your meeting. They will:
-                    </p>
-                    <ul class="mb-3 text-muted small">
-                        <li>Enter their name before joining</li>
-                        <li>Wait for your approval (if room is locked)</li>
-                        <li>Join as regular attendees</li>
-                    </ul>
-                    <div class="input-group mb-3">
-                        <input type="text" class="form-control" id="attendeeLink" value="{{ attendee_link }}" readonly>
-                        <button class="btn btn-outline-secondary" type="button" onclick="copyLink('attendeeLink')">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                            </svg>
-                            Copy
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Quick Actions -->
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Quick Actions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="d-flex gap-2 flex-wrap">
-                        <a href="{{ moderator_link }}" class="btn btn-success">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                                <polygon points="23 7 16 12 23 17 23 7"/>
-                                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-                            </svg>
-                            Start Meeting Now
-                        </a>
-                        <button class="btn btn-outline-primary" onclick="copyLink('attendeeLink')" data-bs-toggle="tooltip" title="Copy attendee link">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
-                                <polyline points="16 6 12 2 8 6"/>
-                                <line x1="12" y1="2" x2="12" y2="15"/>
-                            </svg>
-                            Share Invite Link
-                        </button>
-                        <a href="{% url 'schedule_meeting' %}" class="btn btn-outline-secondary">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                                <line x1="16" y1="2" x2="16" y2="6"/>
-                                <line x1="8" y1="2" x2="8" y2="6"/>
-                                <line x1="3" y1="10" x2="21" y2="10"/>
-                            </svg>
-                            Schedule a Meeting
-                        </a>
-                        <a href="{% url 'my_recordings' %}" class="btn btn-outline-info">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                                <circle cx="12" cy="12" r="10"/>
-                                <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>
-                            </svg>
-                            My Recordings
-                        </a>
-                    </div>
+                        Share Invite Link
+                    </button>
+                    <a href="{% url 'schedule_meeting' %}" class="btn btn-outline-secondary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        Schedule a Meeting
+                    </a>
+                    <a href="{% url 'my_recordings' %}" class="btn btn-outline-secondary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>
+                        </svg>
+                        My Recordings
+                    </a>
                 </div>
             </div>
         </div>

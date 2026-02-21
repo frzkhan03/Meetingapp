@@ -2,47 +2,122 @@
 
 {% block title %}Sign In - PyTalk{% endblock %}
 
+{% block extra_css %}
+<style>
+    .auth-wrapper {
+        min-height: calc(100vh - 160px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        position: relative;
+    }
+
+    /* Subtle ambient glow behind the card */
+    .auth-wrapper::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 500px;
+        height: 500px;
+        transform: translate(-50%, -50%);
+        background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    .auth-card {
+        width: 100%;
+        max-width: 440px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .auth-card .card {
+        border-radius: var(--radius-xl, 24px);
+    }
+
+    .auth-card .card-header {
+        background: transparent;
+        border-bottom: 1px solid var(--border-color);
+        padding: 2rem 2rem 1.5rem;
+    }
+
+    .auth-card .card-header h3 {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.375rem;
+    }
+
+    .auth-card .card-body {
+        padding: 2rem;
+    }
+
+    .auth-card .form-label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+
+    .auth-card .btn-lg {
+        padding: 0.875rem 1.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        border-radius: var(--radius-md, 12px);
+    }
+
+    .auth-footer-link {
+        font-size: 0.9rem;
+    }
+
+    .auth-footer-link a {
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-5">
-            <div class="card fade-in">
-                <div class="card-header text-center">
-                    <h3>Welcome back</h3>
-                    <p class="text-secondary mb-0">Sign in to continue to PyTalk</p>
+<div class="auth-wrapper">
+    <div class="auth-card fade-in">
+        <div class="card glass-card">
+            <div class="card-header text-center">
+                <h3>Welcome back</h3>
+                <p class="text-secondary mb-0" style="font-size: 0.95rem;">Sign in to continue to PyTalk</p>
+            </div>
+            <div class="card-body">
+                {% if form.non_field_errors %}
+                <div class="alert alert-danger" role="alert">
+                    {% for error in form.non_field_errors %}
+                    <div>{{ error }}</div>
+                    {% endfor %}
                 </div>
-                <div class="card-body">
-                    {% if form.non_field_errors %}
-                    <div class="alert alert-danger" role="alert">
-                        {% for error in form.non_field_errors %}
-                        <div>{{ error }}</div>
-                        {% endfor %}
+                {% endif %}
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label for="id_username" class="form-label">Username</label>
+                        {{ form.username }}
+                        {% if form.username.errors %}
+                        <small class="text-danger">{{ form.username.errors.0 }}</small>
+                        {% endif %}
                     </div>
-                    {% endif %}
-                    <form method="post">
-                        {% csrf_token %}
-                        <div class="mb-4">
-                            <label for="id_username" class="form-label">Username</label>
-                            {{ form.username }}
-                            {% if form.username.errors %}
-                            <small class="text-danger">{{ form.username.errors.0 }}</small>
-                            {% endif %}
-                        </div>
-                        <div class="mb-4">
-                            <label for="id_password" class="form-label">Password</label>
-                            {{ form.password }}
-                            {% if form.password.errors %}
-                            <small class="text-danger">{{ form.password.errors.0 }}</small>
-                            {% endif %}
-                        </div>
-                        <div class="d-grid mb-4">
-                            <button type="submit" class="btn btn-primary btn-lg">Sign In</button>
-                        </div>
-                    </form>
-                    <div class="text-center">
-                        <span class="text-secondary">Don't have an account?</span>
-                        <a href="{% url 'register' %}" class="ms-1">Create one</a>
+                    <div class="mb-4">
+                        <label for="id_password" class="form-label">Password</label>
+                        {{ form.password }}
+                        {% if form.password.errors %}
+                        <small class="text-danger">{{ form.password.errors.0 }}</small>
+                        {% endif %}
                     </div>
+                    <div class="d-grid mb-4">
+                        <button type="submit" class="btn btn-primary btn-lg">Sign In</button>
+                    </div>
+                </form>
+                <div class="text-center auth-footer-link">
+                    <span class="text-secondary">Don't have an account?</span>
+                    <a href="{% url 'register' %}" class="ms-1">Create one</a>
                 </div>
             </div>
         </div>
