@@ -287,6 +287,9 @@ let UserVideoOn = {};
 let UserScreenShareOn = {};
 let UserStreamwithId = {};
 let UserIdName = {};
+let ParticipantsInfo = {};
+let pendingJoinRequests = {};
+let RoomModerators = {};
 UserIdName[USER_ID] = username;
 // ================== BANDWIDTH ADAPTATION STATE ==================
 const QUALITY_TIERS = {
@@ -1684,7 +1687,6 @@ socketWrapper.on('recording-stopped', (userId) => {
 });
 
 // Host approval alerts - deduplicate between userSocket and roomSocket
-let pendingJoinRequests = {};
 
 // Also listen for join requests via room socket (for unauthenticated moderators)
 socketWrapper.on('join-request', (data) => {
@@ -1769,9 +1771,7 @@ function respondToJoinRequest(userId, approved) {
 // Make socket available globally for moderator controls
 window.socket = socket;
 
-// Track participants with their info
-let ParticipantsInfo = {};
-ParticipantsInfo[USER_ID] = { id: USER_ID, username: username };
+// Track participants with their info (declared early to avoid TDZ)
 
 // Update participants info when new user joins
 socketWrapper.on('participant-info', (data) => {
@@ -1889,7 +1889,6 @@ socketWrapper.on('request-info', () => {
 });
 
 // Track who is the room moderator/host
-let RoomModerators = {};
 
 // Receive other participants info
 socketWrapper.on('share-info', (data) => {
