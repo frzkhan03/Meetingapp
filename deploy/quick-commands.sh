@@ -3,8 +3,8 @@
 # Source this file: source quick-commands.sh
 
 # Aliases for common operations
-alias pytalk-status='sudo systemctl status pytalk pytalk-celery redis6 postgresql nginx'
-alias pytalk-restart='sudo systemctl restart pytalk pytalk-celery'
+alias pytalk-status='sudo systemctl status pytalk pytalk-celery pytalk-celery-beat redis-server postgresql nginx'
+alias pytalk-restart='sudo systemctl restart pytalk pytalk-celery pytalk-celery-beat'
 alias pytalk-logs='sudo journalctl -u pytalk -f'
 alias pytalk-celery-logs='sudo journalctl -u pytalk-celery -f'
 alias pytalk-errors='sudo journalctl -u pytalk -p err --since "1 hour ago"'
@@ -12,33 +12,33 @@ alias pytalk-errors='sudo journalctl -u pytalk -p err --since "1 hour ago"'
 # Functions
 pytalk-shell() {
     cd /opt/pytalk/backend
-    sudo -u pytalk /opt/pytalk/venv/bin/python manage.py shell
+    /opt/pytalk/venv/bin/python manage.py shell
 }
 
 pytalk-migrate() {
     cd /opt/pytalk/backend
-    sudo -u pytalk /opt/pytalk/venv/bin/python manage.py migrate
+    /opt/pytalk/venv/bin/python manage.py migrate
 }
 
 pytalk-collectstatic() {
     cd /opt/pytalk/backend
-    sudo -u pytalk /opt/pytalk/venv/bin/python manage.py collectstatic --noinput
+    /opt/pytalk/venv/bin/python manage.py collectstatic --noinput
 }
 
 pytalk-createsuperuser() {
     cd /opt/pytalk/backend
-    sudo -u pytalk /opt/pytalk/venv/bin/python manage.py createsuperuser
+    /opt/pytalk/venv/bin/python manage.py createsuperuser
 }
 
 pytalk-update() {
     echo "Updating PyTalk..."
     cd /opt/pytalk
-    sudo -u pytalk git pull
+    git pull
     cd backend
-    sudo -u pytalk /opt/pytalk/venv/bin/pip install -r requirements.txt
-    sudo -u pytalk /opt/pytalk/venv/bin/python manage.py migrate
-    sudo -u pytalk /opt/pytalk/venv/bin/python manage.py collectstatic --noinput
-    sudo systemctl restart pytalk pytalk-celery
+    /opt/pytalk/venv/bin/pip install -r requirements.txt
+    /opt/pytalk/venv/bin/python manage.py migrate
+    /opt/pytalk/venv/bin/python manage.py collectstatic --noinput
+    sudo systemctl restart pytalk pytalk-celery pytalk-celery-beat
     echo "Update complete!"
 }
 

@@ -4,7 +4,7 @@ PyTalk Health Check Script
 Run: python health-check.py
 
 Checks:
-- Django application
+- Django application (Daphne)
 - PostgreSQL database
 - Redis cache
 - Celery workers
@@ -14,46 +14,49 @@ Checks:
 
 import subprocess
 import sys
-import os
 
-# Add color support
+
 class Colors:
     GREEN = '\033[92m'
     RED = '\033[91m'
     YELLOW = '\033[93m'
     RESET = '\033[0m'
 
+
 def ok(msg):
     print(f"  {Colors.GREEN}[OK]{Colors.RESET} {msg}")
+
 
 def fail(msg):
     print(f"  {Colors.RED}[FAIL]{Colors.RESET} {msg}")
 
+
 def warn(msg):
     print(f"  {Colors.YELLOW}[WARN]{Colors.RESET} {msg}")
 
+
 def run_cmd(cmd):
-    """Run a shell command and return output"""
     try:
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
         return result.returncode == 0, result.stdout.strip()
     except Exception as e:
         return False, str(e)
 
+
 def check_service(name):
-    """Check if a systemd service is running"""
     success, output = run_cmd(f"systemctl is-active {name}")
     return success and output == "active"
 
+
 def check_port(port):
-    """Check if a port is listening"""
     success, _ = run_cmd(f"ss -tlnp | grep :{port}")
     return success
 
+
 def main():
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("PyTalk Health Check")
-    print("="*50 + "\n")
+    print("=" * 50 + "\n")
 
     all_ok = True
 
@@ -62,7 +65,8 @@ def main():
     services = [
         ("pytalk", "Daphne ASGI Server"),
         ("pytalk-celery", "Celery Worker"),
-        ("redis6", "Redis Cache"),
+        ("pytalk-celery-beat", "Celery Beat Scheduler"),
+        ("redis-server", "Redis Cache"),
         ("postgresql", "PostgreSQL Database"),
         ("nginx", "Nginx Web Server"),
     ]
@@ -135,9 +139,11 @@ def main():
             fail(f"Memory: {used}MB / {total}MB ({percent:.1f}%) - critical!")
             all_ok = False
 
-    # Check application logs for recent errors
+    # Check recent errors
     print("\nChecking Recent Errors...")
-    success, output = run_cmd("journalctl -u pytalk --since '10 minutes ago' -p err --no-pager 2>/dev/null | wc -l")
+    success, output = run_cmd(
+        "journalctl -u pytalk --since '10 minutes ago' -p err --no-pager 2>/dev/null | wc -l"
+    )
     if success:
         error_count = int(output) if output.isdigit() else 0
         if error_count == 0:
@@ -146,14 +152,15 @@ def main():
             warn(f"{error_count} errors in last 10 minutes")
 
     # Summary
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     if all_ok:
         print(f"{Colors.GREEN}All critical checks passed!{Colors.RESET}")
     else:
         print(f"{Colors.RED}Some checks failed - review above{Colors.RESET}")
-    print("="*50 + "\n")
+    print("=" * 50 + "\n")
 
     return 0 if all_ok else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

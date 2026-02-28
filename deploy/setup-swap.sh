@@ -1,5 +1,5 @@
 #!/bin/bash
-# Setup swap space for t3.micro (1GB RAM)
+# Setup swap space (safety net for memory pressure)
 # Run as: sudo bash setup-swap.sh
 
 set -e
@@ -13,8 +13,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Check if swap already exists
-if [ -f /swapfile ]; then
+if swapon --show | grep -q '/swapfile'; then
     echo "Swap file already exists."
     swapon --show
     exit 0
@@ -22,28 +21,22 @@ fi
 
 echo -e "${GREEN}Creating 1GB swap file...${NC}"
 
-# Create swap file (1GB)
 dd if=/dev/zero of=/swapfile bs=128M count=8 status=progress
-
-# Set correct permissions
 chmod 600 /swapfile
-
-# Set up swap space
 mkswap /swapfile
-
-# Enable swap
 swapon /swapfile
 
-# Make it permanent
-echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+# Make permanent
+if ! grep -q '/swapfile' /etc/fstab; then
+    echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+fi
 
-# Optimize swappiness for server workload
-echo 'vm.swappiness=10' >> /etc/sysctl.conf
+# Optimize swappiness
+echo 'vm.swappiness=10' > /etc/sysctl.d/99-swappiness.conf
 sysctl vm.swappiness=10
 
 echo ""
 echo -e "${GREEN}Swap setup complete!${NC}"
 echo ""
-echo "Current swap status:"
 swapon --show
 free -h

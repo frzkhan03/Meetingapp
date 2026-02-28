@@ -3,8 +3,8 @@
 
 [Unit]
 Description=PyTalk Celery Beat Scheduler
-After=network.target redis.service postgresql.service
-Requires=redis.service
+After=network.target redis-server.service postgresql.service
+Requires=redis-server.service
 
 [Service]
 Type=simple
@@ -14,7 +14,6 @@ WorkingDirectory=/opt/pytalk/backend
 Environment="PATH=/opt/pytalk/venv/bin"
 EnvironmentFile=/opt/pytalk/backend/.env
 
-# Celery Beat for scheduled tasks (recurring billing, exchange rates, usage)
 ExecStart=/opt/pytalk/venv/bin/celery \
     -A meet beat \
     --loglevel=info \
@@ -22,8 +21,8 @@ ExecStart=/opt/pytalk/venv/bin/celery \
 
 Restart=always
 RestartSec=10
-StandardOutput=append:/var/log/pytalk/celery_beat.log
-StandardError=append:/var/log/pytalk/celery_beat_error.log
+StandardOutput=journal
+StandardError=journal
 
 # Security settings
 NoNewPrivileges=yes
@@ -33,7 +32,7 @@ ProtectHome=yes
 ReadWritePaths=/opt/pytalk/backend /var/log/pytalk
 
 # Minimal resources — beat is a scheduler, not a worker
-MemoryMax=50M
+MemoryMax=120M
 CPUQuota=10%
 
 [Install]

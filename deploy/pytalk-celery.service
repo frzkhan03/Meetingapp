@@ -3,8 +3,8 @@
 
 [Unit]
 Description=PyTalk Celery Worker
-After=network.target redis.service postgresql.service
-Requires=redis.service
+After=network.target redis-server.service postgresql.service
+Requires=redis-server.service
 
 [Service]
 Type=simple
@@ -14,10 +14,8 @@ WorkingDirectory=/opt/pytalk/backend
 Environment="PATH=/opt/pytalk/venv/bin"
 EnvironmentFile=/opt/pytalk/backend/.env
 
-# Celery worker for t3.micro (1GB RAM)
-# --concurrency=2: Only 2 worker processes (save RAM)
+# --concurrency=2: 2 worker processes
 # --max-tasks-per-child=100: Restart workers after 100 tasks (prevent memory leaks)
-# -Q default: Process default queue
 ExecStart=/opt/pytalk/venv/bin/celery \
     -A meet worker \
     --loglevel=info \
@@ -27,8 +25,8 @@ ExecStart=/opt/pytalk/venv/bin/celery \
 
 Restart=always
 RestartSec=10
-StandardOutput=append:/var/log/pytalk/celery.log
-StandardError=append:/var/log/pytalk/celery_error.log
+StandardOutput=journal
+StandardError=journal
 
 # Security settings
 NoNewPrivileges=yes
@@ -37,8 +35,7 @@ ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/opt/pytalk/backend/logs /var/log/pytalk
 
-# Resource limits for t3.micro (1GB RAM)
-MemoryMax=150M
+MemoryMax=400M
 CPUQuota=50%
 
 [Install]

@@ -1,0 +1,46 @@
+# PyTalk Daphne Service (Multi-Worker Template Unit)
+# Place this file at: /etc/systemd/system/pytalk@.service
+#
+# Usage:
+#   Start workers:  systemctl start pytalk@8001 pytalk@8002 pytalk@8003 pytalk@8004
+#   Enable on boot: systemctl enable pytalk@8001 pytalk@8002 pytalk@8003 pytalk@8004
+#   Status:         systemctl status pytalk@8001
+#   Logs:           journalctl -u pytalk@8001
+
+[Unit]
+Description=PyTalk ASGI Server (Daphne Worker %i)
+After=network.target redis-server.service postgresql.service
+Requires=redis-server.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/pytalk/backend
+Environment="PATH=/opt/pytalk/venv/bin"
+EnvironmentFile=/opt/pytalk/backend/.env
+
+# Daphne ASGI server — %i is substituted with the port number
+ExecStart=/opt/pytalk/venv/bin/daphne \
+    -b 127.0.0.1 \
+    -p %i \
+    meet.asgi:application
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/pytalk/backend/logs /var/log/pytalk
+
+# Resource limits per worker (4 workers on 4GB instance)
+MemoryMax=300M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target
