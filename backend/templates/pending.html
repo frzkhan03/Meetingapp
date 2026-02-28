@@ -291,23 +291,21 @@
                 '<div class="alert alert-success">Approved! Joining meeting...</div>';
 
             // Mark as approved in session before redirecting
-            if (pendingToken) {
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    try {
-                        const resp = await fetch('/meeting/room/' + roomId + '/mark-approved/', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRFToken': getCookie('csrftoken')
-                            }
-                        });
-                        if (resp.ok) break;
-                        console.warn('mark-approved returned ' + resp.status + ', retrying...');
-                    } catch (err) {
-                        console.error('Error marking approval (attempt ' + (attempt + 1) + '):', err);
-                    }
-                    await new Promise(r => setTimeout(r, 500));
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const resp = await fetch('/meeting/room/' + roomId + '/mark-approved/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken')
+                        }
+                    });
+                    if (resp.ok) break;
+                    console.warn('mark-approved returned ' + resp.status + ', retrying...');
+                } catch (err) {
+                    console.error('Error marking approval (attempt ' + (attempt + 1) + '):', err);
                 }
+                await new Promise(r => setTimeout(r, 500));
             }
 
             setTimeout(() => {

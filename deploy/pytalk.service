@@ -1,8 +1,14 @@
-# PyTalk Daphne Service
-# Place this file at: /etc/systemd/system/pytalk.service
+# PyTalk Daphne Service (Template Unit for Multi-Worker)
+# Place this file at: /etc/systemd/system/pytalk@.service
+#
+# Usage:
+#   Start workers:  systemctl start pytalk@8001 pytalk@8002 pytalk@8003 pytalk@8004
+#   Enable on boot: systemctl enable pytalk@8001 pytalk@8002 pytalk@8003 pytalk@8004
+#   Status:         systemctl status pytalk@8001
+#   Logs:           journalctl -u pytalk@8001
 
 [Unit]
-Description=PyTalk ASGI Server (Daphne)
+Description=PyTalk ASGI Server (Daphne Worker %i)
 After=network.target redis.service postgresql.service
 Requires=redis.service
 
@@ -14,21 +20,17 @@ WorkingDirectory=/opt/pytalk/backend
 Environment="PATH=/opt/pytalk/venv/bin"
 EnvironmentFile=/opt/pytalk/backend/.env
 
-# Daphne ASGI server
-# -b: bind address
-# -p: port
-# --access-log: log file for access logs
-# For t3.micro (1GB RAM), we use minimal settings
+# Daphne ASGI server — %i is substituted with the port number
 ExecStart=/opt/pytalk/venv/bin/daphne \
     -b 127.0.0.1 \
-    -p 8001 \
-    --access-log /var/log/pytalk/daphne_access.log \
+    -p %i \
+    --access-log /var/log/pytalk/daphne_access_%i.log \
     meet.asgi:application
 
 Restart=always
 RestartSec=5
-StandardOutput=append:/var/log/pytalk/daphne.log
-StandardError=append:/var/log/pytalk/daphne_error.log
+StandardOutput=append:/var/log/pytalk/daphne_%i.log
+StandardError=append:/var/log/pytalk/daphne_error_%i.log
 
 # Security settings
 NoNewPrivileges=yes
@@ -37,9 +39,9 @@ ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/opt/pytalk/backend/logs /var/log/pytalk
 
-# Resource limits for t3.micro (1GB RAM)
-MemoryMax=400M
-CPUQuota=80%
+# Resource limits per worker (4 workers on t3.small with 2GB)
+MemoryMax=300M
+CPUQuota=50%
 
 [Install]
 WantedBy=multi-user.target

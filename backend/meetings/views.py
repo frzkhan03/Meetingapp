@@ -173,45 +173,51 @@ def start_meeting_view(request, room_id):
             **_get_plan_context(request),
         })
 
-    # Check if user has been approved (has a packet)
-    packet = UserMeetingPacket.objects.filter(
-        user=request.user,
-        room_id=room_id
-    ).first()
-
-    if packet:
-        # User has been approved, can join as participant
-        return render(request, 'room.html', {
-            'room_id': str(room_id),
-            'user_id': str(request.user.id),
-            'username': request.user.username,
-            'organization': org,
-            'is_moderator': False,
-            'author_id': str(meeting.author.id),
-            'is_locked': meeting.require_approval,
-            'recording_to_s3': org.recording_to_s3 if org else False,
-            **_get_plan_context(request),
-        })
-
     # Check if meeting requires approval
-    if not meeting.require_approval:
-        # No approval required, join directly as participant
-        return render(request, 'room.html', {
-            'room_id': str(room_id),
-            'user_id': str(request.user.id),
-            'username': request.user.username,
-            'organization': org,
-            'is_moderator': False,
-            'author_id': str(meeting.author.id),
-            'is_locked': meeting.require_approval,
-            'recording_to_s3': org.recording_to_s3 if org else False,
-            **_get_plan_context(request),
-        })
+    if meeting.require_approval:
+        is_approved = False
 
-    # User needs approval - store room info in session and redirect to pending
-    request.session['pending_room_id'] = str(room_id)
-    request.session['pending_author_id'] = meeting.author.id
-    return redirect('pending_room')
+        # Check session-based approval
+        approved_key = f'approved_for_{room_id}'
+        is_approved = request.session.get(approved_key, False)
+
+        # Check UserMeetingPacket
+        if not is_approved:
+            packet = UserMeetingPacket.objects.filter(
+                user=request.user,
+                room_id=room_id
+            ).first()
+            is_approved = packet is not None
+
+        # Check Redis cache as fallback (survives session race conditions)
+        if not is_approved:
+            from django.core.cache import cache
+            cache_approval_key = f'room_approval:{room_id}:{request.user.id}'
+            if cache.get(cache_approval_key):
+                is_approved = True
+                request.session[approved_key] = True
+
+        if not is_approved:
+            # User needs approval - store room info in session and redirect to pending
+            request.session['pending_room_id'] = str(room_id)
+            request.session['pending_author_id'] = meeting.author.id
+            request.session['pending_user_id'] = str(request.user.id)
+            request.session['pending_username'] = request.user.username
+            request.session['pending_is_scheduled'] = True
+            return redirect('pending_room')
+
+    # User is approved or no approval required — join as participant
+    return render(request, 'room.html', {
+        'room_id': str(room_id),
+        'user_id': str(request.user.id),
+        'username': request.user.username,
+        'organization': org,
+        'is_moderator': False,
+        'author_id': str(meeting.author.id),
+        'is_locked': meeting.require_approval,
+        'recording_to_s3': org.recording_to_s3 if org else False,
+        **_get_plan_context(request),
+    })
 
 
 @ensure_csrf_cookie
@@ -515,6 +521,14 @@ def join_meeting_guest_view(request, room_id):
                 user__id=request.user.id
             ).first()
             is_approved = packet is not None
+
+        # Check Redis cache as fallback (survives session race conditions)
+        if not is_approved:
+            from django.core.cache import cache
+            cache_approval_key = f'room_approval:{room_id}:{user_id}'
+            if cache.get(cache_approval_key):
+                is_approved = True
+                request.session[approved_key] = True
 
         # Meeting author is always approved
         if request.user.is_authenticated and meeting.author == request.user:

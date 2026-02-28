@@ -81,7 +81,7 @@ CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-ev
 CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://fonts.googleapis.com")
 CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net")
 CSP_IMG_SRC = ("'self'", "data:", "blob:", "https://*.s3.amazonaws.com", "https://*.s3.ap-south-1.amazonaws.com")
-CSP_CONNECT_SRC = ("'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://*.peerjs.com", "https://0.peerjs.com", "https://storage.googleapis.com")
+CSP_CONNECT_SRC = ("'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://storage.googleapis.com")
 CSP_MEDIA_SRC = ("'self'", "blob:")
 CSP_FRAME_ANCESTORS = ("'none'",)
 CSP_WORKER_SRC = ("'self'", "blob:")
@@ -163,7 +163,7 @@ if PRODUCTION:
                 'SOCKET_CONNECT_TIMEOUT': 5,
                 'SOCKET_TIMEOUT': 5,
                 'RETRY_ON_TIMEOUT': True,
-                'CONNECTION_POOL_KWARGS': {'max_connections': 200},
+                'CONNECTION_POOL_KWARGS': {'max_connections': 50},
             },
             'KEY_PREFIX': 'pytalk',
         }
@@ -188,8 +188,9 @@ if PRODUCTION:
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
                 "hosts": [(os.getenv('REDIS_HOST', 'localhost'), int(os.getenv('REDIS_PORT', 6379)))],
-                "capacity": 1500,
-                "expiry": 10,
+                "capacity": 3000,
+                "expiry": 15,
+                "group_expiry": 3600,
             },
         },
     }
@@ -200,16 +201,21 @@ else:
         }
     }
 
-# Database - PostgreSQL
+# Database - PostgreSQL with connection pooling
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE': 'dj_db_conn_pool.backends.postgresql' if PRODUCTION else 'django.db.backends.postgresql',
         'NAME': os.getenv('DB_NAME', 'PyTalk'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', 'admin'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
-        'CONN_MAX_AGE': 600,  # Reuse connections for 10 minutes
+        'POOL_OPTIONS': {
+            'POOL_SIZE': 10,
+            'MAX_OVERFLOW': 10,
+            'POOL_RECYCLE': 600,
+            'POOL_PRE_PING': True,
+        },
         'OPTIONS': {
             'connect_timeout': 10,
         },

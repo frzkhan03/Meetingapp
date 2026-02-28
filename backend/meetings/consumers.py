@@ -247,6 +247,9 @@ class RoomConsumer(AsyncWebsocketConsumer):
         'mute-all': (5, 60),
         'alert': (20, 60),
         'connection-stats': (5, 60),
+        'sdp-offer': (30, 60),
+        'sdp-answer': (30, 60),
+        'ice-candidate': (120, 60),
     }
     WS_RATE_LIMIT_DEFAULT = (120, 60)
 
@@ -288,7 +291,7 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 return
 
             # Rate limit check (skip join-room, ping, share-info, request-info)
-            if event_type not in ('join-room', 'share-info', 'request-info', 'video-off', 'on-the-video', 'screen-share-off'):
+            if event_type not in ('join-room', 'share-info', 'request-info', 'video-off', 'on-the-video', 'screen-share-off', 'ice-candidate'):
                 if await self._check_ws_rate_limit(event_type):
                     await self.send(text_data=json.dumps({
                         'type': 'rate-limit-error',
@@ -348,6 +351,13 @@ class RoomConsumer(AsyncWebsocketConsumer):
             # Connection analytics
             elif event_type == 'connection-stats':
                 await self.handle_connection_stats(payload)
+            # WebRTC signaling relay (replaces PeerJS cloud)
+            elif event_type == 'sdp-offer':
+                await self.handle_signaling_relay(payload, 'sdp_offer')
+            elif event_type == 'sdp-answer':
+                await self.handle_signaling_relay(payload, 'sdp_answer')
+            elif event_type == 'ice-candidate':
+                await self.handle_signaling_relay(payload, 'ice_candidate')
 
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON received from {self.user_id}")
@@ -706,6 +716,63 @@ class RoomConsumer(AsyncWebsocketConsumer):
                 'sender_channel': self.channel_name
             }
         )
+
+    # ========== WebRTC Signaling Relay (replaces PeerJS cloud) ==========
+
+    async def handle_signaling_relay(self, payload, signal_type):
+        """Relay WebRTC signaling messages to a specific peer in the room."""
+        target_user_id = payload.get('target_user_id')
+        if not target_user_id:
+            return
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': f'signaling_{signal_type}',
+                'from_user_id': payload.get('from_user_id', self.user_id),
+                'target_user_id': target_user_id,
+                'payload': payload.get('payload', {}),
+                'is_screen_share': payload.get('is_screen_share', False),
+                'sender_channel': self.channel_name,
+            }
+        )
+
+    async def signaling_sdp_offer(self, event):
+        """Deliver SDP offer only to the target peer."""
+        if self.channel_name == event['sender_channel']:
+            return
+        if str(self.user_id) != str(event['target_user_id']):
+            return
+        await self.send(text_data=json.dumps({
+            'type': 'sdp-offer',
+            'from_user_id': event['from_user_id'],
+            'payload': event['payload'],
+            'is_screen_share': event.get('is_screen_share', False),
+        }))
+
+    async def signaling_sdp_answer(self, event):
+        if self.channel_name == event['sender_channel']:
+            return
+        if str(self.user_id) != str(event['target_user_id']):
+            return
+        await self.send(text_data=json.dumps({
+            'type': 'sdp-answer',
+            'from_user_id': event['from_user_id'],
+            'payload': event['payload'],
+            'is_screen_share': event.get('is_screen_share', False),
+        }))
+
+    async def signaling_ice_candidate(self, event):
+        if self.channel_name == event['sender_channel']:
+            return
+        if str(self.user_id) != str(event['target_user_id']):
+            return
+        await self.send(text_data=json.dumps({
+            'type': 'ice-candidate',
+            'from_user_id': event['from_user_id'],
+            'payload': event['payload'],
+            'is_screen_share': event.get('is_screen_share', False),
+        }))
 
     # ========== Bandwidth & Caption Handlers ==========
 

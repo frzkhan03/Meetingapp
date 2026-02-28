@@ -70,8 +70,8 @@ rdbcompression yes
 rdbchecksum yes
 dbfilename dump.rdb
 dir /var/lib/redis6
-maxmemory 100mb
-maxmemory-policy allkeys-lru
+maxmemory 256mb
+maxmemory-policy volatile-lru
 EOF
 
 systemctl start redis6
@@ -129,17 +129,17 @@ echo "==========================================${NC}"
 echo ""
 echo "System services installed:"
 echo "  - PostgreSQL 15 (running on port 5432)"
-echo "  - Redis 6 (running on port 6379, max 100MB RAM)"
+echo "  - Redis 6 (running on port 6379, max 256MB RAM)"
 echo "  - Nginx (running on ports 80/443)"
 echo "  - Python 3.11 with venv at /opt/pytalk/venv"
 echo ""
-echo -e "${YELLOW}Memory allocation for t3.micro (1GB):${NC}"
+echo -e "${YELLOW}Memory allocation for t3.small (2GB recommended):${NC}"
 echo "  - OS & system: ~200MB"
 echo "  - PostgreSQL: ~200MB"
-echo "  - Redis: ~100MB"
-echo "  - Daphne: ~400MB"
+echo "  - Redis: ~256MB"
+echo "  - Daphne x4: ~1000MB (250MB each)"
 echo "  - Celery: ~150MB"
-echo "  - Total: ~1050MB (tight fit!)"
+echo "  - Total: ~1806MB"
 echo ""
 echo -e "${RED}IMPORTANT: Run setup-swap.sh to add swap space!${NC}"
 echo "  sudo bash /opt/pytalk/deploy/setup-swap.sh"

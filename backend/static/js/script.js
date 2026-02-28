@@ -152,7 +152,8 @@ function connectRoomSocket() {
             roomHeartbeat.onPong();
             return;
         }
-        if (data.type === 'newuserjoined' || data.type === 'share-info' || data.type === 'newmessage') {
+        if (data.type === 'newuserjoined' || data.type === 'share-info' || data.type === 'newmessage'
+            || data.type === 'sdp-offer' || data.type === 'sdp-answer' || data.type === 'ice-candidate') {
             socketWrapper.trigger(data.type, data);
         } else {
             socketWrapper.trigger(data.type, data.user_id || data.message || data.data || data);
@@ -287,8 +288,6 @@ let UserScreenShareOn = {};
 let UserStreamwithId = {};
 let UserIdName = {};
 UserIdName[USER_ID] = username;
-let USER_ID_ScreenShare;
-
 // ================== BANDWIDTH ADAPTATION STATE ==================
 const QUALITY_TIERS = {
     high:      { width: 1280, height: 720, frameRate: 30, maxBitrate: 2500000, label: 'HD' },
@@ -302,6 +301,132 @@ let bandwidthState = {
     manualOverride: null,  // null = auto, or tier name
     statsInterval: null,
 };
+
+// ================== ACTIVE SPEAKER DETECTION ==================
+var speakerDetection = {
+    audioContext: null,
+    analysers: {},        // userId -> { analyser, dataArray, source }
+    speakingScores: {},   // userId -> rolling average volume
+    activeSpeakers: [],   // Ordered list of currently active speaker IDs
+    maxVisibleVideo: 4,
+    detectionInterval: null,
+    SPEECH_THRESHOLD: 30,
+    DECAY_FACTOR: 0.85,
+};
+
+function initSpeakerDetection() {
+    if (speakerDetection.audioContext) return;
+    try {
+        speakerDetection.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+        console.warn('AudioContext not available for speaker detection');
+        return;
+    }
+    if (!speakerDetection.detectionInterval) {
+        speakerDetection.detectionInterval = setInterval(detectActiveSpeakers, 500);
+    }
+}
+
+function addStreamToSpeakerDetection(userId, stream) {
+    if (!speakerDetection.audioContext || userId === USER_ID) return;
+    if (speakerDetection.analysers[userId]) return;
+    try {
+        var source = speakerDetection.audioContext.createMediaStreamSource(stream);
+        var analyser = speakerDetection.audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.5;
+        source.connect(analyser);
+        // Do NOT connect to destination (avoids double audio)
+        var dataArray = new Uint8Array(analyser.frequencyBinCount);
+        speakerDetection.analysers[userId] = { analyser: analyser, dataArray: dataArray, source: source };
+        speakerDetection.speakingScores[userId] = 0;
+    } catch (e) {
+        console.warn('Failed to add stream to speaker detection for', userId, e);
+    }
+}
+
+function removeStreamFromSpeakerDetection(userId) {
+    if (speakerDetection.analysers[userId]) {
+        try { speakerDetection.analysers[userId].source.disconnect(); } catch (e) {}
+        delete speakerDetection.analysers[userId];
+    }
+    delete speakerDetection.speakingScores[userId];
+}
+
+function detectActiveSpeakers() {
+    var scores = {};
+    scores[USER_ID] = 999; // Always include self
+
+    for (var userId in speakerDetection.analysers) {
+        var entry = speakerDetection.analysers[userId];
+        entry.analyser.getByteFrequencyData(entry.dataArray);
+        var sum = 0;
+        for (var i = 0; i < entry.dataArray.length; i++) {
+            sum += entry.dataArray[i] * entry.dataArray[i];
+        }
+        var rms = Math.sqrt(sum / entry.dataArray.length);
+        var oldScore = speakerDetection.speakingScores[userId] || 0;
+        var newScore = oldScore * speakerDetection.DECAY_FACTOR + rms * (1 - speakerDetection.DECAY_FACTOR);
+        speakerDetection.speakingScores[userId] = newScore;
+        scores[userId] = newScore;
+    }
+
+    var sorted = Object.keys(scores).sort(function(a, b) {
+        return (scores[b] || 0) - (scores[a] || 0);
+    });
+    speakerDetection.activeSpeakers = sorted;
+
+    var participantCount = Object.keys(ActiveUsers).length;
+    if (participantCount > 6) {
+        applySelectiveVideo(sorted, participantCount);
+    } else {
+        // Show all video when <= 6 participants
+        restoreAllVideo();
+    }
+}
+
+function applySelectiveVideo(rankedSpeakers, participantCount) {
+    var maxVideo;
+    if (participantCount <= 6) {
+        maxVideo = participantCount;
+    } else if (participantCount <= 12) {
+        maxVideo = 4;
+    } else {
+        maxVideo = 3;
+    }
+    speakerDetection.maxVisibleVideo = maxVideo;
+    var videoSpeakers = rankedSpeakers.slice(0, maxVideo);
+
+    for (var userId in ActiveUsers) {
+        var videoDiv = document.getElementById(userId);
+        if (!videoDiv) continue;
+        var video = videoDiv.querySelector('video');
+        var avatar = videoDiv.querySelector('.video-placeholder');
+
+        if (videoSpeakers.indexOf(userId) !== -1) {
+            if (video && !videoDiv.classList.contains('camera-off')) video.style.display = '';
+            if (avatar && !videoDiv.classList.contains('camera-off')) avatar.style.display = 'none';
+            videoDiv.classList.remove('audio-only-participant');
+        } else {
+            if (video) video.style.display = 'none';
+            if (avatar) avatar.style.display = 'flex';
+            videoDiv.classList.add('audio-only-participant');
+        }
+    }
+}
+
+function restoreAllVideo() {
+    var audioOnlyDivs = document.querySelectorAll('.audio-only-participant');
+    audioOnlyDivs.forEach(function(div) {
+        div.classList.remove('audio-only-participant');
+        var video = div.querySelector('video');
+        var avatar = div.querySelector('.video-placeholder');
+        if (!div.classList.contains('camera-off')) {
+            if (video) video.style.display = '';
+            if (avatar) avatar.style.display = 'none';
+        }
+    });
+}
 
 // ================== MEETING DURATION TIMER ==================
 var MeetingTimer = {
@@ -366,20 +491,12 @@ function detectDevice() {
 
 function collectConnectionSample() {
     // Find an active peer connection to sample from
-    var peers = Object.keys(myPeer.connections || {});
-    if (peers.length === 0) return;
-
     var conn = null;
-    for (var i = 0; i < peers.length; i++) {
-        var conns = myPeer.connections[peers[i]];
-        if (conns && conns.length > 0) {
-            for (var j = 0; j < conns.length; j++) {
-                if (conns[j].peerConnection) {
-                    conn = conns[j].peerConnection;
-                    break;
-                }
-            }
-            if (conn) break;
+    for (var pcId in peerConnections) {
+        var pcEntry = peerConnections[pcId];
+        if (pcEntry.pc && pcEntry.pc.connectionState === 'connected') {
+            conn = pcEntry.pc;
+            break;
         }
     }
     if (!conn || !conn.getStats) return;
@@ -480,7 +597,7 @@ let pinnedVideoId = null;
 let layoutBeforeScreenShare = null; // saved layout to restore when screen share ends
 let userChoseLayout = false; // true if user manually picked a layout
 
-// PeerJS Setup with ICE servers for production
+// ICE servers for WebRTC production connectivity
 // TURN servers are required for connections across the open internet
 // when peers are behind symmetric NAT or firewalls.
 const iceServers = [
@@ -509,110 +626,144 @@ if (typeof TURN_SERVER_URL !== 'undefined' && TURN_SERVER_URL) {
     console.warn('No TURN server configured - connections may fail behind strict NAT/firewalls');
 }
 
-const iceConfig = {
-    config: {
-        iceServers: iceServers
+// ================== NATIVE WEBRTC (replaces PeerJS) ==================
+const rtcConfig = { iceServers: iceServers };
+
+function closeAllPeerConnections() {
+    for (var uid in peerConnections) {
+        try { peerConnections[uid].pc.close(); } catch (e) {}
     }
-};
-const myPeer = new Peer(undefined, iceConfig);
-var myPeer2;
+    peerConnections = {};
+    for (var uid2 in screenShareConnections) {
+        try { screenShareConnections[uid2].pc.close(); } catch (e) {}
+    }
+    screenShareConnections = {};
+}
 
-myPeer.on('open', async function(id) {
-    const oldUserId = USER_ID;
-    const isReconnect = ConnectionState.peerConnected === false && oldUserId !== 'undefined';
-    USER_ID = id;
-    UserIdName[id] = username; // Update with new peer ID
+// Track all peer connections: userId -> { pc, streams }
+var peerConnections = {};
+var screenShareConnections = {};
 
-    // Update local video element ID if it was already created with the old ID
-    if (oldUserId !== id) {
-        const oldVideoDiv = document.getElementById(oldUserId);
-        if (oldVideoDiv) {
-            oldVideoDiv.setAttribute('id', id);
-        }
-        if (UserVideoOn[oldUserId]) {
-            UserVideoOn[id] = UserVideoOn[oldUserId];
-            delete UserVideoOn[oldUserId];
-        }
-        if (ActiveUsers[oldUserId]) {
-            delete ActiveUsers[oldUserId];
-        }
-        delete UserIdName[oldUserId];
+// No PeerJS ID reassignment — USER_ID stays stable (Django-assigned)
+ConnectionState.peerConnected = true;
+ActiveUsers[USER_ID] = 1;
+ParticipantsInfo[USER_ID] = { id: USER_ID, username: username, is_moderator: IS_MODERATOR };
+if (ConnectionState.wsConnected) {
+    updateConnectionState('connected');
+    startConnectionStatsCollection();
+}
+
+// Initialize speaker detection
+initSpeakerDetection();
+
+// ================== WEBRTC SIGNALING HANDLERS ==================
+
+// Handle incoming SDP offer (someone wants to connect to us)
+socketWrapper.on('sdp-offer', async function(data) {
+    var fromUserId = data.from_user_id;
+    var isScreenShare = data.is_screen_share;
+    if (fromUserId === USER_ID) return;
+
+    var connectionMap = isScreenShare ? screenShareConnections : peerConnections;
+
+    // Wait for media to be ready before answering
+    if (!mediaReady) {
+        await mediaReadyPromise;
     }
 
-    // Update ParticipantsInfo with new peer ID
-    ParticipantsInfo[id] = { id: id, username: username, is_moderator: IS_MODERATOR };
-    delete ParticipantsInfo[oldUserId];
+    try {
+        // Close existing connection if any (handle renegotiation)
+        if (connectionMap[fromUserId]) {
+            try { connectionMap[fromUserId].pc.close(); } catch (e) {}
+        }
 
-    ConnectionState.peerConnected = true;
-    if (ConnectionState.wsConnected) {
-        updateConnectionState('connected');
-        startConnectionStatsCollection();
-    }
+        var pc = new RTCPeerConnection(rtcConfig);
+        connectionMap[fromUserId] = { pc: pc, streams: [] };
 
-    socketWrapper.emit('join-room', {
-        room_id: ROOM_ID,
-        user_id: id,
-        username: username,
-        is_moderator: IS_MODERATOR,
-        moderator_proof: (typeof MODERATOR_PROOF !== 'undefined') ? MODERATOR_PROOF : ''
-    });
-    console.log('My peer Id is:', id);
-    ActiveUsers[id] = 1;
+        // Add our local stream
+        var localStream = isScreenShare ? VideoDetails.myScreenStream : VideoDetails.myVideoStream;
+        if (localStream) {
+            localStream.getTracks().forEach(function(track) {
+                pc.addTrack(track, localStream);
+            });
+        }
 
-    // Re-establish peer connections after reconnect
-    if (isReconnect && activePeerConnections.size > 0) {
-        console.log('Re-establishing peer connections after reconnect...');
-        activePeerConnections.forEach(function(peerId) {
-            if (peerId !== id && ActiveUsers[peerId]) {
-                setTimeout(function() {
-                    ConnecttonewUser(peerId, VideoDetails.myVideoStream);
-                }, 500);
+        // Handle remote tracks
+        pc.ontrack = function(event) {
+            if (event.streams && event.streams[0]) {
+                var remoteStream = event.streams[0];
+                // Avoid duplicate stream handling
+                if (connectionMap[fromUserId].streams.indexOf(remoteStream) !== -1) return;
+                connectionMap[fromUserId].streams.push(remoteStream);
+
+                if (isScreenShare) {
+                    addVideoStream(remoteStream, fromUserId, 1);
+                } else {
+                    UserStreamwithId[fromUserId] = remoteStream;
+                    addVideoStream(remoteStream, fromUserId);
+                    ActiveUsers[fromUserId] = 1;
+                    addStreamToSpeakerDetection(fromUserId, remoteStream);
+                }
             }
-        });
-    }
+        };
 
-    myPeer2 = new Peer(USER_ID + 'ScreenShare', iceConfig);
-    myPeer2.on('open', async (id) => {
-        console.log('My other Peer id is:', id);
-    });
-
-    myPeer2.on('call', async function(call) {
-        let userId = call.peer;
-        console.log('I got a screen share call');
-        await call.answer();
-        call.on('stream', async function(stream) {
-            if (stream) {
-                console.log('Adding screen share stream');
-                userId = userId.substring(0, userId.length - 11);
-                await addVideoStream(stream, userId, 1);
+        pc.onicecandidate = function(event) {
+            if (event.candidate) {
+                socketWrapper.emit('ice-candidate', {
+                    target_user_id: fromUserId,
+                    from_user_id: USER_ID,
+                    payload: event.candidate.toJSON(),
+                    is_screen_share: !!isScreenShare,
+                });
             }
+        };
+
+        await pc.setRemoteDescription(new RTCSessionDescription(data.payload));
+        var answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socketWrapper.emit('sdp-answer', {
+            target_user_id: fromUserId,
+            from_user_id: USER_ID,
+            payload: pc.localDescription.toJSON(),
+            is_screen_share: !!isScreenShare,
         });
-    });
+    } catch (err) {
+        console.error('Error handling SDP offer from ' + fromUserId + ':', err);
+    }
 });
 
-// PeerJS error and disconnection handling
-myPeer.on('error', function(err) {
-    console.error('PeerJS error:', err.type, err.message);
-    if (err.type === 'network' || err.type === 'server-error') {
-        ConnectionState.peerConnected = false;
-        updateConnectionState('reconnecting');
+// Handle incoming SDP answer
+socketWrapper.on('sdp-answer', async function(data) {
+    var fromUserId = data.from_user_id;
+    var isScreenShare = data.is_screen_share;
+    var connectionMap = isScreenShare ? screenShareConnections : peerConnections;
+    var entry = connectionMap[fromUserId];
+    if (!entry || !entry.pc) return;
+
+    try {
+        if (entry.pc.signalingState === 'have-local-offer') {
+            await entry.pc.setRemoteDescription(new RTCSessionDescription(data.payload));
+        }
+    } catch (err) {
+        console.error('Error setting remote description from ' + fromUserId + ':', err);
     }
 });
 
-myPeer.on('disconnected', function() {
-    console.warn('PeerJS disconnected from signaling server, reconnecting...');
-    ConnectionState.peerConnected = false;
-    if (ConnectionState.wsConnected) {
-        updateConnectionState('reconnecting');
-    }
-    if (!myPeer.destroyed) {
-        setTimeout(function() {
-            try {
-                myPeer.reconnect();
-            } catch (e) {
-                console.error('PeerJS reconnect failed:', e);
-            }
-        }, 2000);
+// Handle incoming ICE candidate
+socketWrapper.on('ice-candidate', async function(data) {
+    var fromUserId = data.from_user_id;
+    var isScreenShare = data.is_screen_share;
+    var connectionMap = isScreenShare ? screenShareConnections : peerConnections;
+    var entry = connectionMap[fromUserId];
+    if (!entry || !entry.pc) return;
+
+    try {
+        if (entry.pc.remoteDescription) {
+            await entry.pc.addIceCandidate(new RTCIceCandidate(data.payload));
+        }
+    } catch (err) {
+        // Ignore ICE errors during renegotiation
     }
 });
 
@@ -693,32 +844,8 @@ socketWrapper.on('newuserjoined', async (data) => {
         userId = data;
     }
 
-    // Handle PeerJS ID update (second join-room from same user)
-    if (data.is_id_update && data.old_user_id) {
-        console.log(`User ID updated: ${data.old_user_id} -> ${userId}`);
-        // Migrate state from old ID to new PeerJS ID
-        if (UserIdName[data.old_user_id]) {
-            UserIdName[userId] = UserIdName[data.old_user_id];
-            delete UserIdName[data.old_user_id];
-        }
-        if (ParticipantsInfo[data.old_user_id]) {
-            ParticipantsInfo[userId] = ParticipantsInfo[data.old_user_id];
-            ParticipantsInfo[userId].id = userId;
-            delete ParticipantsInfo[data.old_user_id];
-        }
-        if (ActiveUsers[data.old_user_id]) {
-            delete ActiveUsers[data.old_user_id];
-        }
-        // Update video element ID
-        var oldDiv = document.getElementById(data.old_user_id);
-        if (oldDiv) oldDiv.setAttribute('id', userId);
-        ActiveUsers[userId] = 1;
-        updateParticipantsPanel();
-        // Connect to new PeerJS ID for media
-        ConnecttonewUser(userId, VideoDetails.myVideoStream);
-        ConnecttonewUser(userId, VideoDetails.myScreenStream, 1);
-        return;
-    }
+    // Skip if this is our own join echo
+    if (userId === USER_ID) return;
 
     console.log(`New user joined: ${userId}, username: ${newUsername}`);
 
@@ -755,6 +882,16 @@ socketWrapper.on('user-disconnected', async (userId) => {
     delete ActiveUsers[userId];
     delete UserVideoOn[userId];
     activePeerConnections.delete(userId);
+    // Close WebRTC peer connections
+    if (peerConnections[userId]) {
+        try { peerConnections[userId].pc.close(); } catch (e) {}
+        delete peerConnections[userId];
+    }
+    if (screenShareConnections[userId]) {
+        try { screenShareConnections[userId].pc.close(); } catch (e) {}
+        delete screenShareConnections[userId];
+    }
+    removeStreamFromSpeakerDetection(userId);
     if (document.getElementById(userId)) {
         document.getElementById(userId).remove();
     }
@@ -871,121 +1008,96 @@ function updateParticipantCount() {
     }
 }
 
-// PeerJS Call Handler
-myPeer.on('call', async function(call) {
-    let userId = call.peer;
-    console.log('Received call from:', userId);
-    // Wait for getUserMedia to complete before answering
-    if (!mediaReady) {
-        await mediaReadyPromise;
-    }
-    try {
-        await call.answer(VideoDetails.myVideoStream);
-    } catch (err) {
-        console.error('Error answering call from ' + userId + ':', err);
-        return;
-    }
-    call.on('error', function(err) {
-        console.error('Incoming call error from ' + userId + ':', err);
-    });
-    call.on('stream', async function(stream) {
-        if (stream) {
-            await addVideoStream(stream, userId);
-            ActiveUsers[userId] = 1;
-            UserStreamwithId[userId] = stream;
-        }
-    });
-});
-
-// Connect to New User with retry logic
+// Connect to New User with retry logic (native WebRTC)
 const PEER_CALL_MAX_RETRIES = 3;
 const PEER_CALL_RETRY_DELAY = 2000;
 const PEER_CALL_STREAM_TIMEOUT = 10000; // 10s to receive stream
 
 async function ConnecttonewUser(userId, stream, isScreenShare, retryCount) {
-    if (!stream) return;
+    if (!stream || userId === USER_ID) return;
     retryCount = retryCount || 0;
-    if (!isScreenShare && userId !== USER_ID) {
+
+    if (!isScreenShare) {
         activePeerConnections.add(userId);
     }
 
-    if (isScreenShare) {
-        let ScreenShareUser = userId + 'ScreenShare';
-        if (ScreenShareUser === USER_ID_ScreenShare) return;
+    var connectionMap = isScreenShare ? screenShareConnections : peerConnections;
 
-        try {
-            let call = await myPeer2.call(ScreenShareUser, stream);
-            if (call) {
-                let streamReceived = false;
-                call.on('stream', async function(remoteStream) {
-                    streamReceived = true;
-                    if (remoteStream) {
-                        await addVideoStream(remoteStream, userId, 1);
-                    }
-                });
-                call.on('error', function(err) {
-                    console.error('Screen share call error with ' + userId + ':', err);
-                });
-                call.on('close', function() {
-                    if (!streamReceived) {
-                        console.warn('Screen share call closed without stream from ' + userId);
-                    }
+    // If already connected, skip
+    if (connectionMap[userId] && connectionMap[userId].pc &&
+        connectionMap[userId].pc.connectionState === 'connected') {
+        return;
+    }
+
+    // Close existing connection if any (for retry/reconnect)
+    if (connectionMap[userId]) {
+        try { connectionMap[userId].pc.close(); } catch (e) {}
+    }
+
+    try {
+        var pc = new RTCPeerConnection(rtcConfig);
+        connectionMap[userId] = { pc: pc, streams: [] };
+
+        // Add our local stream tracks
+        stream.getTracks().forEach(function(track) {
+            pc.addTrack(track, stream);
+        });
+
+        // Handle incoming remote stream
+        pc.ontrack = function(event) {
+            if (event.streams && event.streams[0]) {
+                var remoteStream = event.streams[0];
+                if (connectionMap[userId].streams.indexOf(remoteStream) !== -1) return;
+                connectionMap[userId].streams.push(remoteStream);
+
+                if (isScreenShare) {
+                    addVideoStream(remoteStream, userId, 1);
+                } else {
+                    UserStreamwithId[userId] = remoteStream;
+                    addVideoStream(remoteStream, userId);
+                    ActiveUsers[userId] = 1;
+                    addStreamToSpeakerDetection(userId, remoteStream);
+                }
+            }
+        };
+
+        pc.onicecandidate = function(event) {
+            if (event.candidate) {
+                socketWrapper.emit('ice-candidate', {
+                    target_user_id: userId,
+                    from_user_id: USER_ID,
+                    payload: event.candidate.toJSON(),
+                    is_screen_share: !!isScreenShare,
                 });
             }
-        } catch (err) {
-            console.error('Error calling screen share peer ' + userId + ':', err);
-        }
-    } else {
-        if (userId === USER_ID) return;
+        };
 
-        try {
-            let call = await myPeer.call(userId, stream);
-            if (call) {
-                let streamReceived = false;
-
-                call.on('stream', async function(remoteStream) {
-                    streamReceived = true;
-                    if (remoteStream) {
-                        UserStreamwithId[userId] = remoteStream;
-                        await addVideoStream(remoteStream, userId);
-                    }
-                });
-
-                call.on('error', function(err) {
-                    console.error('Peer call error with ' + userId + ':', err);
-                    // Retry on error if under max retries
-                    if (retryCount < PEER_CALL_MAX_RETRIES && ActiveUsers[userId]) {
-                        console.log('Retrying call to ' + userId + ' (attempt ' + (retryCount + 1) + ')');
-                        setTimeout(function() {
-                            ConnecttonewUser(userId, stream, isScreenShare, retryCount + 1);
-                        }, PEER_CALL_RETRY_DELAY * (retryCount + 1));
-                    }
-                });
-
-                call.on('close', function() {
-                    if (!streamReceived && retryCount < PEER_CALL_MAX_RETRIES && ActiveUsers[userId]) {
-                        console.warn('Call to ' + userId + ' closed without stream, retrying...');
-                        setTimeout(function() {
-                            ConnecttonewUser(userId, stream, isScreenShare, retryCount + 1);
-                        }, PEER_CALL_RETRY_DELAY * (retryCount + 1));
-                    }
-                });
-
-                // Timeout: if no stream received within timeout, retry
-                setTimeout(function() {
-                    if (!streamReceived && retryCount < PEER_CALL_MAX_RETRIES && ActiveUsers[userId]) {
-                        console.warn('No stream from ' + userId + ' within timeout, retrying...');
-                        ConnecttonewUser(userId, stream, isScreenShare, retryCount + 1);
-                    }
-                }, PEER_CALL_STREAM_TIMEOUT);
-            }
-        } catch (err) {
-            console.error('Error calling peer ' + userId + ':', err);
-            if (retryCount < PEER_CALL_MAX_RETRIES && ActiveUsers[userId]) {
+        pc.onconnectionstatechange = function() {
+            if ((pc.connectionState === 'failed' || pc.connectionState === 'disconnected') &&
+                retryCount < PEER_CALL_MAX_RETRIES && ActiveUsers[userId]) {
+                console.log('Connection to ' + userId + ' ' + pc.connectionState + ', retrying (' + (retryCount + 1) + ')');
                 setTimeout(function() {
                     ConnecttonewUser(userId, stream, isScreenShare, retryCount + 1);
                 }, PEER_CALL_RETRY_DELAY * (retryCount + 1));
             }
+        };
+
+        // Create and send offer
+        var offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        socketWrapper.emit('sdp-offer', {
+            target_user_id: userId,
+            from_user_id: USER_ID,
+            payload: pc.localDescription.toJSON(),
+            is_screen_share: !!isScreenShare,
+        });
+    } catch (err) {
+        console.error('Error creating peer connection to ' + userId + ':', err);
+        if (retryCount < PEER_CALL_MAX_RETRIES && ActiveUsers[userId]) {
+            setTimeout(function() {
+                ConnecttonewUser(userId, stream, isScreenShare, retryCount + 1);
+            }, PEER_CALL_RETRY_DELAY * (retryCount + 1));
         }
     }
 }
@@ -1115,11 +1227,6 @@ socketWrapper.on('off-the-video', (userId) => {
 const screenShare = document.getElementById('screenShare');
 if (screenShare) {
     screenShare.addEventListener('click', async () => {
-        if (!myPeer2) {
-            console.log('myPeer2 not defined');
-            return;
-        }
-
         if (!VideoDetails.myScreenShare) {
             try {
                 const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -1153,8 +1260,14 @@ function stopScreenShare() {
         VideoDetails.myScreenStream.getTracks().forEach(track => track.stop());
     }
     VideoDetails.myScreenShare = undefined;
+    VideoDetails.myScreenStream = null;
     UserScreenShareOn[USER_ID] = 0;
     socketWrapper.emit('screen-share-off', { user_id: USER_ID });
+    // Close screen share peer connections
+    for (var uid in screenShareConnections) {
+        try { screenShareConnections[uid].pc.close(); } catch (e) {}
+    }
+    screenShareConnections = {};
     let screenShareId = USER_ID + 'ScreenShare';
     if (document.getElementById(screenShareId)) {
         document.getElementById(screenShareId).remove();
@@ -1315,6 +1428,11 @@ async function addVideoStream(stream, userId, isScreenShare) {
         // Add audio to recording if active
         if (RecordingDetails.isRecording && stream) {
             addAudioSourceToMix(userId, stream);
+        }
+
+        // Register for active speaker detection
+        if (userId !== USER_ID && stream) {
+            addStreamToSpeakerDetection(userId, stream);
         }
     }
 }
@@ -1741,8 +1859,7 @@ function showKickedOverlay() {
     }
 
     // Close peer connections
-    if (myPeer) myPeer.destroy();
-    if (myPeer2) myPeer2.destroy();
+    closeAllPeerConnections();
 
     // Show kicked message
     const overlay = document.createElement('div');
@@ -2286,8 +2403,7 @@ function cleanupAndLeave() {
     }
 
     // Close peer connections
-    if (myPeer) myPeer.destroy();
-    if (myPeer2) myPeer2.destroy();
+    closeAllPeerConnections();
 
     // Prevent reconnection attempts after intentional leave
     roomReconnectAttempts = WS_MAX_RECONNECT_ATTEMPTS;
@@ -2329,8 +2445,7 @@ socketWrapper.on('meeting-duration-exceeded', (data) => {
     if (VideoDetails.myScreenStream) {
         VideoDetails.myScreenStream.getTracks().forEach(function(track) { track.stop(); });
     }
-    if (myPeer) myPeer.destroy();
-    if (myPeer2) myPeer2.destroy();
+    closeAllPeerConnections();
 
     var overlay = document.createElement('div');
     overlay.className = 'kicked-overlay';
@@ -2401,8 +2516,7 @@ function showMeetingEndedOverlay() {
     }
 
     // Close peer connections
-    if (myPeer) myPeer.destroy();
-    if (myPeer2) myPeer2.destroy();
+    closeAllPeerConnections();
 
     // Show meeting ended message
     const overlay = document.createElement('div');
@@ -2939,21 +3053,16 @@ function disableBgEffect() {
 }
 
 function replaceVideoTrackInPeers(newTrack) {
-    // Replace track in all PeerJS connections
-    if (myPeer && myPeer.connections) {
-        Object.values(myPeer.connections).forEach(conns => {
-            conns.forEach(conn => {
-                if (conn.peerConnection) {
-                    const senders = conn.peerConnection.getSenders();
-                    const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-                    if (videoSender) {
-                        videoSender.replaceTrack(newTrack).catch(err => {
-                            console.error('Error replacing video track:', err);
-                        });
-                    }
-                }
+    for (var uid in peerConnections) {
+        var entry = peerConnections[uid];
+        if (!entry.pc) continue;
+        var senders = entry.pc.getSenders();
+        var videoSender = senders.find(function(s) { return s.track && s.track.kind === 'video'; });
+        if (videoSender) {
+            videoSender.replaceTrack(newTrack).catch(function(err) {
+                console.error('Error replacing video track:', err);
             });
-        });
+        }
     }
 }
 
@@ -2987,31 +3096,28 @@ document.addEventListener('DOMContentLoaded', function() {
 function monitorBandwidth() {
     if (bandwidthState.statsInterval) return;
     bandwidthState.statsInterval = setInterval(async function() {
-        if (bandwidthState.manualOverride) return; // Skip auto if manual override
-        if (!myPeer || !myPeer.connections) return;
+        if (bandwidthState.manualOverride) return;
 
         let totalBitrate = 0;
         let totalRtt = 0;
         let connCount = 0;
 
         try {
-            const connEntries = Object.values(myPeer.connections);
-            for (const conns of connEntries) {
-                for (const conn of conns) {
-                    if (!conn.peerConnection) continue;
-                    const stats = await conn.peerConnection.getStats();
-                    stats.forEach(function(report) {
-                        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                            if (report.availableOutgoingBitrate) {
-                                totalBitrate += report.availableOutgoingBitrate;
-                                connCount++;
-                            }
-                            if (report.currentRoundTripTime) {
-                                totalRtt += report.currentRoundTripTime;
-                            }
+            for (var userId in peerConnections) {
+                var entry = peerConnections[userId];
+                if (!entry.pc || entry.pc.connectionState !== 'connected') continue;
+                var stats = await entry.pc.getStats();
+                stats.forEach(function(report) {
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        if (report.availableOutgoingBitrate) {
+                            totalBitrate += report.availableOutgoingBitrate;
+                            connCount++;
                         }
-                    });
-                }
+                        if (report.currentRoundTripTime) {
+                            totalRtt += report.currentRoundTripTime;
+                        }
+                    }
+                });
             }
         } catch (e) {
             return;
@@ -3019,13 +3125,29 @@ function monitorBandwidth() {
 
         if (connCount === 0) return;
         var avgBitrate = totalBitrate / connCount;
+        var participantCount = Object.keys(ActiveUsers).length;
 
-        // Determine tier based on available bandwidth
+        // Determine tier based on BOTH bandwidth AND participant count
         var newTier;
-        if (avgBitrate > 2000000) newTier = 'high';
-        else if (avgBitrate > 800000) newTier = 'medium';
-        else if (avgBitrate > 300000) newTier = 'low';
-        else newTier = 'audioOnly';
+        if (participantCount <= 4) {
+            // Small room: bandwidth-only thresholds
+            if (avgBitrate > 2000000) newTier = 'high';
+            else if (avgBitrate > 800000) newTier = 'medium';
+            else if (avgBitrate > 300000) newTier = 'low';
+            else newTier = 'audioOnly';
+        } else if (participantCount <= 8) {
+            // Medium room: cap at medium
+            if (avgBitrate > 800000) newTier = 'medium';
+            else if (avgBitrate > 300000) newTier = 'low';
+            else newTier = 'audioOnly';
+        } else if (participantCount <= 15) {
+            // Large room: cap at low
+            if (avgBitrate > 300000) newTier = 'low';
+            else newTier = 'audioOnly';
+        } else {
+            // Very large room: low with selective video
+            newTier = 'low';
+        }
 
         if (newTier !== bandwidthState.currentTier) {
             applyQualityTier(newTier);
@@ -3055,28 +3177,25 @@ function applyQualityTier(tier) {
     }
 
     // Apply constraints to each sender
-    if (myPeer && myPeer.connections) {
-        Object.values(myPeer.connections).forEach(function(conns) {
-            conns.forEach(function(conn) {
-                if (!conn.peerConnection) return;
-                var senders = conn.peerConnection.getSenders();
-                var videoSender = senders.find(function(s) { return s.track && s.track.kind === 'video'; });
-                if (videoSender) {
-                    var params = videoSender.getParameters();
-                    if (!params.encodings || params.encodings.length === 0) {
-                        params.encodings = [{}];
-                    }
-                    params.encodings[0].maxBitrate = config.maxBitrate;
-                    params.encodings[0].maxFramerate = config.frameRate;
-                    if (config.height > 0) {
-                        params.encodings[0].scaleResolutionDownBy = Math.max(1, 720 / config.height);
-                    }
-                    videoSender.setParameters(params).catch(function(e) {
-                        console.warn('setParameters failed:', e);
-                    });
-                }
+    for (var pcUserId in peerConnections) {
+        var pcEntry = peerConnections[pcUserId];
+        if (!pcEntry.pc) continue;
+        var senders = pcEntry.pc.getSenders();
+        var videoSender = senders.find(function(s) { return s.track && s.track.kind === 'video'; });
+        if (videoSender) {
+            var params = videoSender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+                params.encodings = [{}];
+            }
+            params.encodings[0].maxBitrate = config.maxBitrate;
+            params.encodings[0].maxFramerate = config.frameRate;
+            if (config.height > 0) {
+                params.encodings[0].scaleResolutionDownBy = Math.max(1, 720 / config.height);
+            }
+            videoSender.setParameters(params).catch(function(e) {
+                console.warn('setParameters failed:', e);
             });
-        });
+        }
     }
     updateNetworkIndicator(USER_ID, tier);
     socketWrapper.emit('quality-tier', { user_id: USER_ID, tier: tier });
@@ -3221,20 +3340,16 @@ function toggleNoiseCancellation() {
 }
 
 function replaceAudioTrackInPeers(newTrack) {
-    if (myPeer && myPeer.connections) {
-        Object.values(myPeer.connections).forEach(function(conns) {
-            conns.forEach(function(conn) {
-                if (conn.peerConnection) {
-                    var senders = conn.peerConnection.getSenders();
-                    var audioSender = senders.find(function(s) { return s.track && s.track.kind === 'audio'; });
-                    if (audioSender) {
-                        audioSender.replaceTrack(newTrack).catch(function(err) {
-                            console.error('Error replacing audio track:', err);
-                        });
-                    }
-                }
+    for (var uid in peerConnections) {
+        var entry = peerConnections[uid];
+        if (!entry.pc) continue;
+        var senders = entry.pc.getSenders();
+        var audioSender = senders.find(function(s) { return s.track && s.track.kind === 'audio'; });
+        if (audioSender) {
+            audioSender.replaceTrack(newTrack).catch(function(err) {
+                console.error('Error replacing audio track:', err);
             });
-        });
+        }
     }
 }
 
@@ -3430,9 +3545,9 @@ async function saveTranscript() {
 
 document.addEventListener('DOMContentLoaded', function() {
     // Start bandwidth monitoring once stream is ready
-    var waitForPeer = setInterval(function() {
-        if (myPeer && myPeer.open) {
-            clearInterval(waitForPeer);
+    var waitForStream = setInterval(function() {
+        if (VideoDetails.myVideoStream && ConnectionState.wsConnected) {
+            clearInterval(waitForStream);
             monitorBandwidth();
         }
     }, 1000);
@@ -3516,9 +3631,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log('WebSocket dead after tab resume, reconnecting...');
                     connectRoomSocket();
                 }
-                if (myPeer && myPeer.disconnected && !myPeer.destroyed) {
-                    console.log('PeerJS dead after tab resume, reconnecting...');
-                    try { myPeer.reconnect(); } catch(e) {}
+                // Re-establish any failed peer connections after tab resume
+                for (var uid in peerConnections) {
+                    if (peerConnections[uid].pc && peerConnections[uid].pc.connectionState === 'failed') {
+                        console.log('Peer connection to ' + uid + ' failed after tab resume, reconnecting...');
+                        ConnecttonewUser(uid, VideoDetails.myVideoStream);
+                    }
                 }
                 // Send a ping to verify
                 if (socket && socket.readyState === WebSocket.OPEN) {
