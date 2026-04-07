@@ -40,7 +40,7 @@ BASE_DOMAIN = os.getenv('BASE_DOMAIN', 'pytalk.veriright.com')
 # ==================== SSL/HTTPS SECURITY ====================
 if PRODUCTION:
     # Force HTTPS in production
-    SECURE_SSL_REDIRECT = True
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True') == 'True'
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
     # HSTS (HTTP Strict Transport Security)
