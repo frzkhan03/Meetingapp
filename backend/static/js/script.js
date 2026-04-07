@@ -153,7 +153,8 @@ function connectRoomSocket() {
             return;
         }
         if (data.type === 'newuserjoined' || data.type === 'share-info' || data.type === 'newmessage'
-            || data.type === 'sdp-offer' || data.type === 'sdp-answer' || data.type === 'ice-candidate') {
+            || data.type === 'sdp-offer' || data.type === 'sdp-answer' || data.type === 'ice-candidate'
+            || data.type === 'join-request' || data.type === 'join-response') {
             socketWrapper.trigger(data.type, data);
         } else {
             socketWrapper.trigger(data.type, data.user_id || data.message || data.data || data);
