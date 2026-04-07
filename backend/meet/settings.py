@@ -40,7 +40,7 @@ BASE_DOMAIN = os.getenv('BASE_DOMAIN', 'pytalk.veriright.com')
 # ==================== SSL/HTTPS SECURITY ====================
 if PRODUCTION:
     # Force HTTPS in production
-    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True') == 'True'
+    SECURE_SSL_REDIRECT = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
     # HSTS (HTTP Strict Transport Security)
@@ -51,7 +51,7 @@ else:
     SECURE_SSL_REDIRECT = False
 
 # ==================== COOKIE SECURITY ====================
-SESSION_COOKIE_SECURE = PRODUCTION and SECURE_SSL_REDIRECT  # Only send cookies over HTTPS when SSL is active
+SESSION_COOKIE_SECURE = PRODUCTION  # Only send cookies over HTTPS in production
 SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access to session cookie
 SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
 SESSION_COOKIE_AGE = 3600  # 1 hour session timeout
@@ -62,7 +62,7 @@ SESSION_SAVE_EVERY_REQUEST = False  # Only save when modified (was True — caus
 # This allows cookies to be shared across subdomains (e.g., acme.pytalk.veriright.com)
 SESSION_COOKIE_DOMAIN = os.getenv('SESSION_COOKIE_DOMAIN', None)  # None = default to current domain
 
-CSRF_COOKIE_SECURE = PRODUCTION and SECURE_SSL_REDIRECT  # Only send CSRF cookie over HTTPS when SSL is active
+CSRF_COOKIE_SECURE = PRODUCTION  # Only send CSRF cookie over HTTPS in production
 CSRF_COOKIE_HTTPONLY = False  # Must be False for JavaScript AJAX to read the token
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_USE_SESSIONS = False  # Don't use sessions - use cookie for AJAX compatibility
