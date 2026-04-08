@@ -301,7 +301,7 @@ const QUALITY_TIERS = {
 };
 
 let bandwidthState = {
-    currentTier: 'high',
+    currentTier: 'medium',
     manualOverride: null,  // null = auto, or tier name
     statsInterval: null,
 };
@@ -801,8 +801,9 @@ let mediaReadyPromise = new Promise((resolve) => { window._resolveMediaReady = r
 
 let initializeVideoStreamSetup = async () => {
     try {
+        const initTier = QUALITY_TIERS[bandwidthState.currentTier];
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
+            video: { width: { ideal: initTier.width }, height: { ideal: initTier.height }, frameRate: { ideal: initTier.frameRate } },
             audio: true
         });
         VideoDetails.myVideoStream = stream;
