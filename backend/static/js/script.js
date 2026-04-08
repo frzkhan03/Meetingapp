@@ -612,19 +612,15 @@ const iceServers = [
 
 // Add TURN servers if configured (critical for production)
 if (typeof TURN_SERVER_URL !== 'undefined' && TURN_SERVER_URL) {
-    iceServers.push({
-        urls: TURN_SERVER_URL,
-        username: TURN_SERVER_USERNAME || '',
-        credential: TURN_SERVER_CREDENTIAL || ''
-    });
-    // Also add TURNS (TLS) variant if it's a turn: URL
-    if (TURN_SERVER_URL.startsWith('turn:')) {
-        iceServers.push({
-            urls: TURN_SERVER_URL.replace('turn:', 'turns:'),
-            username: TURN_SERVER_USERNAME || '',
-            credential: TURN_SERVER_CREDENTIAL || ''
-        });
-    }
+    var turnHost = TURN_SERVER_URL.replace(/^turns?:/, '').replace(/[:?].*$/, '');
+    var turnUser = TURN_SERVER_USERNAME || '';
+    var turnCred = TURN_SERVER_CREDENTIAL || '';
+    iceServers.push(
+        { urls: 'turn:' + turnHost + ':80', username: turnUser, credential: turnCred },
+        { urls: 'turn:' + turnHost + ':80?transport=tcp', username: turnUser, credential: turnCred },
+        { urls: 'turn:' + turnHost + ':443', username: turnUser, credential: turnCred },
+        { urls: 'turns:' + turnHost + ':443?transport=tcp', username: turnUser, credential: turnCred }
+    );
     console.log('TURN server configured for reliable connectivity');
 } else {
     console.warn('No TURN server configured - connections may fail behind strict NAT/firewalls');
