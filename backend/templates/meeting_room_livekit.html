@@ -1,0 +1,1155 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ room_name }} - PyTalk Meeting</title>
+    
+    <!-- LiveKit SDK -->
+    <script src="https://unpkg.com/livekit-client@2.0.0/dist/livekit-client.umd.min.js"></script>
+    
+    <!-- Custom LiveKit Client -->
+    <script src="{% static 'js/livekit-client.js' %}"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(148, 163, 184, 0.1);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        /* Animated Background Gradient */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+            animation: rotate 20s linear infinite;
+            z-index: 0;
+        }
+        
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Top Header Bar */
+        #top-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 70px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 100;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        #meeting-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        #meeting-title .logo {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            color: white;
+        }
+        
+        #meeting-title h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        #top-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        /* Connection Status Badge */
+        #connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-tertiary);
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        #connection-status .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        #connection-status.connecting .status-dot {
+            background: var(--warning);
+        }
+        
+        #connection-status.reconnecting .status-dot {
+            background: var(--danger);
+            animation: blink 0.5s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        /* Participant Count */
+        #participant-count {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-tertiary);
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        #participant-count svg {
+            width: 16px;
+            height: 16px;
+        }
+        
+        /* Meeting Timer */
+        #meeting-timer {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
+        }
+        
+        /* Video Grid Container */
+        #video-grid {
+            position: fixed;
+            top: 70px;
+            left: 0;
+            right: 0;
+            bottom: 110px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 16px;
+            padding: 16px;
+            overflow-y: auto;
+            z-index: 1;
+        }
+        
+        /* Custom Scrollbar */
+        #video-grid::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        #video-grid::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        #video-grid::-webkit-scrollbar-thumb {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+        
+        #video-grid::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+        
+        /* Video Container */
+        .video-container {
+            position: relative;
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            border: 2px solid transparent;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+        
+        .video-container:hover {
+            border-color: var(--primary);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+        }
+        
+        .video-container.speaking {
+            border-color: var(--success);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.3);
+        }
+        
+        .video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .video-container .participant-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 16px;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+        }
+        
+        .video-container .participant-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        
+        .video-container .participant-status {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .video-container .status-icon {
+            width: 24px;
+            height: 24px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        
+        .status-icon.muted {
+            color: var(--danger);
+        }
+        
+        /* Controls Bar - PREMIUM DESIGN */
+        #controls-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 110px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            padding: 0 24px;
+            z-index: 100;
+            box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* BEAUTIFUL CONTROL BUTTONS */
+        .control-btn {
+            position: relative;
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(145deg, var(--bg-tertiary), var(--bg-secondary));
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 
+                0 4px 15px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+        
+        .control-btn svg {
+            width: 26px;
+            height: 26px;
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+        }
+        
+        .control-btn:hover {
+            transform: translateY(-8px) scale(1.1);
+            box-shadow: 
+                0 12px 30px rgba(0, 0, 0, 0.4),
+                0 0 0 4px rgba(99, 102, 241, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        
+        .control-btn:hover svg {
+            transform: scale(1.15);
+            color: white;
+        }
+        
+        .control-btn:active {
+            transform: translateY(-4px) scale(1.05);
+        }
+        
+        /* Active State (Muted/Off) */
+        .control-btn.active {
+            background: linear-gradient(145deg, var(--danger), #dc2626);
+            box-shadow: 
+                0 4px 15px rgba(239, 68, 68, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        
+        .control-btn.active svg {
+            color: white;
+        }
+        
+        .control-btn.active:hover {
+            box-shadow: 
+                0 12px 30px rgba(239, 68, 68, 0.5),
+                0 0 0 4px rgba(239, 68, 68, 0.3);
+        }
+        
+        /* Recording State */
+        .control-btn.recording {
+            background: linear-gradient(145deg, var(--danger), #dc2626);
+            animation: pulse-record 2s infinite;
+        }
+        
+        .control-btn.recording svg {
+            color: white;
+            animation: scale-pulse 2s infinite;
+        }
+        
+        @keyframes pulse-record {
+            0%, 100% { 
+                box-shadow: 
+                    0 4px 15px rgba(239, 68, 68, 0.6),
+                    0 0 0 0 rgba(239, 68, 68, 0.7);
+            }
+            50% { 
+                box-shadow: 
+                    0 4px 15px rgba(239, 68, 68, 0.6),
+                    0 0 0 15px rgba(239, 68, 68, 0);
+            }
+        }
+        
+        @keyframes scale-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        
+        /* Primary Button (Chat) */
+        .control-btn.primary {
+            background: linear-gradient(145deg, var(--primary), var(--primary-dark));
+        }
+        
+        .control-btn.primary svg {
+            color: white;
+        }
+        
+        .control-btn.primary:hover {
+            box-shadow: 
+                0 12px 30px rgba(99, 102, 241, 0.5),
+                0 0 0 4px rgba(99, 102, 241, 0.3);
+        }
+        
+        /* Leave Button */
+        .control-btn.leave {
+            background: linear-gradient(145deg, var(--danger), #dc2626);
+            width: 72px;
+            height: 72px;
+        }
+        
+        .control-btn.leave svg {
+            color: white;
+            width: 30px;
+            height: 30px;
+        }
+        
+        .control-btn.leave:hover {
+            background: linear-gradient(145deg, #dc2626, #b91c1c);
+            box-shadow: 
+                0 12px 30px rgba(239, 68, 68, 0.6),
+                0 0 0 4px rgba(239, 68, 68, 0.3);
+            transform: translateY(-8px) scale(1.15) rotate(135deg);
+        }
+        
+        /* Disabled State */
+        .control-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .control-btn:disabled:hover {
+            transform: none !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Button Labels */
+        .control-btn-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .control-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: color 0.3s ease;
+        }
+        
+        .control-btn-wrapper:hover .control-label {
+            color: var(--text-primary);
+        }
+        
+        /* Tooltip */
+        .control-btn::before {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-12px);
+            background: rgba(0, 0, 0, 0.95);
+            color: white;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+        
+        .control-btn::after {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-4px);
+            border: 6px solid transparent;
+            border-top-color: rgba(0, 0, 0, 0.95);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        .control-btn:hover::before {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-16px);
+        }
+        
+        .control-btn:hover::after {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-8px);
+        }
+        
+        /* Chat Panel */
+        #chat-panel {
+            position: fixed;
+            right: -400px;
+            top: 70px;
+            bottom: 110px;
+            width: 400px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-left: 1px solid var(--glass-border);
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            z-index: 101;
+            box-shadow: -4px 0 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        #chat-panel.open {
+            right: 0;
+        }
+        
+        #chat-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        #chat-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        #chat-close {
+            width: 32px;
+            height: 32px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 20px;
+            transition: all 0.2s;
+        }
+        
+        #chat-close:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .chat-message {
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .chat-message .sender {
+            font-weight: 600;
+            color: var(--primary-light);
+            margin-bottom: 4px;
+            font-size: 13px;
+        }
+        
+        .chat-message .message-text {
+            font-size: 14px;
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+        
+        .chat-message .timestamp {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        
+        #chat-input-container {
+            padding: 16px;
+            border-top: 1px solid var(--glass-border);
+        }
+        
+        #chat-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid var(--bg-tertiary);
+            border-radius: 12px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        
+        #chat-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: var(--bg-primary);
+        }
+        
+        #chat-input::placeholder {
+            color: var(--text-muted);
+        }
+        
+        /* Reconnecting Overlay */
+        #reconnecting-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        #reconnecting-overlay.show {
+            display: flex;
+        }
+        
+        .reconnect-content {
+            text-align: center;
+            padding: 40px;
+            background: var(--glass-bg);
+            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+        }
+        
+        .reconnect-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid var(--bg-tertiary);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .reconnect-text {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        
+        .reconnect-attempt {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+        
+        .reconnect-refresh {
+            margin-top: 20px;
+            padding: 12px 24px;
+            background: var(--primary);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .reconnect-refresh:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+        
+        /* Notification Toast */
+        .notification-toast {
+            position: fixed;
+            top: 90px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            background: var(--bg-secondary);
+            border: 1px solid var(--glass-border);
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1001;
+            max-width: 400px;
+        }
+        
+        .notification-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            #top-bar {
+                padding: 0 16px;
+                height: 60px;
+            }
+            
+            #meeting-title h1 {
+                font-size: 16px;
+            }
+            
+            #video-grid {
+                top: 60px;
+                bottom: 100px;
+                grid-template-columns: 1fr;
+                gap: 12px;
+                padding: 12px;
+            }
+            
+            #controls-bar {
+                height: 100px;
+                gap: 10px;
+                padding: 0 12px;
+            }
+            
+            .control-btn {
+                width: 56px;
+                height: 56px;
+            }
+            
+            .control-btn svg {
+                width: 22px;
+                height: 22px;
+            }
+            
+            .control-btn.leave {
+                width: 60px;
+                height: 60px;
+            }
+            
+            .control-label {
+                display: none;
+            }
+            
+            #chat-panel {
+                width: 100%;
+                right: -100%;
+            }
+            
+            #meeting-timer {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body data-room-id="{{ room_id }}" data-username="{{ user.username }}" data-is-moderator="{% if is_moderator %}true{% else %}false{% endif %}"></body>
+    <!-- Top Header Bar -->
+    <div id="top-bar">
+        <div id="meeting-title">
+            <div class="logo">P</div>
+            <h1>{{ room_name|default:"Meeting Room" }}</h1>
+        </div>
+        <div id="top-bar-right">
+            <div id="meeting-timer">00:00</div>
+            <div id="participant-count">
+                <svg fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
+                </svg>
+                <span id="count">1</span>
+            </div>
+            <div id="connection-status" class="connecting">
+                <div class="status-dot"></div>
+                <span id="status-text">Connecting...</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Video Grid -->
+    <div id="video-grid">
+        <!-- Video containers will be added here -->
+    </div>
+    
+    <!-- Controls Bar with Beautiful Buttons -->
+    <div id="controls-bar">
+        <!-- Camera Button -->
+        <div class="control-btn-wrapper">
+            <button id="btn-video" class="control-btn" data-tooltip="Turn off camera">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+            </button>
+            <span class="control-label">Camera</span>
+        </div>
+        
+        <!-- Microphone Button -->
+        <div class="control-btn-wrapper">
+            <button id="btn-audio" class="control-btn" data-tooltip="Mute">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                </svg>
+            </button>
+            <span class="control-label">Mic</span>
+        </div>
+        
+        <!-- Share Screen Button -->
+        <div class="control-btn-wrapper">
+            <button id="btn-screen" class="control-btn" data-tooltip="Share your screen">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+            </button>
+            <span class="control-label">Share</span>
+        </div>
+        
+        <!-- Record Button -->
+        <div class="control-btn-wrapper">
+            <button id="btn-record" class="control-btn" data-tooltip="Start recording" {% if not is_moderator %}disabled{% endif %}>
+                <svg fill="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="8"/>
+                </svg>
+            </button>
+            <span class="control-label">Record</span>
+        </div>
+        
+        <!-- Chat Button -->
+        <div class="control-btn-wrapper">
+            <button id="btn-chat" class="control-btn primary" data-tooltip="Open chat">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                </svg>
+            </button>
+            <span class="control-label">Chat</span>
+        </div>
+        
+        <!-- Leave Button -->
+        <div class="control-btn-wrapper">
+            <button id="btn-leave" class="control-btn leave" data-tooltip="Leave meeting">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z"/>
+                </svg>
+            </button>
+            <span class="control-label">Leave</span>
+        </div>
+    </div>
+    
+    <!-- Chat Panel -->
+    <div id="chat-panel">
+        <div id="chat-header">
+            <h3>💬 Meeting Chat</h3>
+            <button id="chat-close">×</button>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-container">
+            <input type="text" id="chat-input" placeholder="Type a message...">
+        </div>
+    </div>
+    
+    <!-- Reconnecting Overlay -->
+    <div id="reconnecting-overlay">
+        <div class="reconnect-content">
+            <div class="reconnect-spinner"></div>
+            <div class="reconnect-text">Connection lost</div>
+            <div class="reconnect-attempt" id="reconnect-attempt">Reconnecting...</div>
+        </div>
+    </div>
+    
+    <script>
+        // Room configuration from Django template
+        const ROOM_ID = document.body.dataset.roomId;
+        const USERNAME = document.body.dataset.username;
+        const IS_MODERATOR = document.body.dataset.isModerator === 'true';
+        // LiveKit client instance
+        let livekitClient = null;
+        
+        // UI state
+        let videoEnabled = true;
+        let audioEnabled = true;
+        let screenSharing = false;
+        let chatOpen = false;
+        
+        // Meeting timer
+        let meetingStartTime = Date.now();
+        let timerInterval = null;
+        
+        // Initialize meeting
+        async function initializeMeeting() {
+            try {
+                livekitClient = new LiveKitMeetingClient(ROOM_ID, USERNAME, IS_MODERATOR);
+                
+                livekitClient.onParticipantJoined = handleParticipantJoined;
+                livekitClient.onParticipantLeft = handleParticipantLeft;
+                livekitClient.onTrackSubscribed = handleTrackSubscribed;
+                livekitClient.onConnectionStateChanged = handleConnectionStateChanged;
+                livekitClient.onRecordingStateChanged = handleRecordingStateChanged;
+                
+                await livekitClient.connect();
+                displayLocalVideo();
+                updateConnectionStatus('connected', 'Connected');
+                startMeetingTimer();
+                
+            } catch (error) {
+                console.error('Failed to initialize meeting:', error);
+                showNotification('Failed to join meeting. Please try again.', 'error');
+            }
+        }
+        
+        function startMeetingTimer() {
+            timerInterval = setInterval(() => {
+                const elapsed = Date.now() - meetingStartTime;
+                const minutes = Math.floor(elapsed / 60000);
+                const seconds = Math.floor((elapsed % 60000) / 1000);
+                document.getElementById('meeting-timer').textContent = 
+                    `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }, 1000);
+        }
+        
+        function displayLocalVideo() {
+            const videoTrack = livekitClient.localTracks.find(t => t.kind === 'video');
+            if (videoTrack) {
+                const container = createVideoContainer('local', USERNAME + ' (You)', true);
+                const videoElement = videoTrack.attach();
+                videoElement.style.transform = 'scaleX(-1)';
+                container.querySelector('video')?.replaceWith(videoElement) || container.appendChild(videoElement);
+                document.getElementById('video-grid').appendChild(container);
+            }
+        }
+        
+        function handleParticipantJoined(participant) {
+            updateParticipantCount();
+            showNotification(`${participant.name} joined`, 'info');
+        }
+        
+        function handleParticipantLeft(participant) {
+            const videoContainer = document.getElementById(`video-${participant.sid}`);
+            if (videoContainer) {
+                videoContainer.style.opacity = '0';
+                setTimeout(() => videoContainer.remove(), 300);
+            }
+            updateParticipantCount();
+            showNotification(`${participant.name} left`, 'info');
+        }
+        
+        function handleTrackSubscribed(track, publication, participant) {
+            if (track.kind === 'video' || track.kind === 'audio') {
+                let container = document.getElementById(`video-${participant.sid}`);
+                
+                if (!container) {
+                    container = createVideoContainer(participant.sid, participant.name, false);
+                    document.getElementById('video-grid').appendChild(container);
+                }
+                
+                const element = track.attach();
+                
+                if (track.kind === 'video') {
+                    container.querySelector('video')?.replaceWith(element) || container.appendChild(element);
+                } else if (track.kind === 'audio') {
+                    document.body.appendChild(element);
+                }
+            }
+        }
+        
+        function handleConnectionStateChanged(state) {
+            if (state === 'connected') {
+                updateConnectionStatus('connected', 'Connected');
+            } else if (state === 'reconnecting') {
+                updateConnectionStatus('reconnecting', 'Reconnecting');
+                document.getElementById('reconnecting-overlay').classList.add('show');
+            } else if (state === 'disconnected') {
+                updateConnectionStatus('disconnected', 'Disconnected');
+            }
+        }
+        
+        function handleRecordingStateChanged(isRecording) {
+            const btnRecord = document.getElementById('btn-record');
+            if (isRecording) {
+                btnRecord.classList.add('recording');
+                btnRecord.setAttribute('data-tooltip', 'Stop recording');
+                showNotification('Recording started 🔴', 'success');
+            } else {
+                btnRecord.classList.remove('recording');
+                btnRecord.setAttribute('data-tooltip', 'Start recording');
+                showNotification('Recording stopped', 'info');
+            }
+        }
+        
+        function createVideoContainer(id, name, isLocal) {
+            const container = document.createElement('div');
+            container.className = 'video-container';
+            container.id = `video-${id}`;
+            container.innerHTML = `
+                <video autoplay playsinline ${isLocal ? 'muted' : ''}></video>
+                <div class="participant-overlay">
+                    <div class="participant-name">${name}</div>
+                    <div class="participant-status"></div>
+                </div>
+            `;
+            return container;
+        }
+        
+        function updateParticipantCount() {
+            const count = livekitClient ? livekitClient.getParticipants().length + 1 : 1;
+            document.getElementById('count').textContent = count;
+        }
+        
+        function updateConnectionStatus(state, text) {
+            const statusEl = document.getElementById('connection-status');
+            statusEl.className = state;
+            document.getElementById('status-text').textContent = text;
+            
+            if (state === 'connected') {
+                document.getElementById('reconnecting-overlay').classList.remove('show');
+            }
+        }
+        
+        function showNotification(message, type = 'info') {
+            const existing = document.querySelector('.notification-toast');
+            if (existing) existing.remove();
+            
+            const toast = document.createElement('div');
+            toast.className = 'notification-toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+        
+        // Control handlers
+        document.getElementById('btn-video').addEventListener('click', async () => {
+            videoEnabled = await livekitClient.toggleVideo();
+            const btn = document.getElementById('btn-video');
+            btn.classList.toggle('active', !videoEnabled);
+            btn.setAttribute('data-tooltip', videoEnabled ? 'Turn off camera' : 'Turn on camera');
+        });
+        
+        document.getElementById('btn-audio').addEventListener('click', async () => {
+            audioEnabled = await livekitClient.toggleAudio();
+            const btn = document.getElementById('btn-audio');
+            btn.classList.toggle('active', !audioEnabled);
+            btn.setAttribute('data-tooltip', audioEnabled ? 'Mute' : 'Unmute');
+        });
+        
+        document.getElementById('btn-screen').addEventListener('click', async () => {
+            if (!screenSharing) {
+                try {
+                    await livekitClient.startScreenShare();
+                    screenSharing = true;
+                    document.getElementById('btn-screen').classList.add('active');
+                    showNotification('Screen sharing started 🖥️', 'success');
+                } catch (error) {
+                    showNotification('Failed to share screen', 'error');
+                }
+            } else {
+                await livekitClient.stopScreenShare();
+                screenSharing = false;
+                document.getElementById('btn-screen').classList.remove('active');
+                showNotification('Screen sharing stopped', 'info');
+            }
+        });
+        
+        document.getElementById('btn-record').addEventListener('click', async () => {
+            if (!livekitClient.isRecording) {
+                try {
+                    await livekitClient.startRecording();
+                } catch (error) {
+                    showNotification('Failed to start recording', 'error');
+                }
+            } else {
+                try {
+                    await livekitClient.stopRecording();
+                } catch (error) {
+                    showNotification('Failed to stop recording', 'error');
+                }
+            }
+        });
+        
+        document.getElementById('btn-chat').addEventListener('click', () => {
+            chatOpen = !chatOpen;
+            document.getElementById('chat-panel').classList.toggle('open', chatOpen);
+            document.getElementById('btn-chat').classList.toggle('active', chatOpen);
+        });
+        
+        document.getElementById('chat-close').addEventListener('click', () => {
+            chatOpen = false;
+            document.getElementById('chat-panel').classList.remove('open');
+            document.getElementById('btn-chat').classList.remove('active');
+        });
+        
+        document.getElementById('btn-leave').addEventListener('click', async () => {
+            if (confirm('Are you sure you want to leave the meeting?')) {
+                if (timerInterval) clearInterval(timerInterval);
+                await livekitClient.disconnect();
+                window.location.href = '/meeting/meetings/';
+            }
+        });
+        
+        document.getElementById('chat-input').addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter' && e.target.value.trim()) {
+                await livekitClient.sendChatMessage(e.target.value.trim());
+                displayChatMessage(USERNAME, e.target.value.trim(), true);
+                e.target.value = '';
+            }
+        });
+        
+        function displayChatMessage(sender, message, isOwn) {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = 'chat-message';
+            const now = new Date();
+            const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            messageEl.innerHTML = `
+                <div class="sender">${sender}${isOwn ? ' (You)' : ''}</div>
+                <div class="message-text">${message}</div>
+                <div class="timestamp">${time}</div>
+            `;
+            chatMessages.appendChild(messageEl);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        window.addEventListener('beforeunload', async () => {
+            if (livekitClient) await livekitClient.disconnect();
+            if (timerInterval) clearInterval(timerInterval);
+        });
+        
+        initializeMeeting();
+    </script>
+</body>
+</html>
