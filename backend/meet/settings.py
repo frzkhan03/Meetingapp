@@ -204,37 +204,34 @@ else:
 # Database - PostgreSQL with connection pooling
 DATABASES = {
     'default': {
-        'ENGINE': 'dj_db_conn_pool.backends.postgresql' if PRODUCTION else 'django.db.backends.postgresql',
+        'ENGINE': 'dj_db_conn_pool.backends.postgresql',
         'NAME': os.getenv('DB_NAME', 'PyTalk'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', 'admin'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
-        'POOL_OPTIONS': {
-            'POOL_SIZE': 10,
-            'MAX_OVERFLOW': 10,
-            'POOL_RECYCLE': 600,
-            'POOL_PRE_PING': True,
-        },
+        'CONN_MAX_AGE': 0,  # Don't persist connections across requests in ASGI
         'OPTIONS': {
             'connect_timeout': 10,
         },
+        'POOL_OPTIONS': {
+            'POOL_SIZE': 10,
+            'MAX_OVERFLOW': 20,
+            'RECYCLE': 3600,
+            'PRE_PING': True,
+        }
     }
 }
 
-# ==================== PASSWORD SECURITY ====================
+# Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-        'OPTIONS': {
-            'user_attributes': ('username', 'email', 'first_name', 'last_name'),
-            'max_similarity': 0.7,
-        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
         'OPTIONS': {
-            'min_length': 10,  # Require at least 10 characters
+            'min_length': 10,
         }
     },
     {
@@ -245,7 +242,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# Password hashing - Use Argon2 (most secure) with fallbacks
+# Argon2 password hashing (more secure than default PBKDF2)
 PASSWORD_HASHERS = [
     'django.contrib.auth.hashers.Argon2PasswordHasher',
     'django.contrib.auth.hashers.PBKDF2PasswordHasher',
@@ -260,56 +257,31 @@ USE_I18N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
-STATIC_URL = '/static/'
+STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
-STATIC_ROOT = BASE_DIR / 'staticfiles'  # For collectstatic in production
 
-# Use whitenoise for compressed and cached static files in production
-if PRODUCTION:
-    STORAGES = {
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
+# WhiteNoise configuration for production static file serving
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Media files
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Login settings
-LOGIN_URL = '/user/login/'
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/'
-
-# Email settings
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('MAIL_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('MAIL_PASS', '')
-
-# ==================== RATE LIMITING ====================
-RATE_LIMIT_ENABLED = True
-RATE_LIMIT_LOGIN_ATTEMPTS = 5  # Max login attempts
-RATE_LIMIT_LOGIN_WINDOW = 300  # 5 minutes window
-RATE_LIMIT_API_REQUESTS = 100  # Max API requests per window
-RATE_LIMIT_API_WINDOW = 60  # 1 minute window
-
-# ==================== ENCRYPTION ====================
-# Encryption key for sensitive data (generate a new one for production)
-ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', secrets.token_urlsafe(32))
-
-# ==================== SECURITY LOGGING ====================
+# ==================== LOGGING ====================
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
-        'security': {
-            'format': '[{asctime}] {levelname} SECURITY {name}: {message}',
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
             'style': '{',
         },
-        'verbose': {
-            'format': '[{asctime}] {levelname} {name} {module}: {message}',
+        'simple': {
+            'format': '{levelname} {message}',
             'style': '{',
         },
     },
@@ -322,74 +294,91 @@ LOGGING = {
         'console': {
             'level': 'INFO',
             'class': 'logging.StreamHandler',
+            'formatter': 'simple'
+        },
+        'file': {
+            'level': 'WARNING',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'django.log',
+            'maxBytes': 1024 * 1024 * 15,  # 15MB
+            'backupCount': 10,
             'formatter': 'verbose',
         },
         'security_file': {
-            'level': 'WARNING',
+            'level': 'INFO',
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': BASE_DIR / 'logs' / 'security.log',
-            'maxBytes': 10 * 1024 * 1024,  # 10 MB per file
-            'backupCount': 5,  # Keep 5 rotated files
-            'formatter': 'security',
-        },
-        'mail_admins': {
-            'level': 'ERROR',
-            'filters': ['require_debug_false'],
-            'class': 'django.utils.log.AdminEmailHandler',
+            'maxBytes': 1024 * 1024 * 15,  # 15MB
+            'backupCount': 10,
+            'formatter': 'verbose',
         },
     },
     'loggers': {
-        'django.security': {
-            'handlers': ['console', 'security_file'],
-            'level': 'WARNING',
-            'propagate': True,
-        },
-        'security': {
-            'handlers': ['console', 'security_file'],
+        'django': {
+            'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': False,
         },
-        'django.request': {
-            'handlers': ['console', 'mail_admins'],
-            'level': 'ERROR',
+        'django.security': {
+            'handlers': ['security_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'meetings': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
             'propagate': False,
         },
     },
 }
 
 # Create logs directory if it doesn't exist
-(BASE_DIR / 'logs').mkdir(exist_ok=True)
+import os as _os
+_logs_dir = BASE_DIR / 'logs'
+if not _os.path.exists(_logs_dir):
+    _os.makedirs(_logs_dir)
 
-# ==================== ADMIN SECURITY ====================
-ADMIN_URL = os.getenv('ADMIN_URL', 'secure-admin/')  # Custom admin URL
+# ==================== EMAIL CONFIGURATION ====================
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv('MAIL_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('MAIL_PASS', '')
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
-# ==================== FILE UPLOAD SECURITY ====================
-FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200 MB (for recording uploads)
-DATA_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024  # 200 MB
-DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
+# ==================== SECURITY SETTINGS ====================
+# Encryption key for sensitive data (AES-256)
+ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', '')
 
-# ==================== AWS S3 (Recording Storage) ====================
+# Custom admin URL (configurable via environment variable for security)
+ADMIN_URL_PATH = os.getenv('ADMIN_URL', 'admin/')
+
+# ==================== AWS S3 CONFIGURATION ====================
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
 AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
-AWS_S3_BUCKET_NAME = os.getenv('AWS_S3_BUCKET_NAME', 'pytalk-recordings')
+AWS_S3_BUCKET_NAME = os.getenv('AWS_S3_BUCKET_NAME', '')
 AWS_S3_REGION = os.getenv('AWS_S3_REGION', 'ap-south-1')
+AWS_S3_CUSTOM_DOMAIN = f'{AWS_S3_BUCKET_NAME}.s3.{AWS_S3_REGION}.amazonaws.com'
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',
+}
+AWS_DEFAULT_ACL = None
+AWS_S3_FILE_OVERWRITE = False
+AWS_QUERYSTRING_AUTH = True
+AWS_QUERYSTRING_EXPIRE = 3600
+AWS_S3_ENCRYPTION = 'AES256'
 
-# ==================== CELERY TASK QUEUE ====================
-if PRODUCTION:
-    CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/2"
-    CELERY_RESULT_BACKEND = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/3"
-else:
-    # In development without Redis, execute tasks synchronously in-process
-    CELERY_TASK_ALWAYS_EAGER = True
-    CELERY_TASK_EAGER_PROPAGATES = True
-
+# ==================== CELERY CONFIGURATION ====================
+CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/0"
+CELERY_RESULT_BACKEND = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/0"
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 30  # Hard limit: 30 seconds per task
-CELERY_TASK_SOFT_TIME_LIMIT = 25  # Soft limit: raise SoftTimeLimitExceeded
+CELERY_TASK_TIME_LIMIT = 30 * 60
+CELERY_WORKER_CONCURRENCY = 2
 
 from celery.schedules import crontab  # noqa: E402
 CELERY_BEAT_SCHEDULE = {
@@ -425,10 +414,21 @@ PAYU_CURRENCY = os.getenv('PAYU_CURRENCY', 'PLN')  # Must match POS currency con
 PAYU_ENABLED = bool(PAYU_POS_ID)
 SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000')
 
-# ==================== TURN SERVER (WebRTC Relay) ====================
-# Required for peer-to-peer video calls to work across the open internet.
-# Without TURN, connections fail when peers are behind symmetric NAT/firewalls.
-# Get free credentials at https://www.metered.ca/stun-turn or use your own TURN server.
+# ==================== LIVEKIT VIDEO INFRASTRUCTURE ====================
+# LiveKit replaces custom WebRTC, STUN, and TURN servers
+# Get credentials from https://cloud.livekit.io
+LIVEKIT_API_KEY = os.getenv('LIVEKIT_API_KEY', '')
+LIVEKIT_API_SECRET = os.getenv('LIVEKIT_API_SECRET', '')
+LIVEKIT_URL = os.getenv('LIVEKIT_URL', '')  # wss://your-project.livekit.cloud
+
+# Validate LiveKit config in production
+if PRODUCTION:
+    if not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET or not LIVEKIT_URL:
+        import warnings
+        warnings.warn("LiveKit credentials not configured. Video meetings will not work.")
+
+# ==================== LEGACY TURN SERVER (DEPRECATED - Use LiveKit) ====================
+# These are kept for backward compatibility but not used with LiveKit
 TURN_SERVER_URL = os.getenv('TURN_SERVER_URL', '')
 TURN_SERVER_USERNAME = os.getenv('TURN_SERVER_USERNAME', '')
 TURN_SERVER_CREDENTIAL = os.getenv('TURN_SERVER_CREDENTIAL', '')
