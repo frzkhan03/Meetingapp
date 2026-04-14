@@ -129,7 +129,7 @@ def meeting_details_view(request, room_id):
 
 
 def _get_plan_context(request):
-    """Build plan-related context for room.html template."""
+    """Build plan-related context for meeting room template."""
     plan_limits = getattr(request, 'plan_limits', None)
     return {
         'max_participants': plan_limits.get_participant_limit() if plan_limits else 100,
@@ -138,9 +138,6 @@ def _get_plan_context(request):
         'can_use_waiting_room': plan_limits.can_use_waiting_room() if plan_limits else False,
         'breakout_rooms_allowed': plan_limits.can_use_breakout_rooms() if plan_limits else False,
         'plan_tier': getattr(request, 'plan_tier', 'free'),
-        'turn_server_url': settings.TURN_SERVER_URL,
-        'turn_server_username': settings.TURN_SERVER_USERNAME,
-        'turn_server_credential': settings.TURN_SERVER_CREDENTIAL,
     }
 
 
@@ -160,7 +157,7 @@ def start_meeting_view(request, room_id):
     # Check if user is the author
     if is_moderator:
         # Author can join directly as moderator
-        return render(request, 'room.html', {
+        return render(request, 'meeting_room_livekit.html', {
             'room_id': str(room_id),
             'user_id': str(request.user.id),
             'username': request.user.username,
@@ -207,7 +204,7 @@ def start_meeting_view(request, room_id):
             return redirect('pending_room')
 
     # User is approved or no approval required — join as participant
-    return render(request, 'room.html', {
+    return render(request, 'meeting_room_livekit.html', {
         'room_id': str(room_id),
         'user_id': str(request.user.id),
         'username': request.user.username,
@@ -432,7 +429,7 @@ def join_personal_room_view(request, room_id):
             request.session['pending_token'] = token
             return redirect('pending_room')
 
-    return render(request, 'room.html', {
+    return render(request, 'meeting_room_livekit.html', {
         'room_id': str(room_id),
         'user_id': user_id,
         'username': username,
@@ -546,7 +543,7 @@ def join_meeting_guest_view(request, room_id):
     is_moderator = request.user.is_authenticated and meeting.author == request.user
     org = meeting.organization
 
-    return render(request, 'room.html', {
+    return render(request, 'meeting_room_livekit.html', {
         'room_id': str(room_id),
         'user_id': user_id,
         'username': username,

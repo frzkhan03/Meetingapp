@@ -427,11 +427,6 @@ if PRODUCTION:
         import warnings
         warnings.warn("LiveKit credentials not configured. Video meetings will not work.")
 
-# ==================== LEGACY TURN SERVER (DEPRECATED - Use LiveKit) ====================
-# These are kept for backward compatibility but not used with LiveKit
-TURN_SERVER_URL = os.getenv('TURN_SERVER_URL', '')
-TURN_SERVER_USERNAME = os.getenv('TURN_SERVER_USERNAME', '')
-TURN_SERVER_CREDENTIAL = os.getenv('TURN_SERVER_CREDENTIAL', '')
 
 # ==================== WEBSOCKET SECURITY ====================
 # Supports wildcard subdomains: https://*.pytalk.veriright.com
