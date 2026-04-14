@@ -1,5 +1,6 @@
 from django.urls import path, re_path
 from . import views
+from . import livekit_views
 
 # Meeting code pattern: abc-defg-hij (3 letters - 4 letters - 3 letters)
 # Also accepts old UUID format for backwards compatibility
@@ -31,4 +32,20 @@ urlpatterns = [
     # Transcript routes
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/save-transcript/$', views.save_transcript_view, name='save_transcript'),
     path('transcript/<int:transcript_id>/', views.view_transcript_view, name='view_transcript'),
+    
+    # ==================== LIVEKIT API ROUTES ====================
+    # Token generation
+    path('api/livekit/token/', livekit_views.get_livekit_token, name='livekit_token'),
+    
+    # Room management
+    path('api/livekit/room/create/', livekit_views.create_livekit_room, name='livekit_create_room'),
+    re_path(rf'^api/livekit/room/(?P<room_id>{MEETING_CODE_PATTERN})/participants/$', livekit_views.list_participants, name='livekit_participants'),
+    re_path(rf'^api/livekit/room/(?P<room_id>{MEETING_CODE_PATTERN})/remove-participant/$', livekit_views.remove_participant, name='livekit_remove_participant'),
+    
+    # Recording
+    re_path(rf'^api/livekit/room/(?P<room_id>{MEETING_CODE_PATTERN})/start-recording/$', livekit_views.start_recording, name='livekit_start_recording'),
+    re_path(rf'^api/livekit/room/(?P<room_id>{MEETING_CODE_PATTERN})/stop-recording/$', livekit_views.stop_recording, name='livekit_stop_recording'),
+    
+    # Webhooks (for LiveKit callbacks)
+    path('api/livekit/webhook/', livekit_views.livekit_webhook, name='livekit_webhook'),
 ]
