@@ -10,6 +10,7 @@ class LiveKitMeetingClient {
         this.isModerator = isModerator;
         this.room = null;
         this.localTracks = [];
+        this.localScreenTrack = null;
         this.participants = new Map();
         this.isRecording = false;
         this.currentEgressId = null;
@@ -18,8 +19,10 @@ class LiveKitMeetingClient {
         this.onParticipantJoined = null;
         this.onParticipantLeft = null;
         this.onTrackSubscribed = null;
+        this.onTrackUnsubscribed = null;
         this.onConnectionStateChanged = null;
         this.onRecordingStateChanged = null;
+        this.onChatMessage = null;
     }
     
     /**
@@ -81,11 +84,16 @@ class LiveKitMeetingClient {
             await this.room.connect(tokenData.url, tokenData.token);
             console.log('Connected to LiveKit room');
             
-            // Publish local tracks
-            await this.publishLocalTracks();
-            
+            // Publish local tracks (don't crash if no devices found)
+            try {
+                await this.publishLocalTracks();
+            } catch (trackError) {
+                console.warn('Could not publish local tracks:', trackError.message);
+                console.warn('Joining meeting without camera/mic');
+            }
+
             return true;
-            
+
         } catch (error) {
             console.error('LiveKit connection error:', error);
             throw error;
@@ -128,6 +136,9 @@ class LiveKitMeetingClient {
         // Track unsubscribed
         this.room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
             console.log('Track unsubscribed:', track.kind);
+            if (this.onTrackUnsubscribed) {
+                this.onTrackUnsubscribed(track, publication, participant);
+            }
         });
         
         // Connection state changes
@@ -159,8 +170,17 @@ class LiveKitMeetingClient {
         // Data received (for chat, etc.)
         this.room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
             const decoder = new TextDecoder();
-            const message = decoder.decode(payload);
-            console.log('Data received from', participant?.identity, ':', message);
+            const raw = decoder.decode(payload);
+            console.log('Data received from', participant?.identity, ':', raw);
+
+            try {
+                const data = JSON.parse(raw);
+                if (data.type === 'chat' && this.onChatMessage) {
+                    this.onChatMessage(data.username || participant?.name || 'Unknown', data.message);
+                }
+            } catch (e) {
+                console.warn('Failed to parse data message:', e);
+            }
         });
     }
     
@@ -168,46 +188,71 @@ class LiveKitMeetingClient {
      * Publish local video and audio tracks
      */
     async publishLocalTracks(options = {}) {
+        const {
+            video = true,
+            audio = true,
+            videoResolution = 'h720'
+        } = options;
+
+        // Try video + audio first, fall back gracefully
+        let tracks = [];
+
+        // Try both together
         try {
-            const {
-                video = true,
-                audio = true,
-                videoResolution = 'h720'
-            } = options;
-            
-            // Create local tracks
-            const tracks = await LivekitClient.createLocalTracks({
+            tracks = await LivekitClient.createLocalTracks({
                 audio: audio,
                 video: video ? {
                     resolution: LivekitClient.VideoPresets[videoResolution].resolution,
                     frameRate: 30
                 } : false
             });
-            
-            this.localTracks = tracks;
-            
-            // Publish tracks to room
-            for (const track of tracks) {
+        } catch (err) {
+            console.warn('Could not get both audio+video, trying separately:', err.message);
+
+            // Try audio only
+            try {
+                const audioTracks = await LivekitClient.createLocalTracks({ audio: true, video: false });
+                tracks.push(...audioTracks);
+            } catch (e) {
+                console.warn('No microphone available:', e.message);
+            }
+
+            // Try video only
+            try {
+                const videoTracks = await LivekitClient.createLocalTracks({
+                    audio: false,
+                    video: { resolution: LivekitClient.VideoPresets[videoResolution].resolution, frameRate: 30 }
+                });
+                tracks.push(...videoTracks);
+            } catch (e) {
+                console.warn('No camera available:', e.message);
+            }
+        }
+
+        if (tracks.length === 0) {
+            console.warn('No media devices found — joining without camera/mic');
+            return this.localTracks;
+        }
+
+        this.localTracks = tracks;
+
+        // Publish tracks to room
+        for (const track of tracks) {
+            try {
                 await this.room.localParticipant.publishTrack(track, {
-                    // Enable simulcast for adaptive quality
                     simulcast: track.kind === 'video',
-                    
-                    // Video encoding settings
                     videoEncoding: track.kind === 'video' ? {
-                        maxBitrate: 1500000, // 1.5 Mbps max
+                        maxBitrate: 1500000,
                         maxFramerate: 30
                     } : undefined
                 });
-                
                 console.log('Published', track.kind, 'track');
+            } catch (err) {
+                console.error('Failed to publish', track.kind, 'track:', err);
             }
-            
-            return this.localTracks;
-            
-        } catch (error) {
-            console.error('Failed to publish tracks:', error);
-            throw error;
         }
+
+        return this.localTracks;
     }
     
     /**
@@ -253,15 +298,19 @@ class LiveKitMeetingClient {
      */
     async startScreenShare() {
         try {
-            const screenTrack = await LivekitClient.createLocalScreenTracks({
+            const screenTracks = await LivekitClient.createLocalScreenTracks({
                 audio: true // Include system audio
             });
-            
-            await this.room.localParticipant.publishTrack(screenTrack[0]);
-            console.log('Screen sharing started');
-            
-            return screenTrack[0];
-            
+
+            const screenTrack = screenTracks[0];
+            await this.room.localParticipant.publishTrack(screenTrack);
+
+            // Store screen track so local participant can see it
+            this.localScreenTrack = screenTrack;
+            console.log('Screen sharing started, stored track:', screenTrack.kind);
+
+            return screenTrack;
+
         } catch (error) {
             console.error('Screen share error:', error);
             throw error;
@@ -274,12 +323,15 @@ class LiveKitMeetingClient {
     async stopScreenShare() {
         const screenTrack = this.room.localParticipant.videoTrackPublications
             .find(pub => pub.source === LivekitClient.Track.Source.ScreenShare);
-        
+
         if (screenTrack) {
             await this.room.localParticipant.unpublishTrack(screenTrack.track);
             screenTrack.track.stop();
             console.log('Screen sharing stopped');
         }
+
+        // Clear stored screen track
+        this.localScreenTrack = null;
     }
     
     /**
@@ -368,14 +420,27 @@ class LiveKitMeetingClient {
             timestamp: Date.now()
         }));
         
-        await this.room.localParticipant.publishData(data, LivekitClient.DataPacket_Kind.RELIABLE);
+        try {
+            await this.room.localParticipant.publishData(data, { reliable: true });
+        } catch (e) {
+            // Fallback for older API
+            try {
+                await this.room.localParticipant.publishData(data, LivekitClient.DataPacket_Kind.RELIABLE);
+            } catch (e2) {
+                console.error('Failed to send chat message:', e2);
+            }
+        }
     }
     
     /**
      * Get list of participants
      */
     getParticipants() {
-        return Array.from(this.room.participants.values());
+        if (!this.room) return [];
+        // v2.x uses remoteParticipants
+        const participants = this.room.remoteParticipants || this.room.participants;
+        if (!participants) return [];
+        return Array.from(participants.values());
     }
     
     /**

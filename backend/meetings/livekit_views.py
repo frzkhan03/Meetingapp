@@ -16,18 +16,17 @@ from meetings.livekit_service import get_livekit_service
 logger = logging.getLogger(__name__)
 
 
-@login_required
 @require_http_methods(["POST"])
 def get_livekit_token(request):
     """
     Generate LiveKit access token for joining a meeting
-    
+
     POST /api/livekit/token/
     Body: {
         "room_id": "abc-defg-hij",
         "is_moderator": false  // optional
     }
-    
+
     Returns: {
         "token": "eyJhbGc...",
         "url": "wss://your-project.livekit.cloud",
@@ -38,37 +37,46 @@ def get_livekit_token(request):
         data = json.loads(request.body)
         room_id = data.get('room_id')
         is_moderator = data.get('is_moderator', False)
-        
+
         if not room_id:
             return JsonResponse({'error': 'room_id is required'}, status=400)
-        
-        # Verify room exists and user has access
-        room_access = check_room_access(request.user, room_id)
-        if not room_access['allowed']:
-            return JsonResponse({'error': room_access['reason']}, status=403)
-        
-        # Override moderator status if user is meeting host
-        if room_access.get('is_host'):
-            is_moderator = True
-        
+
+        # Get user identity
+        if request.user.is_authenticated:
+            user_id = str(request.user.id)
+            username = request.user.username
+
+            # Verify room exists and user has access
+            room_access = check_room_access(request.user, room_id)
+            if not room_access['allowed']:
+                return JsonResponse({'error': room_access['reason']}, status=403)
+
+            if room_access.get('is_host'):
+                is_moderator = True
+        else:
+            # Guest user — get identity from session (set by join_meeting_guest_view)
+            user_id = request.session.get(f'guest_id_meeting_{room_id}', f'guest_{room_id[:8]}')
+            username = request.session.get(f'display_name_meeting_{room_id}', 'Guest')
+            is_moderator = False
+
         # Generate token
         livekit = get_livekit_service()
         token = livekit.generate_token(
             room_id=room_id,
-            user_id=str(request.user.id),
-            username=request.user.username,
+            user_id=user_id,
+            username=username,
             is_moderator=is_moderator
         )
-        
+
         return JsonResponse({
             'token': token,
             'url': livekit.url,
             'room_id': room_id,
-            'user_id': str(request.user.id),
-            'username': request.user.username,
+            'user_id': user_id,
+            'username': username,
             'is_moderator': is_moderator
         })
-        
+
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
@@ -353,25 +361,30 @@ def check_room_access(user, room_id):
     
     # Check Meeting access
     if meeting:
-        is_host = meeting.host == user
-        is_participant = meeting.participants.filter(id=user.id).exists()
-        is_same_org = user.profile.current_organization == meeting.organization if hasattr(user, 'profile') else False
-        
+        is_host = meeting.author == user
+        is_participant = meeting.users.filter(id=user.id).exists()
+        # Check org membership
+        is_same_org = False
+        if meeting.organization:
+            is_same_org = meeting.organization.memberships.filter(user=user, is_active=True).exists()
+
         if is_host or is_participant or is_same_org:
             return {
                 'allowed': True,
                 'reason': '',
                 'is_host': is_host,
-                'is_moderator': is_host or is_participant
+                'is_moderator': is_host
             }
         else:
             return {'allowed': False, 'reason': 'Access denied to this meeting'}
-    
+
     # Check PersonalRoom access
     if personal_room:
         is_host = personal_room.user == user
-        is_same_org = user.profile.current_organization == personal_room.organization if hasattr(user, 'profile') else False
-        
+        is_same_org = False
+        if personal_room.organization:
+            is_same_org = personal_room.organization.memberships.filter(user=user, is_active=True).exists()
+
         if is_host or is_same_org:
             return {
                 'allowed': True,

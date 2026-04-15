@@ -44,7 +44,8 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         response['X-Content-Type-Options'] = 'nosniff'
         response['X-XSS-Protection'] = '1; mode=block'
         response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        response['Permissions-Policy'] = 'geolocation=(), microphone=(self), camera=(self)'
+        # Allow camera and mic from any origin (required for video meetings)
+        response['Permissions-Policy'] = 'geolocation=(), microphone=*, camera=*, display-capture=*'
 
         # Prevent caching of sensitive pages
         admin_path = f'/{getattr(settings, "ADMIN_URL", "secure-admin/").strip("/")}'

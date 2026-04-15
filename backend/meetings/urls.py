@@ -26,11 +26,16 @@ urlpatterns = [
 
     # Recording routes
     path('upload-recording/', views.upload_recording_view, name='upload_recording'),
+    path('save-local-recording/', views.save_local_recording_view, name='save_local_recording'),
     path('my-recordings/', views.my_recordings_view, name='my_recordings'),
     path('recording/<int:recording_id>/download/', views.download_recording_view, name='download_recording'),
 
+    # Screenshot routes
+    path('save-screenshot/', views.save_screenshot_view, name='save_screenshot'),
+
     # Transcript routes
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/save-transcript/$', views.save_transcript_view, name='save_transcript'),
+    re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/save-caption-transcript/$', views.save_caption_transcript_view, name='save_caption_transcript'),
     path('transcript/<int:transcript_id>/', views.view_transcript_view, name='view_transcript'),
     
     # ==================== LIVEKIT API ROUTES ====================

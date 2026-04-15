@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.http import JsonResponse, HttpResponseRedirect
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.conf import settings
 from django.core.signing import TimestampSigner
 import json
@@ -943,6 +943,130 @@ def download_recording_view(request, recording_id):
         return JsonResponse({'error': 'Failed to generate download link. Please try again later.'}, status=500)
 
 
+# ==================== SCREENSHOT VIEWS ====================
+
+@require_POST
+@csrf_exempt
+def save_screenshot_view(request):
+    """Save a meeting screenshot captured from video frame."""
+    import base64
+    import os
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        data = json.loads(request.body)
+        image_data = data.get('image', '')
+        room_id = data.get('room_id', '')
+
+        if not image_data or not room_id:
+            return JsonResponse({'error': 'Missing image data or room_id'}, status=400)
+
+        # Strip data URL prefix
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+
+        image_bytes = base64.b64decode(image_data)
+
+        # Limit size (10 MB max)
+        if len(image_bytes) > 10 * 1024 * 1024:
+            return JsonResponse({'error': 'Screenshot too large'}, status=400)
+
+        # Save to media/screenshots/
+        timestamp = timezone.now().strftime('%Y%m%d-%H%M%S')
+        username = request.user.username if request.user.is_authenticated else 'guest'
+        filename = f'{room_id}_{username}_{timestamp}.png'
+        filepath = os.path.join(settings.MEDIA_ROOT, 'screenshots', filename)
+
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'wb') as f:
+            f.write(image_bytes)
+
+        return JsonResponse({
+            'success': True,
+            'filename': filename,
+            'path': f'/media/screenshots/{filename}',
+        })
+
+    except Exception as e:
+        logger.error('Screenshot save failed: %s', e, exc_info=True)
+        return JsonResponse({'error': 'Failed to save screenshot'}, status=500)
+
+
+# ==================== LOCAL RECORDING VIEWS ====================
+
+@require_POST
+@csrf_exempt
+def save_local_recording_view(request):
+    """Save a client-side MediaRecorder recording to local storage."""
+    import os
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        recording_file = request.FILES.get('recording')
+        room_id = request.POST.get('room_id', '')
+        try:
+            duration = int(request.POST.get('duration', 0))
+            if duration < 0 or duration > 86400:
+                duration = 0
+        except (ValueError, TypeError):
+            duration = 0
+
+        if not recording_file:
+            return JsonResponse({'error': 'No recording file provided'}, status=400)
+
+        # Validate file type
+        allowed_types = ['video/webm', 'video/mp4', 'audio/webm']
+        if recording_file.content_type not in allowed_types:
+            return JsonResponse({'error': 'Invalid file type'}, status=400)
+
+        # Limit file size (500 MB max)
+        if recording_file.size > 500 * 1024 * 1024:
+            return JsonResponse({'error': 'Recording too large. Max 500MB.'}, status=400)
+
+        # Save to media/recordings/
+        timestamp = timezone.now().strftime('%Y%m%d-%H%M%S')
+        username = request.user.username if request.user.is_authenticated else 'guest'
+        short_id = uuid.uuid4().hex[:8]
+        filename = f'{room_id}_{username}_{timestamp}_{short_id}.webm'
+        filepath = os.path.join(settings.MEDIA_ROOT, 'recordings', filename)
+
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'wb') as f:
+            for chunk in recording_file.chunks():
+                f.write(chunk)
+
+        # Create database record
+        org = getattr(request, 'organization', None)
+        meeting = None
+        try:
+            meeting = Meeting.objects.get(room_id=room_id)
+        except Meeting.DoesNotExist:
+            pass
+
+        recording = MeetingRecording.objects.create(
+            meeting=meeting,
+            organization=org,
+            recorded_by=request.user if request.user.is_authenticated else None,
+            file_path=filepath,
+            recording_name=filename,
+            file_size=recording_file.size,
+            duration=duration,
+        )
+
+        return JsonResponse({
+            'success': True,
+            'recording_id': recording.id,
+            'filename': filename,
+            'path': f'/media/recordings/{filename}',
+        })
+
+    except Exception as e:
+        logger.error('Recording save failed: %s', e, exc_info=True)
+        return JsonResponse({'error': 'Failed to save recording'}, status=500)
+
+
 # ==================== TRANSCRIPT VIEWS ====================
 
 @require_POST
@@ -1000,6 +1124,76 @@ def save_transcript_view(request, room_id):
         'transcript_id': transcript.id,
         'entry_count': len(entries),
     })
+
+
+@require_POST
+@csrf_exempt
+def save_caption_transcript_view(request, room_id):
+    """Save transcript entries from Web Speech API captions directly."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        data = json.loads(request.body)
+        entries = data.get('entries', [])
+
+        if not entries:
+            return JsonResponse({'error': 'No transcript entries'}, status=400)
+
+        # Validate entries format
+        for entry in entries:
+            if not isinstance(entry, dict) or 'text' not in entry:
+                return JsonResponse({'error': 'Invalid entry format'}, status=400)
+
+        org = getattr(request, 'organization', None)
+        meeting = None
+        try:
+            meeting = Meeting.objects.get(room_id=room_id)
+            if not org:
+                org = meeting.organization
+        except Meeting.DoesNotExist:
+            try:
+                room = PersonalRoom.objects.get(room_id=room_id)
+                if not org:
+                    org = room.organization
+            except PersonalRoom.DoesNotExist:
+                pass
+
+        created_by = request.user if request.user.is_authenticated else None
+
+        transcript = MeetingTranscript.objects.create(
+            meeting=meeting,
+            room_id=room_id,
+            organization=org,
+            entries=entries,
+            status='completed',
+            created_by=created_by,
+        )
+
+        # Also save as text file
+        import os
+        timestamp = timezone.now().strftime('%Y%m%d-%H%M%S')
+        txt_filename = f'{room_id}_transcript_{timestamp}.txt'
+        txt_filepath = os.path.join(settings.MEDIA_ROOT, 'transcripts', txt_filename)
+        os.makedirs(os.path.dirname(txt_filepath), exist_ok=True)
+
+        with open(txt_filepath, 'w', encoding='utf-8') as f:
+            for entry in entries:
+                ts = entry.get('timestamp', '')
+                speaker = entry.get('speaker', 'Unknown')
+                text = entry.get('text', '')
+                f.write(f'[{ts}] {speaker}: {text}\n')
+
+        return JsonResponse({
+            'success': True,
+            'transcript_id': transcript.id,
+            'entry_count': len(entries),
+            'file_path': f'/media/transcripts/{txt_filename}',
+        })
+
+    except Exception as e:
+        logger.error('Caption transcript save failed: %s', e, exc_info=True)
+        return JsonResponse({'error': 'Failed to save transcript'}, status=500)
 
 
 @login_required

@@ -67,7 +67,7 @@ CSRF_COOKIE_HTTPONLY = False  # Must be False for JavaScript AJAX to read the to
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_USE_SESSIONS = False  # Don't use sessions - use cookie for AJAX compatibility
 CSRF_COOKIE_DOMAIN = os.getenv('CSRF_COOKIE_DOMAIN', None)  # Must match SESSION_COOKIE_DOMAIN
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,http://127.0.0.1:8000').split(',')
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000,http://127.0.0.1:3000').split(',')
 
 # ==================== SECURITY HEADERS ====================
 SECURE_CONTENT_TYPE_NOSNIFF = True  # Prevent MIME type sniffing
@@ -81,7 +81,7 @@ CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-ev
 CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://fonts.googleapis.com")
 CSP_FONT_SRC = ("'self'", "https://fonts.gstatic.com", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net")
 CSP_IMG_SRC = ("'self'", "data:", "blob:", "https://*.s3.amazonaws.com", "https://*.s3.ap-south-1.amazonaws.com")
-CSP_CONNECT_SRC = ("'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://storage.googleapis.com")
+CSP_CONNECT_SRC = ("'self'", "wss:", "ws:", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://storage.googleapis.com", "https://*.livekit.cloud")
 CSP_MEDIA_SRC = ("'self'", "blob:")
 CSP_FRAME_ANCESTORS = ("'none'",)
 CSP_WORKER_SRC = ("'self'", "blob:")
@@ -201,27 +201,37 @@ else:
         }
     }
 
-# Database - PostgreSQL with connection pooling
-DATABASES = {
-    'default': {
-        'ENGINE': 'dj_db_conn_pool.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'PyTalk'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'admin'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '5432'),
-        'CONN_MAX_AGE': 0,  # Don't persist connections across requests in ASGI
-        'OPTIONS': {
-            'connect_timeout': 10,
-        },
-        'POOL_OPTIONS': {
-            'POOL_SIZE': 10,
-            'MAX_OVERFLOW': 20,
-            'RECYCLE': 3600,
-            'PRE_PING': True,
+# Database configuration
+if os.getenv('DB_ENGINE', 'sqlite') == 'postgresql':
+    # PostgreSQL with connection pooling (production)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'dj_db_conn_pool.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'PyTalk'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', 'admin'),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+            'CONN_MAX_AGE': 0,
+            'OPTIONS': {
+                'connect_timeout': 10,
+            },
+            'POOL_OPTIONS': {
+                'POOL_SIZE': 10,
+                'MAX_OVERFLOW': 20,
+                'RECYCLE': 3600,
+                'PRE_PING': True,
+            }
         }
     }
-}
+else:
+    # SQLite for local development
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

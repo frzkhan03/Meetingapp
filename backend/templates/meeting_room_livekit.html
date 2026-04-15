@@ -7,10 +7,10 @@
     <title>{{ room_name }} - PyTalk Meeting</title>
     
     <!-- LiveKit SDK -->
-    <script src="https://unpkg.com/livekit-client@2.0.0/dist/livekit-client.umd.min.js"></script>
+    <script src="https://unpkg.com/livekit-client@2.18.1/dist/livekit-client.umd.js"></script>
     
     <!-- Custom LiveKit Client -->
-    <script src="{% static 'js/livekit-client.js' %}"></script>
+    <script src="{% static 'js/livekit-client.js' %}?v=5"></script>
     
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -223,6 +223,14 @@
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
         }
+
+        /* Screen share container - full width, preserve aspect ratio */
+        .video-container.screen-share {
+            grid-column: 1 / -1;
+            max-height: 70vh;
+            aspect-ratio: auto;
+            order: -1;
+        }
         
         .video-container:hover {
             border-color: var(--primary);
@@ -239,6 +247,12 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
+        }
+
+        /* Screen share video - preserve aspect ratio without cropping */
+        .video-container.screen-share video {
+            object-fit: contain;
+            background: #000;
         }
         
         .video-container .participant-overlay {
@@ -721,7 +735,76 @@
             opacity: 1;
             transform: translateX(-50%) translateY(0);
         }
-        
+
+        /* Captions Overlay */
+        #captions-container {
+            position: fixed;
+            bottom: 130px;
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: 80%;
+            z-index: 100;
+            pointer-events: none;
+        }
+        #captions-text {
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 18px;
+            line-height: 1.5;
+            text-align: center;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            min-height: 48px;
+        }
+        #captions-text:empty { display: none; }
+
+        /* Screenshot flash */
+        .screenshot-flash {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: white;
+            opacity: 0;
+            z-index: 9999;
+            pointer-events: none;
+            animation: flash 0.3s ease-out;
+        }
+        @keyframes flash {
+            0% { opacity: 0.7; }
+            100% { opacity: 0; }
+        }
+
+        /* Recording indicator */
+        .recording-indicator {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+        }
+        .recording-indicator .rec-dot {
+            width: 10px;
+            height: 10px;
+            background: white;
+            border-radius: 50%;
+            animation: pulse-dot 1s infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
             #top-bar {
@@ -777,7 +860,7 @@
         }
     </style>
 </head>
-<body data-room-id="{{ room_id }}" data-username="{{ user.username }}" data-is-moderator="{% if is_moderator %}true{% else %}false{% endif %}"></body>
+<body data-room-id="{{ room_id }}" data-username="{{ username }}" data-is-moderator="{% if is_moderator %}true{% else %}false{% endif %}">
     <!-- Top Header Bar -->
     <div id="top-bar">
         <div id="meeting-title">
@@ -836,16 +919,39 @@
             <span class="control-label">Share</span>
         </div>
         
-        <!-- Record Button -->
+        {% if is_moderator %}
+        <!-- Record Button (moderator only) -->
         <div class="control-btn-wrapper">
-            <button id="btn-record" class="control-btn" data-tooltip="Start recording" {% if not is_moderator %}disabled{% endif %}>
+            <button id="btn-record" class="control-btn" data-tooltip="Start recording">
                 <svg fill="currentColor" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="8"/>
                 </svg>
             </button>
             <span class="control-label">Record</span>
         </div>
-        
+
+        <!-- Screenshot Button (moderator only) -->
+        <div class="control-btn-wrapper">
+            <button id="btn-screenshot" class="control-btn" data-tooltip="Take screenshot">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                    <circle cx="12" cy="13" r="3" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+                </svg>
+            </button>
+            <span class="control-label">Screenshot</span>
+        </div>
+
+        <!-- Captions Button (moderator only) -->
+        <div class="control-btn-wrapper">
+            <button id="btn-captions" class="control-btn" data-tooltip="Turn on captions">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                </svg>
+            </button>
+            <span class="control-label">Captions</span>
+        </div>
+        {% endif %}
+
         <!-- Chat Button -->
         <div class="control-btn-wrapper">
             <button id="btn-chat" class="control-btn primary" data-tooltip="Open chat">
@@ -879,6 +985,11 @@
         </div>
     </div>
     
+    <!-- Captions Overlay -->
+    <div id="captions-container" style="display:none;">
+        <div id="captions-text"></div>
+    </div>
+
     <!-- Reconnecting Overlay -->
     <div id="reconnecting-overlay">
         <div class="reconnect-content">
@@ -908,20 +1019,43 @@
         
         // Initialize meeting
         async function initializeMeeting() {
+            // Check if mediaDevices is available (requires HTTPS or localhost)
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                console.error('getUserMedia not available. Secure context:', window.isSecureContext);
+                showNotification('Camera/Mic blocked — use localhost or enable Chrome flag for this IP', 'error');
+            }
+
             try {
                 livekitClient = new LiveKitMeetingClient(ROOM_ID, USERNAME, IS_MODERATOR);
-                
+
                 livekitClient.onParticipantJoined = handleParticipantJoined;
                 livekitClient.onParticipantLeft = handleParticipantLeft;
                 livekitClient.onTrackSubscribed = handleTrackSubscribed;
+                livekitClient.onTrackUnsubscribed = handleTrackUnsubscribed;
                 livekitClient.onConnectionStateChanged = handleConnectionStateChanged;
                 livekitClient.onRecordingStateChanged = handleRecordingStateChanged;
-                
+                livekitClient.onChatMessage = (sender, message) => {
+                    displayChatMessage(sender, message, false);
+                };
+
                 await livekitClient.connect();
                 displayLocalVideo();
                 updateConnectionStatus('connected', 'Connected');
                 startMeetingTimer();
-                
+
+                // Report what devices we got
+                const hasVideo = livekitClient.localTracks.some(t => t.kind === 'video');
+                const hasAudio = livekitClient.localTracks.some(t => t.kind === 'audio');
+                if (hasVideo && hasAudio) {
+                    showNotification('Joined with camera and mic', 'success');
+                } else if (hasAudio) {
+                    showNotification('Joined with mic only — no camera detected', 'info');
+                } else if (hasVideo) {
+                    showNotification('Joined with camera only — no mic detected', 'info');
+                } else {
+                    showNotification('Joined without camera or mic', 'info');
+                }
+
             } catch (error) {
                 console.error('Failed to initialize meeting:', error);
                 showNotification('Failed to join meeting. Please try again.', 'error');
@@ -939,14 +1073,71 @@
         }
         
         function displayLocalVideo() {
+            const container = createVideoContainer('local', USERNAME + ' (You)', true);
             const videoTrack = livekitClient.localTracks.find(t => t.kind === 'video');
             if (videoTrack) {
-                const container = createVideoContainer('local', USERNAME + ' (You)', true);
                 const videoElement = videoTrack.attach();
                 videoElement.style.transform = 'scaleX(-1)';
                 container.querySelector('video')?.replaceWith(videoElement) || container.appendChild(videoElement);
+            } else {
+                // No camera — show avatar placeholder
+                const placeholder = document.createElement('div');
+                placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:var(--bg-tertiary,#334155);border-radius:12px;font-size:48px;color:var(--text-secondary,#cbd5e1);';
+                placeholder.textContent = USERNAME.charAt(0).toUpperCase();
+                const vid = container.querySelector('video');
+                if (vid) vid.replaceWith(placeholder);
+                else container.prepend(placeholder);
+            }
+            document.getElementById('video-grid').appendChild(container);
+        }
+
+        function displayLocalScreenShare() {
+            const containerId = 'screen-local';
+            let container = document.getElementById(`video-${containerId}`);
+
+            if (!container) {
+                container = createVideoContainer(containerId, USERNAME + "'s Screen (You)", false);
+                container.id = `video-${containerId}`;
+                container.classList.add('screen-share');
+
+                // Add double-click to fullscreen
+                container.addEventListener('dblclick', async () => {
+                    try {
+                        if (document.fullscreenElement) {
+                            await document.exitFullscreen();
+                        } else {
+                            await container.requestFullscreen();
+                        }
+                    } catch (err) {
+                        console.error('Fullscreen error:', err.name, err.message);
+                        showNotification('Fullscreen unavailable: ' + err.message, 'error');
+                    }
+                });
+                container.title = 'Double-click for fullscreen';
+
                 document.getElementById('video-grid').appendChild(container);
             }
+
+            // Attach the screen track
+            if (livekitClient.localScreenTrack) {
+                const element = livekitClient.localScreenTrack.attach();
+                element.style.objectFit = 'contain';
+                const existingVid = container.querySelector('video');
+                if (existingVid) {
+                    existingVid.replaceWith(element);
+                } else {
+                    container.prepend(element);
+                }
+                console.log('Local screen share displayed');
+            }
+        }
+
+        function hideLocalScreenShare() {
+            const container = document.getElementById('video-screen-local');
+            if (container) {
+                container.remove();
+            }
+            console.log('Local screen share removed');
         }
         
         function handleParticipantJoined(participant) {
@@ -965,22 +1156,78 @@
         }
         
         function handleTrackSubscribed(track, publication, participant) {
-            if (track.kind === 'video' || track.kind === 'audio') {
-                let container = document.getElementById(`video-${participant.sid}`);
-                
+            const isScreenShare = publication.source === 'screen_share' ||
+                                  publication.source === LivekitClient.Track.Source.ScreenShare;
+
+            if (track.kind === 'audio' && !isScreenShare) {
+                // Regular audio — attach to body so it plays
+                const audioEl = track.attach();
+                audioEl.id = `audio-${participant.sid}`;
+                document.body.appendChild(audioEl);
+                return;
+            }
+
+            if (track.kind === 'video' || isScreenShare) {
+                const containerId = isScreenShare ? `screen-${participant.sid}` : `video-${participant.sid}`;
+                let container = document.getElementById(containerId);
+
                 if (!container) {
-                    container = createVideoContainer(participant.sid, participant.name, false);
+                    const label = isScreenShare
+                        ? `${participant.name}'s Screen`
+                        : participant.name;
+                    container = createVideoContainer(
+                        isScreenShare ? `screen-${participant.sid}` : participant.sid,
+                        label, false
+                    );
+                    container.id = containerId;
+
+                    if (isScreenShare) {
+                        // Screen share gets prominent display
+                        container.classList.add('screen-share');
+                        // Add double-click to fullscreen
+                        container.addEventListener('dblclick', async () => {
+                            try {
+                                if (document.fullscreenElement) {
+                                    await document.exitFullscreen();
+                                } else {
+                                    await container.requestFullscreen();
+                                }
+                            } catch (err) {
+                                console.error('Fullscreen error:', err.name, err.message);
+                                showNotification('Fullscreen unavailable: ' + err.message, 'error');
+                            }
+                        });
+                        container.title = 'Double-click for fullscreen';
+                    }
+
                     document.getElementById('video-grid').appendChild(container);
                 }
-                
+
                 const element = track.attach();
-                
-                if (track.kind === 'video') {
-                    container.querySelector('video')?.replaceWith(element) || container.appendChild(element);
-                } else if (track.kind === 'audio') {
-                    document.body.appendChild(element);
+                if (isScreenShare) {
+                    element.style.objectFit = 'contain';
+                }
+                const existingVid = container.querySelector('video');
+                if (existingVid) {
+                    existingVid.replaceWith(element);
+                } else {
+                    container.prepend(element);
                 }
             }
+        }
+
+        // Handle track unsubscribed — remove screen share container
+        function handleTrackUnsubscribed(track, publication, participant) {
+            const isScreenShare = publication.source === 'screen_share' ||
+                                  publication.source === LivekitClient.Track.Source.ScreenShare;
+            if (isScreenShare) {
+                const container = document.getElementById(`screen-${participant.sid}`);
+                if (container) {
+                    container.style.opacity = '0';
+                    setTimeout(() => container.remove(), 300);
+                }
+            }
+            track.detach().forEach(el => el.remove());
         }
         
         function handleConnectionStateChanged(state) {
@@ -1072,34 +1319,187 @@
                 try {
                     await livekitClient.startScreenShare();
                     screenSharing = true;
+                    displayLocalScreenShare();
                     document.getElementById('btn-screen').classList.add('active');
                     showNotification('Screen sharing started 🖥️', 'success');
                 } catch (error) {
-                    showNotification('Failed to share screen', 'error');
+                    console.error('Screen share failed:', error);
+                    showNotification('Failed to share screen: ' + error.message, 'error');
                 }
             } else {
-                await livekitClient.stopScreenShare();
-                screenSharing = false;
-                document.getElementById('btn-screen').classList.remove('active');
-                showNotification('Screen sharing stopped', 'info');
+                try {
+                    await livekitClient.stopScreenShare();
+                    screenSharing = false;
+                    hideLocalScreenShare();
+                    document.getElementById('btn-screen').classList.remove('active');
+                    showNotification('Screen sharing stopped', 'info');
+                } catch (error) {
+                    console.error('Stop screen share failed:', error);
+                    showNotification('Failed to stop screen share', 'error');
+                }
             }
         });
         
-        document.getElementById('btn-record').addEventListener('click', async () => {
-            if (!livekitClient.isRecording) {
-                try {
-                    await livekitClient.startRecording();
-                } catch (error) {
-                    showNotification('Failed to start recording', 'error');
-                }
-            } else {
-                try {
-                    await livekitClient.stopRecording();
-                } catch (error) {
-                    showNotification('Failed to stop recording', 'error');
-                }
+        // ==================== MODERATOR-ONLY FEATURES ====================
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let recordingStartTime = null;
+        let recordingIndicator = null;
+        let recordingTimerInterval = null;
+
+        function getCookie(name) {
+            const cookies = document.cookie.split(';');
+            for (let c of cookies) {
+                c = c.trim();
+                if (c.startsWith(name + '=')) return decodeURIComponent(c.substring(name.length + 1));
             }
-        });
+            return '';
+        }
+
+        async function startClientRecording() {
+            try {
+                // Capture all audio+video from the page
+                const streams = [];
+
+                // Get local video+audio
+                const localVideo = document.querySelector('#video-local video');
+                if (localVideo && localVideo.srcObject) {
+                    streams.push(localVideo.srcObject);
+                }
+
+                // Get display media (screen) if we want to record the whole meeting view
+                // Instead, use a canvas composite approach or just record local+remote audio
+                const audioCtx = new AudioContext();
+                const destination = audioCtx.createMediaStreamDestination();
+
+                // Mix all audio tracks from all video elements
+                document.querySelectorAll('video').forEach(video => {
+                    if (video.srcObject) {
+                        const audioTracks = video.srcObject.getAudioTracks();
+                        if (audioTracks.length > 0) {
+                            const source = audioCtx.createMediaStreamSource(new MediaStream(audioTracks));
+                            source.connect(destination);
+                        }
+                    }
+                });
+
+                // Get local video track
+                let videoTrack = null;
+                if (localVideo && localVideo.srcObject) {
+                    const vt = localVideo.srcObject.getVideoTracks();
+                    if (vt.length > 0) videoTrack = vt[0];
+                }
+
+                // Combine video + mixed audio
+                const tracks = [...destination.stream.getTracks()];
+                if (videoTrack) tracks.push(videoTrack);
+                const combinedStream = new MediaStream(tracks);
+
+                // Try different mimeTypes for browser compatibility
+                let mimeType = 'video/webm;codecs=vp9,opus';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm;codecs=vp8,opus';
+                }
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm';
+                }
+
+                console.log('Recording with mimeType:', mimeType);
+                mediaRecorder = new MediaRecorder(combinedStream, { mimeType });
+
+                recordedChunks = [];
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const duration = Math.round((Date.now() - recordingStartTime) / 1000);
+                    const blob = new Blob(recordedChunks, { type: mimeType });
+                    recordedChunks = [];
+
+                    // Upload to server
+                    const formData = new FormData();
+                    formData.append('recording', blob, `recording-${ROOM_ID}.webm`);
+                    formData.append('room_id', ROOM_ID);
+                    formData.append('duration', duration);
+
+                    try {
+                        const resp = await fetch('/meeting/save-local-recording/', {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                            body: formData,
+                        });
+                        const data = await resp.json();
+                        if (data.success) {
+                            showNotification('Recording saved: ' + data.filename, 'success');
+                        } else {
+                            showNotification('Failed to save: ' + (data.error || 'Unknown error'), 'error');
+                        }
+                    } catch (err) {
+                        // Fallback: download locally
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `recording-${ROOM_ID}-${Date.now()}.webm`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        showNotification('Recording downloaded locally', 'info');
+                    }
+
+                    audioCtx.close().catch(() => {});
+                };
+
+                mediaRecorder.start(1000); // Collect data every second
+                recordingStartTime = Date.now();
+
+                // Show recording indicator
+                recordingIndicator = document.createElement('div');
+                recordingIndicator.className = 'recording-indicator';
+                recordingIndicator.innerHTML = '<span class="rec-dot"></span><span id="rec-timer">REC 00:00</span>';
+                document.body.appendChild(recordingIndicator);
+
+                recordingTimerInterval = setInterval(() => {
+                    const elapsed = Math.round((Date.now() - recordingStartTime) / 1000);
+                    const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+                    const secs = String(elapsed % 60).padStart(2, '0');
+                    const el = document.getElementById('rec-timer');
+                    if (el) el.textContent = `REC ${mins}:${secs}`;
+                }, 1000);
+
+                document.getElementById('btn-record').classList.add('recording');
+                showNotification('Recording started', 'success');
+
+            } catch (err) {
+                console.error('Failed to start recording:', err);
+                showNotification('Failed to start recording: ' + err.message, 'error');
+            }
+        }
+
+        function stopClientRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+            if (recordingIndicator) {
+                recordingIndicator.remove();
+                recordingIndicator = null;
+            }
+            if (recordingTimerInterval) {
+                clearInterval(recordingTimerInterval);
+                recordingTimerInterval = null;
+            }
+            document.getElementById('btn-record').classList.remove('recording');
+            showNotification('Recording stopped, saving...', 'info');
+        }
+
+        if (document.getElementById('btn-record')) {
+            document.getElementById('btn-record').addEventListener('click', () => {
+                if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                    startClientRecording();
+                } else {
+                    stopClientRecording();
+                }
+            });
+        }
         
         document.getElementById('btn-chat').addEventListener('click', () => {
             chatOpen = !chatOpen;
@@ -1116,6 +1516,10 @@
         document.getElementById('btn-leave').addEventListener('click', async () => {
             if (confirm('Are you sure you want to leave the meeting?')) {
                 if (timerInterval) clearInterval(timerInterval);
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') stopClientRecording();
+                if (screenSharing) hideLocalScreenShare();
+                if (captionsEnabled) stopCaptions();
+                await saveTranscriptBeforeLeave();
                 await livekitClient.disconnect();
                 window.location.href = '/meeting/meetings/';
             }
@@ -1129,6 +1533,184 @@
             }
         });
         
+        // ==================== SCREENSHOT (Canvas API) ====================
+        if (document.getElementById('btn-screenshot')) document.getElementById('btn-screenshot').addEventListener('click', async () => {
+            try {
+                const videoGrid = document.getElementById('video-grid');
+                const videos = videoGrid.querySelectorAll('video');
+
+                if (videos.length === 0) {
+                    showNotification('No video to capture', 'error');
+                    return;
+                }
+
+                // Capture the first active video (or local video)
+                let targetVideo = videos[0];
+                for (const v of videos) {
+                    if (v.srcObject && v.srcObject.getVideoTracks().length > 0) {
+                        targetVideo = v;
+                        break;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = targetVideo.videoWidth || 1280;
+                canvas.height = targetVideo.videoHeight || 720;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(targetVideo, 0, 0, canvas.width, canvas.height);
+
+                // Flash effect
+                const flash = document.createElement('div');
+                flash.className = 'screenshot-flash';
+                document.body.appendChild(flash);
+                setTimeout(() => flash.remove(), 300);
+
+                const imageData = canvas.toDataURL('image/png');
+
+                // Upload to server
+                try {
+                    const resp = await fetch('/meeting/save-screenshot/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken'),
+                        },
+                        body: JSON.stringify({ image: imageData, room_id: ROOM_ID }),
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        showNotification('Screenshot saved: ' + data.filename, 'success');
+                    } else {
+                        throw new Error(data.error);
+                    }
+                } catch (err) {
+                    // Fallback: download locally
+                    const a = document.createElement('a');
+                    a.href = imageData;
+                    a.download = `screenshot-${ROOM_ID}-${Date.now()}.png`;
+                    a.click();
+                    showNotification('Screenshot downloaded', 'info');
+                }
+
+            } catch (err) {
+                console.error('Screenshot failed:', err);
+                showNotification('Screenshot failed', 'error');
+            }
+        });
+
+        // ==================== LIVE CAPTIONS (Web Speech API) ====================
+        let captionsEnabled = false;
+        let recognition = null;
+        let captionEntries = []; // Store all caption entries for transcript
+
+        function startCaptions() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                showNotification('Captions not supported in this browser. Use Chrome or Edge.', 'error');
+                return false;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            const captionsContainer = document.getElementById('captions-container');
+            const captionsText = document.getElementById('captions-text');
+            captionsContainer.style.display = 'block';
+
+            let finalTranscript = '';
+
+            recognition.onresult = (event) => {
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript = transcript;
+                        // Save to caption entries for post-meeting transcript
+                        const now = new Date();
+                        const timestamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                        captionEntries.push({
+                            timestamp: timestamp,
+                            speaker: USERNAME,
+                            text: transcript.trim(),
+                        });
+                        // Clear after a delay
+                        setTimeout(() => {
+                            if (captionsText.textContent === finalTranscript) {
+                                captionsText.textContent = '';
+                            }
+                        }, 4000);
+                    } else {
+                        interim += transcript;
+                    }
+                }
+                captionsText.textContent = interim || finalTranscript;
+            };
+
+            recognition.onerror = (event) => {
+                console.warn('Speech recognition error:', event.error);
+                if (event.error === 'not-allowed') {
+                    showNotification('Microphone access needed for captions', 'error');
+                    stopCaptions();
+                }
+            };
+
+            recognition.onend = () => {
+                // Auto-restart if captions still enabled
+                if (captionsEnabled && recognition) {
+                    try { recognition.start(); } catch (e) {}
+                }
+            };
+
+            recognition.start();
+            return true;
+        }
+
+        function stopCaptions() {
+            if (recognition) {
+                captionsEnabled = false;
+                recognition.stop();
+                recognition = null;
+            }
+            document.getElementById('captions-container').style.display = 'none';
+            document.getElementById('captions-text').textContent = '';
+        }
+
+        if (document.getElementById('btn-captions')) document.getElementById('btn-captions').addEventListener('click', () => {
+            if (!captionsEnabled) {
+                if (startCaptions()) {
+                    captionsEnabled = true;
+                    document.getElementById('btn-captions').classList.add('active');
+                    document.getElementById('btn-captions').setAttribute('data-tooltip', 'Turn off captions');
+                    showNotification('Live captions enabled', 'success');
+                }
+            } else {
+                stopCaptions();
+                document.getElementById('btn-captions').classList.remove('active');
+                document.getElementById('btn-captions').setAttribute('data-tooltip', 'Turn on captions');
+                showNotification('Captions disabled', 'info');
+            }
+        });
+
+        // ==================== SAVE TRANSCRIPT ON LEAVE ====================
+        async function saveTranscriptBeforeLeave() {
+            if (captionEntries.length === 0) return;
+
+            try {
+                await fetch(`/meeting/room/${ROOM_ID}/save-caption-transcript/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: JSON.stringify({ entries: captionEntries }),
+                });
+            } catch (err) {
+                console.error('Failed to save transcript:', err);
+            }
+        }
+
         function displayChatMessage(sender, message, isOwn) {
             const chatMessages = document.getElementById('chat-messages');
             const messageEl = document.createElement('div');
@@ -1144,7 +1726,13 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
         
-        window.addEventListener('beforeunload', async () => {
+        window.addEventListener('beforeunload', async (e) => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') stopClientRecording();
+            if (captionEntries.length > 0) {
+                // Use sendBeacon for reliable delivery on page close
+                const blob = new Blob([JSON.stringify({ entries: captionEntries })], { type: 'application/json' });
+                navigator.sendBeacon(`/meeting/room/${ROOM_ID}/save-caption-transcript/`, blob);
+            }
             if (livekitClient) await livekitClient.disconnect();
             if (timerInterval) clearInterval(timerInterval);
         });

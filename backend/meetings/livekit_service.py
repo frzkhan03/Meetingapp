@@ -7,6 +7,7 @@ from livekit import api
 from django.conf import settings
 import logging
 import time
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class LiveKitService:
             token.with_grants(grants)
             
             # Token valid for 24 hours
-            token.with_ttl(86400)
+            token.with_ttl(timedelta(hours=24))
             
             jwt_token = token.to_jwt()
             
