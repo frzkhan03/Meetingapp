@@ -1119,6 +1119,28 @@
         let meetingStartTime = Date.now();
         let timerInterval = null;
         
+        // Resume AudioContext on user interaction (fixes browser autoplay policy)
+        let audioContextResumed = false;
+        function resumeAudioContext() {
+            if (audioContextResumed) return;
+            // Create and resume a global AudioContext
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            if (ctx.state === 'suspended') {
+                ctx.resume().then(() => {
+                    console.log('AudioContext resumed after user interaction');
+                });
+            }
+            audioContextResumed = true;
+            // Also try to play all existing audio elements
+            document.querySelectorAll('audio').forEach(el => {
+                el.play().catch(() => {});
+            });
+        }
+        // Listen for ANY user interaction to resume audio
+        ['click', 'touchstart', 'keydown'].forEach(evt => {
+            document.addEventListener(evt, resumeAudioContext, { once: false });
+        });
+
         // Initialize meeting
         async function initializeMeeting() {
             // Check if mediaDevices is available (requires HTTPS or localhost)
@@ -1262,18 +1284,36 @@
                                   publication.source === LivekitClient.Track.Source.ScreenShare;
 
             if (track.kind === 'audio' && !isScreenShare) {
+                // Remove old audio element if exists
+                const oldAudio = document.getElementById(`audio-${participant.sid}`);
+                if (oldAudio) oldAudio.remove();
+
                 // Regular audio — attach to body so it plays
                 const audioEl = track.attach();
                 audioEl.id = `audio-${participant.sid}`;
                 audioEl.autoplay = true;
+                audioEl.playsInline = true;
                 audioEl.volume = 1.0;
-                // Remove old audio element if exists
-                const oldAudio = document.getElementById(`audio-${participant.sid}`);
-                if (oldAudio) oldAudio.remove();
+                // Set attributes directly for maximum compatibility
+                audioEl.setAttribute('autoplay', '');
+                audioEl.setAttribute('playsinline', '');
                 document.body.appendChild(audioEl);
-                // Force play (handles autoplay policy)
-                audioEl.play().catch(e => console.warn('Audio autoplay blocked:', e.message));
-                console.log('Audio attached for participant:', participant.identity);
+
+                // Aggressive play — retry on failure
+                const tryPlay = () => {
+                    audioEl.play().then(() => {
+                        console.log('Audio playing for:', participant.identity);
+                    }).catch(e => {
+                        console.warn('Audio play blocked for', participant.identity, ':', e.message);
+                        // Retry on next user interaction
+                        document.addEventListener('click', () => {
+                            audioEl.play().catch(() => {});
+                        }, { once: true });
+                    });
+                };
+                tryPlay();
+                // Also retry after a short delay
+                setTimeout(tryPlay, 1000);
                 return;
             }
 
@@ -1450,6 +1490,14 @@
             }
         });
         
+        // Handle browser "Stop sharing" button click
+        window.addEventListener('screenshare-ended', () => {
+            screenSharing = false;
+            hideLocalScreenShare();
+            document.getElementById('btn-screen').classList.remove('active');
+            showNotification('Screen sharing stopped', 'info');
+        });
+
         // ==================== MODERATOR-ONLY FEATURES ====================
         let mediaRecorder = null;
         let recordedChunks = [];

@@ -298,18 +298,39 @@ class LiveKitMeetingClient {
      */
     async startScreenShare() {
         try {
-            const screenTracks = await LivekitClient.createLocalScreenTracks({
-                audio: true // Include system audio
-            });
+            let screenTracks;
+            // Try with system audio first, fall back without
+            try {
+                screenTracks = await LivekitClient.createLocalScreenTracks({
+                    audio: true
+                });
+            } catch (audioErr) {
+                console.warn('Screen share with audio failed, trying without:', audioErr.message);
+                screenTracks = await LivekitClient.createLocalScreenTracks({
+                    audio: false
+                });
+            }
 
-            const screenTrack = screenTracks[0];
-            await this.room.localParticipant.publishTrack(screenTrack);
+            // Publish all screen tracks (video + optional audio)
+            for (const track of screenTracks) {
+                await this.room.localParticipant.publishTrack(track);
+            }
 
-            // Store screen track so local participant can see it
-            this.localScreenTrack = screenTrack;
-            console.log('Screen sharing started, stored track:', screenTrack.kind);
+            // Store the video screen track for local display
+            this.localScreenTrack = screenTracks.find(t => t.kind === 'video') || screenTracks[0];
+            console.log('Screen sharing started');
 
-            return screenTrack;
+            // Listen for browser "Stop sharing" button
+            if (this.localScreenTrack.mediaStreamTrack) {
+                this.localScreenTrack.mediaStreamTrack.onended = () => {
+                    console.log('Screen share ended by browser');
+                    this.stopScreenShare();
+                    // Dispatch event so UI can update
+                    window.dispatchEvent(new CustomEvent('screenshare-ended'));
+                };
+            }
+
+            return this.localScreenTrack;
 
         } catch (error) {
             console.error('Screen share error:', error);
