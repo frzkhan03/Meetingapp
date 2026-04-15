@@ -891,24 +891,36 @@ def my_recordings_view(request):
 
 @login_required
 def download_recording_view(request, recording_id):
-    """Generate a pre-signed S3 URL and redirect to download"""
+    """Download a recording — serves local file or generates S3 presigned URL"""
+    import os
+
+    recording = get_object_or_404(MeetingRecording, id=recording_id)
+
+    # Verify ownership
+    if recording.recorded_by != request.user:
+        return JsonResponse({'error': 'Access denied'}, status=403)
+
+    # Verify user still has access to the organization
+    if recording.organization:
+        if not recording.organization.memberships.filter(user=request.user, is_active=True).exists():
+            return JsonResponse({'error': 'Access denied - no longer a member of this organization'}, status=403)
+
+    # Local file — serve directly
+    if recording.file_path and os.path.exists(recording.file_path):
+        from django.http import FileResponse
+        import re
+        safe_name = re.sub(r'[^\w\-.]', '_', recording.recording_name or 'recording.webm')
+        response = FileResponse(open(recording.file_path, 'rb'), content_type='video/webm')
+        response['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+        return response
+
+    # S3 file
+    if not recording.s3_key:
+        return JsonResponse({'error': 'No file associated with this recording'}, status=404)
+
     try:
         import boto3
         from botocore.exceptions import ClientError
-
-        recording = get_object_or_404(MeetingRecording, id=recording_id)
-
-        # Verify ownership
-        if recording.recorded_by != request.user:
-            return JsonResponse({'error': 'Access denied'}, status=403)
-
-        # Verify user still has access to the organization
-        if recording.organization:
-            if not recording.organization.memberships.filter(user=request.user, is_active=True).exists():
-                return JsonResponse({'error': 'Access denied - no longer a member of this organization'}, status=403)
-
-        if not recording.s3_key:
-            return JsonResponse({'error': 'No S3 file associated with this recording'}, status=404)
 
         # Check AWS config
         if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
