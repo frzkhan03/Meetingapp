@@ -236,17 +236,17 @@ class LiveKitMeetingClient {
 
         this.localTracks = tracks;
 
-        // Publish tracks to room
-        for (const track of tracks) {
+        // Publish tracks to room — audio first for reliability
+        const sorted = [...tracks].sort((a) => (a.kind === 'audio' ? -1 : 1));
+        for (const track of sorted) {
             try {
-                await this.room.localParticipant.publishTrack(track, {
-                    simulcast: track.kind === 'video',
-                    videoEncoding: track.kind === 'video' ? {
-                        maxBitrate: 1500000,
-                        maxFramerate: 30
-                    } : undefined
-                });
-                console.log('Published', track.kind, 'track');
+                const opts = {};
+                if (track.kind === 'video') {
+                    opts.simulcast = true;
+                    opts.videoEncoding = { maxBitrate: 1500000, maxFramerate: 30 };
+                }
+                await this.room.localParticipant.publishTrack(track, opts);
+                console.log('Published', track.kind, 'track successfully');
             } catch (err) {
                 console.error('Failed to publish', track.kind, 'track:', err);
             }
@@ -321,17 +321,21 @@ class LiveKitMeetingClient {
      * Stop screen sharing
      */
     async stopScreenShare() {
-        const screenTrack = this.room.localParticipant.videoTrackPublications
-            .find(pub => pub.source === LivekitClient.Track.Source.ScreenShare);
-
-        if (screenTrack) {
-            await this.room.localParticipant.unpublishTrack(screenTrack.track);
-            screenTrack.track.stop();
-            console.log('Screen sharing stopped');
+        // trackPublications is a Map in LiveKit v2 — iterate properly
+        const publications = this.room.localParticipant.trackPublications;
+        for (const [, pub] of publications) {
+            if (pub.source === LivekitClient.Track.Source.ScreenShare ||
+                pub.source === LivekitClient.Track.Source.ScreenShareAudio) {
+                try {
+                    await this.room.localParticipant.unpublishTrack(pub.track);
+                    pub.track.stop();
+                } catch (e) {
+                    console.warn('Error unpublishing screen track:', e);
+                }
+            }
         }
-
-        // Clear stored screen track
         this.localScreenTrack = null;
+        console.log('Screen sharing stopped');
     }
     
     /**
@@ -437,10 +441,30 @@ class LiveKitMeetingClient {
      */
     getParticipants() {
         if (!this.room) return [];
-        // v2.x uses remoteParticipants
         const participants = this.room.remoteParticipants || this.room.participants;
         if (!participants) return [];
         return Array.from(participants.values());
+    }
+
+    /**
+     * Remove a participant from the room (moderator only)
+     */
+    async removeParticipant(participantIdentity) {
+        try {
+            const response = await fetch(`/meeting/api/livekit/room/${this.roomId}/remove-participant/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCookie('csrftoken')
+                },
+                body: JSON.stringify({ identity: participantIdentity })
+            });
+            if (!response.ok) throw new Error('Failed to remove participant');
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to remove participant:', error);
+            throw error;
+        }
     }
     
     /**
