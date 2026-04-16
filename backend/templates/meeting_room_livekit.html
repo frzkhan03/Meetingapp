@@ -1611,31 +1611,33 @@
             btn.setAttribute('data-tooltip', audioEnabled ? 'Mute' : 'Unmute');
         });
         
-        document.getElementById('btn-screen').addEventListener('click', async () => {
-            if (!screenSharing) {
-                try {
-                    await livekitClient.startScreenShare();
-                    screenSharing = true;
-                    displayLocalScreenShare();
-                    document.getElementById('btn-screen').classList.add('active');
-                    showNotification('Screen sharing started 🖥️', 'success');
-                } catch (error) {
-                    console.error('Screen share failed:', error);
-                    showNotification('Failed to share screen: ' + error.message, 'error');
+        if (document.getElementById('btn-screen')) {
+            document.getElementById('btn-screen').addEventListener('click', async () => {
+                if (!screenSharing) {
+                    try {
+                        await livekitClient.startScreenShare();
+                        screenSharing = true;
+                        displayLocalScreenShare();
+                        document.getElementById('btn-screen').classList.add('active');
+                        showNotification('Screen sharing started', 'success');
+                    } catch (error) {
+                        console.error('Screen share failed:', error);
+                        showNotification('Failed to share screen: ' + error.message, 'error');
+                    }
+                } else {
+                    try {
+                        await livekitClient.stopScreenShare();
+                        screenSharing = false;
+                        hideLocalScreenShare();
+                        document.getElementById('btn-screen').classList.remove('active');
+                        showNotification('Screen sharing stopped', 'info');
+                    } catch (error) {
+                        console.error('Stop screen share failed:', error);
+                        showNotification('Failed to stop screen share', 'error');
+                    }
                 }
-            } else {
-                try {
-                    await livekitClient.stopScreenShare();
-                    screenSharing = false;
-                    hideLocalScreenShare();
-                    document.getElementById('btn-screen').classList.remove('active');
-                    showNotification('Screen sharing stopped', 'info');
-                } catch (error) {
-                    console.error('Stop screen share failed:', error);
-                    showNotification('Failed to stop screen share', 'error');
-                }
-            }
-        });
+            });
+        }
         
         // Show flip camera button on mobile/tablet or any touch device
         if (/Mobi|Android|iPhone|iPad|Tablet/i.test(navigator.userAgent) || 'ontouchstart' in window || navigator.maxTouchPoints > 0) {
@@ -2122,24 +2124,27 @@
             }
         }
 
-        document.getElementById('btn-participants').addEventListener('click', () => {
-            participantsOpen = !participantsOpen;
-            // Close chat if open
-            if (participantsOpen && chatOpen) {
-                chatOpen = false;
-                document.getElementById('chat-panel').classList.remove('open');
-                document.getElementById('btn-chat').classList.remove('active');
-            }
-            document.getElementById('participants-panel').classList.toggle('open', participantsOpen);
-            document.getElementById('btn-participants').classList.toggle('active', participantsOpen);
-            if (participantsOpen) updateParticipantsList();
-        });
+        if (document.getElementById('btn-participants')) {
+            document.getElementById('btn-participants').addEventListener('click', () => {
+                participantsOpen = !participantsOpen;
+                if (participantsOpen && chatOpen) {
+                    chatOpen = false;
+                    document.getElementById('chat-panel').classList.remove('open');
+                    document.getElementById('btn-chat').classList.remove('active');
+                }
+                document.getElementById('participants-panel').classList.toggle('open', participantsOpen);
+                document.getElementById('btn-participants').classList.toggle('active', participantsOpen);
+                if (participantsOpen) updateParticipantsList();
+            });
+        }
 
-        document.getElementById('participants-close').addEventListener('click', () => {
-            participantsOpen = false;
-            document.getElementById('participants-panel').classList.remove('open');
-            document.getElementById('btn-participants').classList.remove('active');
-        });
+        if (document.getElementById('participants-close')) {
+            document.getElementById('participants-close').addEventListener('click', () => {
+                participantsOpen = false;
+                document.getElementById('participants-panel').classList.remove('open');
+                if (document.getElementById('btn-participants')) document.getElementById('btn-participants').classList.remove('active');
+            });
+        }
 
         // ==================== LOCK ROOM TOGGLE ====================
         if (document.getElementById('btn-lock')) {

@@ -404,15 +404,17 @@ def join_personal_room_view(request, room_id):
             messages.error(request, 'This room is locked. The host is not accepting new participants.')
             return redirect('home')
 
-        # Check if host approved this guest in THIS session via Redis (short-lived)
+        # Check if host approved this guest via Redis or session
         from django.core.cache import cache
         cache_approval_key = f'room_approval:{room_id}:{user_id}'
         is_approved = cache.get(cache_approval_key, False)
 
+        # Also check session flag (set by check_approval_view during polling)
         if not is_approved:
-            # Clear any stale session approval from previous meetings
             approved_key = f'approved_for_{room_id}'
-            request.session.pop(approved_key, None)
+            is_approved = request.session.get(approved_key, False)
+
+        if not is_approved:
 
             # User needs approval - redirect to pending/waiting page
             request.session['pending_room_id'] = str(room_id)
@@ -775,6 +777,9 @@ def check_approval_view(request, room_id):
         return JsonResponse({'approved': False})
     approval_key = f'room_approval:{room_id}:{user_id}'
     is_approved = bool(cache.get(approval_key))
+    if is_approved:
+        # Pre-set session flag so the join view finds it immediately on redirect
+        request.session[f'approved_for_{room_id}'] = True
     return JsonResponse({'approved': is_approved})
 
 
