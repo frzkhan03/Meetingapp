@@ -1576,93 +1576,40 @@
 
         async function startClientRecording() {
             try {
-                // Build a recording stream from LiveKit tracks directly
-                const tracks = [];
-                recordingAudioCtx = new AudioContext();
-                const audioDest = recordingAudioCtx.createMediaStreamDestination();
-                let hasAudio = false;
-
-                // Get local audio from LiveKit
-                if (livekitClient && livekitClient.localTracks) {
-                    livekitClient.localTracks.forEach(t => {
-                        if (t.kind === 'audio' && t.mediaStreamTrack) {
-                            try {
-                                const src = recordingAudioCtx.createMediaStreamSource(new MediaStream([t.mediaStreamTrack]));
-                                src.connect(audioDest);
-                                hasAudio = true;
-                                console.log('Recording: added local audio');
-                            } catch(e) { console.warn('Recording: local audio failed:', e.message); }
-                        }
-                    });
-                }
-
-                // Get remote audio from all audio elements on the page
-                document.querySelectorAll('audio').forEach(el => {
-                    try {
-                        const stream = el.captureStream ? el.captureStream() : el.mozCaptureStream ? el.mozCaptureStream() : null;
-                        if (stream) {
-                            stream.getAudioTracks().forEach(t => {
-                                const src = recordingAudioCtx.createMediaStreamSource(new MediaStream([t]));
-                                src.connect(audioDest);
-                                hasAudio = true;
-                                console.log('Recording: added remote audio from element');
-                            });
-                        }
-                    } catch(e) { console.warn('Recording: remote audio capture failed:', e.message); }
+                // Use getDisplayMedia — user picks "This Tab" to record the full meeting
+                const captureStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { displaySurface: 'browser', width: 1920, height: 1080 },
+                    audio: true,
+                    preferCurrentTab: true
                 });
 
-                // Get local video from LiveKit
-                let videoTrack = null;
-                if (livekitClient && livekitClient.localTracks) {
-                    const vt = livekitClient.localTracks.find(t => t.kind === 'video');
-                    if (vt && vt.mediaStreamTrack) {
-                        videoTrack = vt.mediaStreamTrack;
-                        console.log('Recording: added local video');
-                    }
+                // Check we have tracks
+                const vTracks = captureStream.getVideoTracks();
+                const aTracks = captureStream.getAudioTracks();
+                console.log('Recording: video tracks=' + vTracks.length + ' audio tracks=' + aTracks.length);
+
+                if (vTracks.length === 0 && aTracks.length === 0) {
+                    throw new Error('No tracks captured. Make sure to select "This Tab" and check "Share audio".');
                 }
 
-                // If no local video, try to get a remote video
-                if (!videoTrack && livekitClient) {
-                    const remoteParticipants = livekitClient.getParticipants();
-                    for (const p of remoteParticipants) {
-                        for (const [, pub] of p.trackPublications) {
-                            if (pub.track && pub.track.kind === 'video' && pub.track.mediaStreamTrack) {
-                                videoTrack = pub.track.mediaStreamTrack;
-                                console.log('Recording: added remote video from', p.identity);
-                                break;
-                            }
+                // Detect when user clicks browser "Stop sharing"
+                vTracks.forEach(t => {
+                    t.onended = () => {
+                        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                            stopClientRecording();
                         }
-                        if (videoTrack) break;
-                    }
+                    };
+                });
+
+                let mimeType = 'video/webm;codecs=vp8,opus';
+                if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+                    mimeType = 'video/webm;codecs=vp9,opus';
                 }
 
-                // Build combined stream
-                if (hasAudio) {
-                    audioDest.stream.getAudioTracks().forEach(t => tracks.push(t));
-                }
-                if (videoTrack) {
-                    tracks.push(videoTrack);
-                }
-
-                if (tracks.length === 0) {
-                    throw new Error('No audio or video tracks available to record');
-                }
-
-                const combinedStream = new MediaStream(tracks);
-                console.log('Recording stream: audio=' + hasAudio + ' video=' + !!videoTrack + ' tracks=' + tracks.length);
-
-                // Try mimeTypes
-                let mimeType = 'video/webm;codecs=vp9,opus';
-                if (!videoTrack) mimeType = 'audio/webm;codecs=opus';
-                if (!MediaRecorder.isTypeSupported(mimeType)) {
-                    mimeType = videoTrack ? 'video/webm;codecs=vp8,opus' : 'audio/webm';
-                }
-                if (!MediaRecorder.isTypeSupported(mimeType)) {
-                    mimeType = 'video/webm';
-                }
-
-                console.log('Recording mimeType:', mimeType);
-                mediaRecorder = new MediaRecorder(combinedStream, { mimeType });
+                mediaRecorder = new MediaRecorder(captureStream, {
+                    mimeType,
+                    videoBitsPerSecond: 2500000
+                });
 
                 recordedChunks = [];
                 mediaRecorder.ondataavailable = (e) => {
@@ -1673,18 +1620,17 @@
 
                 mediaRecorder.onstop = async () => {
                     const duration = Math.round((Date.now() - recordingStartTime) / 1000);
+                    captureStream.getTracks().forEach(t => t.stop());
+
                     const blob = new Blob(recordedChunks, { type: mimeType });
                     console.log('Recording stopped. Size:', blob.size, 'bytes. Duration:', duration, 's');
                     recordedChunks = [];
 
-                    if (recordingAudioCtx) { recordingAudioCtx.close().catch(() => {}); recordingAudioCtx = null; }
-
-                    if (blob.size === 0) {
-                        showNotification('Recording is empty — try recording for longer', 'error');
+                    if (blob.size < 1000) {
+                        showNotification('Recording too small — make sure to share "This Tab" with audio', 'error');
                         return;
                     }
 
-                    // Upload to server
                     const formData = new FormData();
                     formData.append('recording', blob, `recording-${ROOM_ID}.webm`);
                     formData.append('room_id', ROOM_ID);
@@ -1698,9 +1644,9 @@
                         });
                         const data = await resp.json();
                         if (data.success) {
-                            showNotification('Recording saved: ' + data.filename, 'success');
+                            showNotification('Recording saved (' + (blob.size / 1048576).toFixed(1) + ' MB)', 'success');
                         } else {
-                            showNotification('Failed to save: ' + (data.error || 'Unknown error'), 'error');
+                            showNotification('Failed to save: ' + (data.error || 'Unknown'), 'error');
                         }
                     } catch (err) {
                         const url = URL.createObjectURL(blob);

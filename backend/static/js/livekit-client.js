@@ -209,12 +209,32 @@ class LiveKitMeetingClient {
         } catch (err) {
             console.warn('Could not get both audio+video, trying separately:', err.message);
 
-            // Try audio only
+            // Try audio only with explicit constraints
             try {
-                const audioTracks = await LivekitClient.createLocalTracks({ audio: true, video: false });
+                const audioTracks = await LivekitClient.createLocalTracks({
+                    audio: {
+                        autoGainControl: true,
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 48000
+                    },
+                    video: false
+                });
                 tracks.push(...audioTracks);
             } catch (e) {
                 console.warn('No microphone available:', e.message);
+                // Last resort: try navigator.mediaDevices directly
+                try {
+                    const rawStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const rawTrack = rawStream.getAudioTracks()[0];
+                    if (rawTrack) {
+                        const lkTrack = new LivekitClient.LocalAudioTrack(rawTrack);
+                        tracks.push(lkTrack);
+                        console.log('Got audio via raw getUserMedia fallback');
+                    }
+                } catch (e2) {
+                    console.warn('Raw getUserMedia also failed:', e2.message);
+                }
             }
 
             // Try video only
