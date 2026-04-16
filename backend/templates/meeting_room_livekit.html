@@ -1119,34 +1119,16 @@
         let meetingStartTime = Date.now();
         let timerInterval = null;
 
-        // ==================== WEBSOCKET FOR ADMISSION REQUESTS ====================
-        let roomSocket = null;
-        let userSocket = null;
-
-        function connectAdmissionWebSocket() {
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsBase = `${wsProtocol}//${window.location.host}`;
-
-            // Room WebSocket — receives join_request from pending guests
-            roomSocket = new WebSocket(`${wsBase}/ws/room/${ROOM_ID}/`);
-            roomSocket.onopen = () => console.log('Room WebSocket connected');
-            roomSocket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                console.log('Room WS message:', data);
-
-                if (data.type === 'join_request' && IS_MODERATOR) {
-                    showAdmissionRequest(data.user_id, data.username);
-                }
-            };
-            roomSocket.onclose = () => {
-                console.log('Room WebSocket closed, reconnecting in 3s...');
-                setTimeout(connectAdmissionWebSocket, 3000);
-            };
-        }
+        // ==================== ADMISSION VIA HTTP POLLING (works without WebSocket) ====================
+        let pendingRequests = new Set();
 
         function showAdmissionRequest(userId, username) {
+            if (pendingRequests.has(userId)) return; // Already showing
+            pendingRequests.add(userId);
+
             const toast = document.createElement('div');
             toast.className = 'notification-toast show';
+            toast.id = `admit-${userId}`;
             toast.style.cssText = 'top:90px;z-index:1001;display:flex;align-items:center;gap:12px;padding:16px 20px;min-width:300px;';
             toast.innerHTML = `
                 <div style="flex:1;">
@@ -1157,26 +1139,42 @@
                 <button onclick="respondAdmission('${userId}', false, this.parentElement)" style="padding:8px 16px;background:var(--danger);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Deny</button>
             `;
             document.body.appendChild(toast);
-
-            // Auto-dismiss after 60 seconds
-            setTimeout(() => { if (toast.parentElement) toast.remove(); }, 60000);
+            setTimeout(() => { if (toast.parentElement) { toast.remove(); pendingRequests.delete(userId); } }, 120000);
         }
 
-        function respondAdmission(userId, approved, toastEl) {
-            if (roomSocket && roomSocket.readyState === WebSocket.OPEN) {
-                roomSocket.send(JSON.stringify({
-                    type: 'alert_response',
-                    approved: approved,
-                    requesting_user_id: userId
-                }));
+        async function respondAdmission(userId, approved, toastEl) {
+            try {
+                await fetch(`/meeting/room/${ROOM_ID}/approve-guest/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ user_id: userId, approved: approved })
+                });
+            } catch (e) {
+                console.error('Approve/deny failed:', e);
             }
             if (toastEl) toastEl.remove();
+            pendingRequests.delete(userId);
             showNotification(approved ? 'Guest admitted' : 'Guest denied', approved ? 'success' : 'info');
         }
 
-        // Connect WebSocket for admission (moderators need this)
+        // Poll for pending join requests (HTTP — works without WebSocket)
         if (IS_MODERATOR) {
-            connectAdmissionWebSocket();
+            setInterval(async () => {
+                try {
+                    const resp = await fetch(`/meeting/room/${ROOM_ID}/pending-requests/`, {
+                        headers: { 'X-CSRFToken': getCookie('csrftoken') }
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        if (data.requests && data.requests.length > 0) {
+                            data.requests.forEach(r => showAdmissionRequest(r.user_id, r.username));
+                        }
+                    }
+                } catch (e) {}
+            }, 3000);
         }
         
         // Resume AudioContext on user interaction (fixes browser autoplay policy)
@@ -1574,73 +1572,112 @@
             return '';
         }
 
+        let recordingAudioCtx = null;
+
         async function startClientRecording() {
             try {
-                // Use getDisplayMedia to capture the meeting tab/screen with audio
-                let captureStream;
-                try {
-                    captureStream = await navigator.mediaDevices.getDisplayMedia({
-                        video: { displaySurface: 'browser' },
-                        audio: true  // capture tab audio
-                    });
-                } catch (displayErr) {
-                    // Fallback: capture just local video + all audio
-                    console.warn('getDisplayMedia failed, using fallback:', displayErr.message);
-                    const audioCtx = new AudioContext();
-                    const destination = audioCtx.createMediaStreamDestination();
+                // Build a recording stream from LiveKit tracks directly
+                const tracks = [];
+                recordingAudioCtx = new AudioContext();
+                const audioDest = recordingAudioCtx.createMediaStreamDestination();
+                let hasAudio = false;
 
-                    document.querySelectorAll('video, audio').forEach(el => {
-                        if (el.srcObject) {
-                            el.srcObject.getAudioTracks().forEach(track => {
-                                try {
-                                    const source = audioCtx.createMediaStreamSource(new MediaStream([track]));
-                                    source.connect(destination);
-                                } catch (e) {}
-                            });
+                // Get local audio from LiveKit
+                if (livekitClient && livekitClient.localTracks) {
+                    livekitClient.localTracks.forEach(t => {
+                        if (t.kind === 'audio' && t.mediaStreamTrack) {
+                            try {
+                                const src = recordingAudioCtx.createMediaStreamSource(new MediaStream([t.mediaStreamTrack]));
+                                src.connect(audioDest);
+                                hasAudio = true;
+                                console.log('Recording: added local audio');
+                            } catch(e) { console.warn('Recording: local audio failed:', e.message); }
                         }
                     });
-
-                    const tracks = [...destination.stream.getTracks()];
-                    const localVideo = document.querySelector('#video-local video');
-                    if (localVideo && localVideo.srcObject) {
-                        localVideo.srcObject.getVideoTracks().forEach(t => tracks.push(t));
-                    }
-                    captureStream = new MediaStream(tracks);
                 }
 
-                // Ensure we have at least some tracks
-                if (captureStream.getTracks().length === 0) {
+                // Get remote audio from all audio elements on the page
+                document.querySelectorAll('audio').forEach(el => {
+                    try {
+                        const stream = el.captureStream ? el.captureStream() : el.mozCaptureStream ? el.mozCaptureStream() : null;
+                        if (stream) {
+                            stream.getAudioTracks().forEach(t => {
+                                const src = recordingAudioCtx.createMediaStreamSource(new MediaStream([t]));
+                                src.connect(audioDest);
+                                hasAudio = true;
+                                console.log('Recording: added remote audio from element');
+                            });
+                        }
+                    } catch(e) { console.warn('Recording: remote audio capture failed:', e.message); }
+                });
+
+                // Get local video from LiveKit
+                let videoTrack = null;
+                if (livekitClient && livekitClient.localTracks) {
+                    const vt = livekitClient.localTracks.find(t => t.kind === 'video');
+                    if (vt && vt.mediaStreamTrack) {
+                        videoTrack = vt.mediaStreamTrack;
+                        console.log('Recording: added local video');
+                    }
+                }
+
+                // If no local video, try to get a remote video
+                if (!videoTrack && livekitClient) {
+                    const remoteParticipants = livekitClient.getParticipants();
+                    for (const p of remoteParticipants) {
+                        for (const [, pub] of p.trackPublications) {
+                            if (pub.track && pub.track.kind === 'video' && pub.track.mediaStreamTrack) {
+                                videoTrack = pub.track.mediaStreamTrack;
+                                console.log('Recording: added remote video from', p.identity);
+                                break;
+                            }
+                        }
+                        if (videoTrack) break;
+                    }
+                }
+
+                // Build combined stream
+                if (hasAudio) {
+                    audioDest.stream.getAudioTracks().forEach(t => tracks.push(t));
+                }
+                if (videoTrack) {
+                    tracks.push(videoTrack);
+                }
+
+                if (tracks.length === 0) {
                     throw new Error('No audio or video tracks available to record');
                 }
 
-                // Try different mimeTypes for browser compatibility
+                const combinedStream = new MediaStream(tracks);
+                console.log('Recording stream: audio=' + hasAudio + ' video=' + !!videoTrack + ' tracks=' + tracks.length);
+
+                // Try mimeTypes
                 let mimeType = 'video/webm;codecs=vp9,opus';
+                if (!videoTrack) mimeType = 'audio/webm;codecs=opus';
                 if (!MediaRecorder.isTypeSupported(mimeType)) {
-                    mimeType = 'video/webm;codecs=vp8,opus';
+                    mimeType = videoTrack ? 'video/webm;codecs=vp8,opus' : 'audio/webm';
                 }
                 if (!MediaRecorder.isTypeSupported(mimeType)) {
                     mimeType = 'video/webm';
                 }
 
-                console.log('Recording with mimeType:', mimeType, 'tracks:', captureStream.getTracks().length);
-                mediaRecorder = new MediaRecorder(captureStream, { mimeType, videoBitsPerSecond: 2500000 });
+                console.log('Recording mimeType:', mimeType);
+                mediaRecorder = new MediaRecorder(combinedStream, { mimeType });
 
                 recordedChunks = [];
                 mediaRecorder.ondataavailable = (e) => {
                     if (e.data && e.data.size > 0) {
                         recordedChunks.push(e.data);
-                        console.log('Recording chunk:', e.data.size, 'bytes');
                     }
                 };
 
                 mediaRecorder.onstop = async () => {
                     const duration = Math.round((Date.now() - recordingStartTime) / 1000);
                     const blob = new Blob(recordedChunks, { type: mimeType });
-                    console.log('Recording blob size:', blob.size, 'duration:', duration);
+                    console.log('Recording stopped. Size:', blob.size, 'bytes. Duration:', duration, 's');
                     recordedChunks = [];
 
-                    // Stop all capture tracks
-                    captureStream.getTracks().forEach(t => t.stop());
+                    if (recordingAudioCtx) { recordingAudioCtx.close().catch(() => {}); recordingAudioCtx = null; }
 
                     if (blob.size === 0) {
                         showNotification('Recording is empty — try recording for longer', 'error');
@@ -1666,7 +1703,6 @@
                             showNotification('Failed to save: ' + (data.error || 'Unknown error'), 'error');
                         }
                     } catch (err) {
-                        // Fallback: download locally
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
@@ -1677,7 +1713,7 @@
                     }
                 };
 
-                mediaRecorder.start(1000); // Collect data every second
+                mediaRecorder.start(1000);
                 recordingStartTime = Date.now();
 
                 // Show recording indicator

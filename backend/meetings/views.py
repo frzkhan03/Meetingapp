@@ -698,29 +698,38 @@ def send_join_alert_view(request, room_id):
         if not author_id or not user_id:
             return JsonResponse({'error': 'Missing session data'}, status=400)
 
-        channel_layer = get_channel_layer()
-        room_group_name = f'room_{room_id}'
+        # Store pending request in Redis so host can poll it via HTTP
+        from django.core.cache import cache
+        pending_key = f'pending_join:{room_id}'
+        pending_list = cache.get(pending_key, [])
+        # Add if not already in list
+        if not any(p['user_id'] == user_id for p in pending_list):
+            pending_list.append({'user_id': user_id, 'username': alert_username})
+        cache.set(pending_key, pending_list, 300)  # 5 min TTL
 
-        # Send to room group (for moderators in the room)
-        async_to_sync(channel_layer.group_send)(
-            room_group_name,
-            {
-                'type': 'join_request',
-                'user_id': user_id,
-                'username': alert_username,
-            }
-        )
-
-        # Also send to user-specific group (for authenticated moderators)
-        async_to_sync(channel_layer.group_send)(
-            f'user_{author_id}',
-            {
-                'type': 'alert_request',
-                'user_id': user_id,
-                'username': alert_username,
-                'room_id': str(room_id),
-            }
-        )
+        # Also try channel layer (works when WebSocket is connected)
+        try:
+            channel_layer = get_channel_layer()
+            room_group_name = f'room_{room_id}'
+            async_to_sync(channel_layer.group_send)(
+                room_group_name,
+                {
+                    'type': 'join_request',
+                    'user_id': user_id,
+                    'username': alert_username,
+                }
+            )
+            async_to_sync(channel_layer.group_send)(
+                f'user_{author_id}',
+                {
+                    'type': 'alert_request',
+                    'user_id': user_id,
+                    'username': alert_username,
+                    'room_id': str(room_id),
+                }
+            )
+        except Exception:
+            pass  # Channel layer is optional — Redis polling is the primary method
 
         return JsonResponse({'success': True})
     except Exception as e:
@@ -768,6 +777,47 @@ def mark_guest_approved_view(request, room_id):
         import logging
         logging.getLogger(__name__).error('mark_guest_approved error: %s', e, exc_info=True)
         return JsonResponse({'error': 'Failed to process approval.'}, status=400)
+
+
+def get_pending_requests_view(request, room_id):
+    """Get pending join requests for a room (host polls this)"""
+    from django.core.cache import cache
+    pending_key = f'pending_join:{room_id}'
+    pending_list = cache.get(pending_key, [])
+    return JsonResponse({'requests': pending_list})
+
+
+@require_POST
+def approve_guest_view(request, room_id):
+    """Host approves or denies a guest via HTTP (no WebSocket needed)"""
+    try:
+        data = json.loads(request.body)
+        user_id = data.get('user_id', '')
+        approved = data.get('approved', False)
+
+        from django.core.cache import cache
+
+        if approved:
+            # Store approval in Redis
+            approval_key = f'room_approval:{room_id}:{user_id}'
+            cache.set(approval_key, True, 3600)
+
+            # Create meeting packet
+            try:
+                from .tasks import create_meeting_packet
+                create_meeting_packet.delay(user_id, room_id)
+            except Exception:
+                pass
+
+        # Remove from pending list
+        pending_key = f'pending_join:{room_id}'
+        pending_list = cache.get(pending_key, [])
+        pending_list = [p for p in pending_list if p['user_id'] != user_id]
+        cache.set(pending_key, pending_list, 300)
+
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
 
 
 @login_required
