@@ -424,6 +424,9 @@
 
     connectUserSocket();
 
+    // Send alert immediately on page load (don't wait for WebSocket)
+    sendJoinAlert();
+
     // ========== HTTP polling fallback ==========
     // Polls the approval status via HTTP in case WebSocket drops and response is missed.
     // This checks if the session has been marked as approved by the moderator.
@@ -468,15 +471,15 @@
         } else {
             clearInterval(alertInterval);
         }
-    }, 15000);
+    }, 5000);
 
-    // Poll for approval every 5 seconds as HTTP fallback
+    // Poll for approval every 3 seconds
     let pollInterval = setInterval(() => {
         if (!responseHandled) {
             pollApprovalStatus();
         } else {
             clearInterval(pollInterval);
         }
-    }, 5000);
+    }, 3000);
 </script>
 {% endblock %}

@@ -614,18 +614,6 @@ def toggle_room_lock_view(request, room_id):
             if not is_owner and not is_token_moderator:
                 return JsonResponse({'error': 'Unauthorized'}, status=403)
 
-            # Check if organization has waiting room feature
-            if is_locked:
-                from billing.plan_limits import get_plan_limits
-                org = personal_room.organization
-                if org:
-                    limits = get_plan_limits(org)
-                    if not limits.can_use_waiting_room():
-                        return JsonResponse({
-                            'error': 'Waiting room feature requires a Business plan',
-                            'upgrade_required': True
-                        }, status=403)
-
             personal_room.is_locked = is_locked
             personal_room.save()
 

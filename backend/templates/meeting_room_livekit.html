@@ -186,12 +186,46 @@
             left: 0;
             right: 0;
             bottom: 110px;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            display: flex;
+            flex-wrap: wrap;
             gap: 16px;
             padding: 16px;
             overflow-y: auto;
             z-index: 1;
+            align-items: stretch;
+            justify-content: center;
+        }
+
+        /* Remote participants take full space */
+        #video-grid .video-container {
+            flex: 1 1 100%;
+            max-height: calc(100vh - 200px);
+        }
+
+        /* Local video (You) — small PiP overlay in bottom-right */
+        #video-grid #video-local {
+            position: fixed;
+            bottom: 130px;
+            right: 24px;
+            width: 200px;
+            height: 150px;
+            z-index: 50;
+            flex: none;
+            border-radius: 12px;
+            border: 2px solid var(--primary);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            aspect-ratio: auto;
+        }
+
+        /* When multiple remote participants, split evenly */
+        #video-grid .video-container:not(#video-local) {
+            flex: 1 1 calc(50% - 16px);
+            min-width: 300px;
+        }
+
+        /* If only one remote participant, take full width */
+        #video-grid .video-container:not(#video-local):only-of-type {
+            flex: 1 1 100%;
         }
         
         /* Custom Scrollbar */
@@ -1002,6 +1036,16 @@
             <span class="control-label">Mic</span>
         </div>
         
+        <!-- Flip Camera Button (mobile) -->
+        <div class="control-btn-wrapper" id="flip-camera-wrapper" style="display:none;">
+            <button id="btn-flip-camera" class="control-btn" data-tooltip="Switch camera">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+            </button>
+            <span class="control-label">Flip</span>
+        </div>
+
         <!-- Share Screen Button -->
         <div class="control-btn-wrapper">
             <button id="btn-screen" class="control-btn" data-tooltip="Share your screen">
@@ -1582,6 +1626,52 @@
             }
         });
         
+        // Show flip camera button on mobile/tablet
+        if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+            document.getElementById('flip-camera-wrapper').style.display = '';
+        }
+
+        // Flip camera (front/back)
+        let usingFrontCamera = true;
+        document.getElementById('btn-flip-camera').addEventListener('click', async () => {
+            try {
+                usingFrontCamera = !usingFrontCamera;
+                const facingMode = usingFrontCamera ? 'user' : 'environment';
+
+                // Stop current video track
+                const oldVideoTrack = livekitClient.localTracks.find(t => t.kind === 'video');
+                if (oldVideoTrack) {
+                    await livekitClient.room.localParticipant.unpublishTrack(oldVideoTrack);
+                    oldVideoTrack.stop();
+                    livekitClient.localTracks = livekitClient.localTracks.filter(t => t !== oldVideoTrack);
+                }
+
+                // Create new track with opposite camera
+                const newTracks = await LivekitClient.createLocalTracks({
+                    audio: false,
+                    video: { facingMode: facingMode }
+                });
+                const newVideoTrack = newTracks.find(t => t.kind === 'video');
+                if (newVideoTrack) {
+                    await livekitClient.room.localParticipant.publishTrack(newVideoTrack);
+                    livekitClient.localTracks.push(newVideoTrack);
+
+                    // Update local video display
+                    const localContainer = document.getElementById('video-local');
+                    if (localContainer) {
+                        const el = newVideoTrack.attach();
+                        el.style.transform = usingFrontCamera ? 'scaleX(-1)' : '';
+                        const oldVid = localContainer.querySelector('video');
+                        if (oldVid) oldVid.replaceWith(el);
+                    }
+                    showNotification(usingFrontCamera ? 'Front camera' : 'Back camera', 'info');
+                }
+            } catch (e) {
+                console.error('Flip camera failed:', e);
+                showNotification('Failed to switch camera', 'error');
+            }
+        });
+
         // Handle browser "Stop sharing" button click
         window.addEventListener('screenshare-ended', () => {
             screenSharing = false;
@@ -1670,27 +1760,21 @@
                     formData.append('room_id', ROOM_ID);
                     formData.append('duration', duration);
 
-                    try {
-                        const resp = await fetch('/meeting/save-local-recording/', {
-                            method: 'POST',
-                            headers: { 'X-CSRFToken': getCookie('csrftoken') },
-                            body: formData,
-                        });
-                        const data = await resp.json();
-                        if (data.success) {
-                            showNotification('Recording saved (' + (blob.size / 1048576).toFixed(1) + ' MB)', 'success');
-                        } else {
-                            showNotification('Failed to save: ' + (data.error || 'Unknown'), 'error');
-                        }
-                    } catch (err) {
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `recording-${ROOM_ID}-${Date.now()}.webm`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                        showNotification('Recording downloaded locally', 'info');
-                    }
+                    // Download to user's system
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `PyTalk-${ROOM_ID}-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.webm`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showNotification('Recording downloaded (' + (blob.size / 1048576).toFixed(1) + ' MB)', 'success');
+
+                    // Also save to server in background
+                    fetch('/meeting/save-local-recording/', {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                        body: formData,
+                    }).catch(() => {});
                 };
 
                 mediaRecorder.start(1000);
@@ -1817,30 +1901,22 @@
 
                 const imageData = canvas.toDataURL('image/png');
 
-                // Upload to server
-                try {
-                    const resp = await fetch('/meeting/save-screenshot/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': getCookie('csrftoken'),
-                        },
-                        body: JSON.stringify({ image: imageData, room_id: ROOM_ID }),
-                    });
-                    const data = await resp.json();
-                    if (data.success) {
-                        showNotification('Screenshot saved: ' + data.filename, 'success');
-                    } else {
-                        throw new Error(data.error);
-                    }
-                } catch (err) {
-                    // Fallback: download locally
-                    const a = document.createElement('a');
-                    a.href = imageData;
-                    a.download = `screenshot-${ROOM_ID}-${Date.now()}.png`;
-                    a.click();
-                    showNotification('Screenshot downloaded', 'info');
-                }
+                // Download to user's system
+                const dlLink = document.createElement('a');
+                dlLink.href = imageData;
+                dlLink.download = `PyTalk-${ROOM_ID}-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.png`;
+                dlLink.click();
+                showNotification('Screenshot downloaded', 'success');
+
+                // Also save to server in background
+                fetch('/meeting/save-screenshot/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken'),
+                    },
+                    body: JSON.stringify({ image: imageData, room_id: ROOM_ID }),
+                }).catch(() => {});
 
             } catch (err) {
                 console.error('Screenshot failed:', err);
@@ -2058,20 +2134,28 @@
             let roomLocked = document.getElementById('btn-lock').classList.contains('active');
             document.getElementById('btn-lock').addEventListener('click', async () => {
                 try {
+                    const newState = !roomLocked;
                     const resp = await fetch(`/meeting/room/${ROOM_ID}/toggle-lock/`, {
                         method: 'POST',
-                        headers: { 'X-CSRFToken': getCookie('csrftoken') }
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken')
+                        },
+                        body: JSON.stringify({ is_locked: newState })
                     });
                     if (resp.ok) {
                         const data = await resp.json();
                         roomLocked = data.is_locked;
                         const btn = document.getElementById('btn-lock');
                         btn.classList.toggle('active', roomLocked);
-                        btn.setAttribute('data-tooltip', roomLocked ? 'Unlock Room' : 'Lock Room');
+                        btn.setAttribute('data-tooltip', roomLocked ? 'Unlock (allow admit requests)' : 'Lock (block all new joins)');
                         document.getElementById('lock-icon-locked').style.display = roomLocked ? '' : 'none';
                         document.getElementById('lock-icon-unlocked').style.display = roomLocked ? 'none' : '';
-                        document.getElementById('lock-label').textContent = roomLocked ? 'Locked' : 'Unlocked';
+                        document.getElementById('lock-label').textContent = roomLocked ? 'Locked' : 'Open';
                         showNotification(roomLocked ? 'Room locked — no one can join' : 'Room open — guests need your approval to join', 'info');
+                    } else {
+                        const err = await resp.json();
+                        showNotification(err.error || 'Failed to toggle lock', 'error');
                     }
                 } catch (e) {
                     showNotification('Failed to toggle lock', 'error');
