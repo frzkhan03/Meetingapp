@@ -919,7 +919,10 @@ def upload_recording_view(request):
 
 @login_required
 def my_recordings_view(request):
-    """View user's recordings"""
+    """View user's recordings and screenshots"""
+    import glob
+    from datetime import datetime
+
     org = getattr(request, 'organization', None)
 
     # Show recordings by this user — with or without org
@@ -932,10 +935,44 @@ def my_recordings_view(request):
     paginator = Paginator(recordings, 10)
     page_obj = paginator.get_page(request.GET.get('page', 1))
 
+    # Scan screenshots directory for this user's screenshots
+    screenshots = []
+    screenshots_dir = os.path.join(settings.MEDIA_ROOT, 'screenshots')
+    if os.path.exists(screenshots_dir):
+        username = request.user.username
+        for filepath in sorted(glob.glob(os.path.join(screenshots_dir, '*.png')), reverse=True):
+            filename = os.path.basename(filepath)
+            # Include screenshots by this user or from rooms they own
+            if username.lower() in filename.lower() or not request.user.is_authenticated:
+                stat = os.stat(filepath)
+                screenshots.append({
+                    'filename': filename,
+                    'url': f'/media/screenshots/{filename}',
+                    'size': stat.st_size,
+                    'created_at': datetime.fromtimestamp(stat.st_mtime),
+                })
+
+        # Also include screenshots where room belongs to user
+        if not screenshots:
+            user_rooms = PersonalRoom.objects.filter(user=request.user).values_list('room_id', flat=True)
+            for filepath in sorted(glob.glob(os.path.join(screenshots_dir, '*.png')), reverse=True):
+                filename = os.path.basename(filepath)
+                for rid in user_rooms:
+                    if rid in filename:
+                        stat = os.stat(filepath)
+                        screenshots.append({
+                            'filename': filename,
+                            'url': f'/media/screenshots/{filename}',
+                            'size': stat.st_size,
+                            'created_at': datetime.fromtimestamp(stat.st_mtime),
+                        })
+                        break
+
     return render(request, 'my_recordings.html', {
         'recordings': page_obj,
         'page_obj': page_obj,
         'organization': org,
+        'screenshots': screenshots,
     })
 
 
