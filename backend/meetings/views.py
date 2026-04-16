@@ -397,37 +397,23 @@ def join_personal_room_view(request, room_id):
         # Use the display name they entered
         username = request.session.get(name_key, f"Guest_{user_id[-4:]}")
 
-    # All attendees need host approval before joining
+    # All attendees ALWAYS need host approval before joining
     if is_attendee:
-        # If room is LOCKED — completely blocked, no one can join
+        # If room is LOCKED — completely blocked
         if personal_room.is_locked:
             messages.error(request, 'This room is locked. The host is not accepting new participants.')
             return redirect('home')
 
-        # Room is UNLOCKED — attendee needs host approval
-        is_approved = False
-
-        # Check session-based approval
-        approved_key = f'approved_for_{room_id}'
-        is_approved = request.session.get(approved_key, False)
-
-        # For authenticated users, also check UserMeetingPacket as fallback
-        if not is_approved and request.user.is_authenticated:
-            packet = UserMeetingPacket.objects.filter(
-                room_id=room_id,
-                user__id=request.user.id
-            ).first()
-            is_approved = packet is not None
-
-        # Check Redis cache as fallback
-        if not is_approved:
-            from django.core.cache import cache
-            cache_approval_key = f'room_approval:{room_id}:{user_id}'
-            if cache.get(cache_approval_key):
-                is_approved = True
-                request.session[approved_key] = True
+        # Check if host approved this guest in THIS session via Redis (short-lived)
+        from django.core.cache import cache
+        cache_approval_key = f'room_approval:{room_id}:{user_id}'
+        is_approved = cache.get(cache_approval_key, False)
 
         if not is_approved:
+            # Clear any stale session approval from previous meetings
+            approved_key = f'approved_for_{room_id}'
+            request.session.pop(approved_key, None)
+
             # User needs approval - redirect to pending/waiting page
             request.session['pending_room_id'] = str(room_id)
             request.session['pending_author_id'] = personal_room.user.id

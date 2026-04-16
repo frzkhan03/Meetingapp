@@ -196,10 +196,16 @@
             justify-content: center;
         }
 
-        /* Remote participants take full space */
+        /* Remote participants take full space — tall for body verification */
         #video-grid .video-container {
             flex: 1 1 100%;
             max-height: calc(100vh - 200px);
+            min-height: 300px;
+        }
+
+        #video-grid .video-container video {
+            object-fit: contain;
+            background: #000;
         }
 
         /* Local video (You) — small PiP overlay in bottom-right */
@@ -207,25 +213,25 @@
             position: fixed;
             bottom: 130px;
             right: 24px;
-            width: 200px;
-            height: 150px;
+            width: 180px;
+            height: 240px;
             z-index: 50;
             flex: none;
             border-radius: 12px;
             border: 2px solid var(--primary);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
             aspect-ratio: auto;
+            min-height: auto;
+        }
+
+        #video-grid #video-local video {
+            object-fit: cover;
         }
 
         /* When multiple remote participants, split evenly */
         #video-grid .video-container:not(#video-local) {
             flex: 1 1 calc(50% - 16px);
-            min-width: 300px;
-        }
-
-        /* If only one remote participant, take full width */
-        #video-grid .video-container:not(#video-local):only-of-type {
-            flex: 1 1 100%;
+            min-width: 280px;
         }
         
         /* Custom Scrollbar */
@@ -932,58 +938,59 @@
             aspect-ratio: 16/9;
         }
 
-        /* Responsive Design */
+        /* Responsive Design — Mobile */
         @media (max-width: 768px) {
             #top-bar {
-                padding: 0 16px;
-                height: 60px;
-            }
-            
-            #meeting-title h1 {
-                font-size: 16px;
-            }
-            
-            #video-grid {
-                top: 60px;
-                bottom: 100px;
-                grid-template-columns: 1fr;
-                gap: 12px;
-                padding: 12px;
-            }
-            
-            #controls-bar {
-                height: 100px;
-                gap: 10px;
                 padding: 0 12px;
-            }
-            
-            .control-btn {
-                width: 56px;
                 height: 56px;
             }
-            
-            .control-btn svg {
-                width: 22px;
-                height: 22px;
+            #top-bar-right { gap: 8px; }
+            #meeting-title h1 { font-size: 14px; }
+            #meeting-title .logo { width: 32px; height: 32px; font-size: 16px; }
+            #connection-status, #participant-count { padding: 4px 10px; font-size: 11px; }
+
+            #video-grid {
+                top: 56px;
+                bottom: 90px;
+                gap: 8px;
+                padding: 8px;
             }
-            
-            .control-btn.leave {
-                width: 60px;
-                height: 60px;
+
+            /* Remote video fills screen on mobile */
+            #video-grid .video-container:not(#video-local) {
+                min-width: 100%;
+                min-height: calc(100vh - 160px);
             }
-            
-            .control-label {
-                display: none;
+
+            /* Local PiP smaller on mobile */
+            #video-grid #video-local {
+                width: 120px;
+                height: 160px;
+                bottom: 100px;
+                right: 12px;
             }
-            
-            #chat-panel {
+
+            #controls-bar {
+                height: 90px;
+                gap: 8px;
+                padding: 0 8px;
+                overflow-x: auto;
+                justify-content: flex-start;
+            }
+
+            .control-btn { width: 48px; height: 48px; }
+            .control-btn svg { width: 20px; height: 20px; }
+            .control-btn.leave { width: 52px; height: 52px; }
+            .control-label { display: none; }
+            .control-btn-wrapper { gap: 4px; }
+            .control-btn::before, .control-btn::after { display: none; }
+
+            #chat-panel, #participants-panel {
                 width: 100%;
                 right: -100%;
             }
-            
-            #meeting-timer {
-                display: none;
-            }
+
+            #meeting-timer { display: none; }
         }
     </style>
 </head>
@@ -1036,7 +1043,7 @@
             <span class="control-label">Mic</span>
         </div>
         
-        <!-- Flip Camera Button (mobile) -->
+        <!-- Flip Camera Button (mobile — all users) -->
         <div class="control-btn-wrapper" id="flip-camera-wrapper" style="display:none;">
             <button id="btn-flip-camera" class="control-btn" data-tooltip="Switch camera">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1046,7 +1053,8 @@
             <span class="control-label">Flip</span>
         </div>
 
-        <!-- Share Screen Button -->
+        {% if is_moderator %}
+        <!-- Share Screen Button (moderator only) -->
         <div class="control-btn-wrapper">
             <button id="btn-screen" class="control-btn" data-tooltip="Share your screen">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1055,7 +1063,8 @@
             </button>
             <span class="control-label">Share</span>
         </div>
-        
+        {% endif %}
+
         {% if is_moderator %}
         <!-- Record Button (moderator only) -->
         <div class="control-btn-wrapper">
@@ -1112,7 +1121,8 @@
             <span class="control-label">Chat</span>
         </div>
 
-        <!-- Participants Button -->
+        {% if is_moderator %}
+        <!-- Participants Button (moderator only) -->
         <div class="control-btn-wrapper">
             <button id="btn-participants" class="control-btn" data-tooltip="Participants">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1121,6 +1131,7 @@
             </button>
             <span class="control-label">People</span>
         </div>
+        {% endif %}
 
         <!-- Layout Button -->
         <div class="control-btn-wrapper">
@@ -1626,9 +1637,10 @@
             }
         });
         
-        // Show flip camera button on mobile/tablet
-        if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
-            document.getElementById('flip-camera-wrapper').style.display = '';
+        // Show flip camera button on mobile/tablet or any touch device
+        if (/Mobi|Android|iPhone|iPad|Tablet/i.test(navigator.userAgent) || 'ontouchstart' in window || navigator.maxTouchPoints > 0) {
+            const flipWrapper = document.getElementById('flip-camera-wrapper');
+            if (flipWrapper) flipWrapper.style.display = '';
         }
 
         // Flip camera (front/back)
