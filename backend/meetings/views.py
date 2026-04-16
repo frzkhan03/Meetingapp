@@ -10,6 +10,8 @@ from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.conf import settings
 from django.core.signing import TimestampSigner
 import json
+import os
+import glob
 import uuid
 from .models import Meeting, UserMeetingPacket, PersonalRoom, MeetingRecording, MeetingTranscript
 from .forms import MeetingForm
@@ -920,7 +922,6 @@ def upload_recording_view(request):
 @login_required
 def my_recordings_view(request):
     """View user's recordings and screenshots"""
-    import glob
     from datetime import datetime
 
     org = getattr(request, 'organization', None)
