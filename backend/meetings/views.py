@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
 from django.http import JsonResponse, HttpResponseRedirect
+from django.db.models import Q
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
@@ -870,14 +871,13 @@ def upload_recording_view(request):
 def my_recordings_view(request):
     """View user's recordings"""
     org = getattr(request, 'organization', None)
-    if not org:
-        messages.warning(request, 'Please select or create an organization first.')
-        return redirect('organization_list')
 
-    recordings = MeetingRecording.objects.filter(
-        recorded_by=request.user,
-        organization=org,
-    ).order_by('-created_at')
+    # Show recordings by this user — with or without org
+    filters = Q(recorded_by=request.user)
+    if org:
+        filters = filters | Q(organization=org, recorded_by=request.user)
+
+    recordings = MeetingRecording.objects.filter(filters).distinct().order_by('-created_at')
 
     paginator = Paginator(recordings, 10)
     page_obj = paginator.get_page(request.GET.get('page', 1))

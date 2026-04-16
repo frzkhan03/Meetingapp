@@ -327,7 +327,7 @@
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const WS_HEARTBEAT_INTERVAL = 25000;
     const WS_HEARTBEAT_TIMEOUT = 10000;
-    const WS_MAX_RECONNECT = 15;
+    const WS_MAX_RECONNECT = 3;  // Limit reconnects — HTTP polling is the reliable fallback
     let userSocket = null;
     let pingTimer = null;
     let pongTimer = null;

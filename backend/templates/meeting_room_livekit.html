@@ -1749,7 +1749,7 @@
                 if (captionsEnabled) stopCaptions();
                 await saveTranscriptBeforeLeave();
                 await livekitClient.disconnect();
-                window.location.href = '/';
+                window.location.href = IS_MODERATOR ? '/meeting/my-recordings/' : '/';
             }
         });
         
