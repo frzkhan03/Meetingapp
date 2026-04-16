@@ -1118,6 +1118,66 @@
         // Meeting timer
         let meetingStartTime = Date.now();
         let timerInterval = null;
+
+        // ==================== WEBSOCKET FOR ADMISSION REQUESTS ====================
+        let roomSocket = null;
+        let userSocket = null;
+
+        function connectAdmissionWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsBase = `${wsProtocol}//${window.location.host}`;
+
+            // Room WebSocket — receives join_request from pending guests
+            roomSocket = new WebSocket(`${wsBase}/ws/meeting/${ROOM_ID}/`);
+            roomSocket.onopen = () => console.log('Room WebSocket connected');
+            roomSocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Room WS message:', data);
+
+                if (data.type === 'join_request' && IS_MODERATOR) {
+                    showAdmissionRequest(data.user_id, data.username);
+                }
+            };
+            roomSocket.onclose = () => {
+                console.log('Room WebSocket closed, reconnecting in 3s...');
+                setTimeout(connectAdmissionWebSocket, 3000);
+            };
+        }
+
+        function showAdmissionRequest(userId, username) {
+            const toast = document.createElement('div');
+            toast.className = 'notification-toast show';
+            toast.style.cssText = 'top:90px;z-index:1001;display:flex;align-items:center;gap:12px;padding:16px 20px;min-width:300px;';
+            toast.innerHTML = `
+                <div style="flex:1;">
+                    <div style="font-weight:600;margin-bottom:4px;">${username || 'Guest'} wants to join</div>
+                    <div style="font-size:12px;color:var(--text-muted);">Waiting for your approval</div>
+                </div>
+                <button onclick="respondAdmission('${userId}', true, this.parentElement)" style="padding:8px 16px;background:var(--success);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Admit</button>
+                <button onclick="respondAdmission('${userId}', false, this.parentElement)" style="padding:8px 16px;background:var(--danger);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Deny</button>
+            `;
+            document.body.appendChild(toast);
+
+            // Auto-dismiss after 60 seconds
+            setTimeout(() => { if (toast.parentElement) toast.remove(); }, 60000);
+        }
+
+        function respondAdmission(userId, approved, toastEl) {
+            if (roomSocket && roomSocket.readyState === WebSocket.OPEN) {
+                roomSocket.send(JSON.stringify({
+                    type: 'alert_response',
+                    approved: approved,
+                    requesting_user_id: userId
+                }));
+            }
+            if (toastEl) toastEl.remove();
+            showNotification(approved ? 'Guest admitted' : 'Guest denied', approved ? 'success' : 'info');
+        }
+
+        // Connect WebSocket for admission (moderators need this)
+        if (IS_MODERATOR) {
+            connectAdmissionWebSocket();
+        }
         
         // Resume AudioContext on user interaction (fixes browser autoplay policy)
         let audioContextResumed = false;
