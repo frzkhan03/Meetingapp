@@ -1099,18 +1099,37 @@ def save_local_recording_view(request):
             for chunk in recording_file.chunks():
                 f.write(chunk)
 
-        # Create database record
+        # Create database record — find the room owner for recorded_by
         org = getattr(request, 'organization', None)
         meeting = None
+        recorded_by = request.user if request.user.is_authenticated else None
+
         try:
             meeting = Meeting.objects.get(room_id=room_id)
+            if not recorded_by:
+                recorded_by = meeting.author
+            if not org:
+                org = meeting.organization
         except Meeting.DoesNotExist:
             pass
+
+        # Also check PersonalRoom
+        if not recorded_by or not org:
+            try:
+                personal_room = PersonalRoom.objects.select_related('user').get(room_id=room_id)
+                if not recorded_by:
+                    recorded_by = personal_room.user
+                if not org:
+                    org = personal_room.user.memberships.filter(is_active=True).first()
+                    if org:
+                        org = org.organization
+            except PersonalRoom.DoesNotExist:
+                pass
 
         recording = MeetingRecording.objects.create(
             meeting=meeting,
             organization=org,
-            recorded_by=request.user if request.user.is_authenticated else None,
+            recorded_by=recorded_by,
             file_path=filepath,
             recording_name=filename,
             file_size=recording_file.size,
