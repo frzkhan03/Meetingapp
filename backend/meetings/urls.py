@@ -24,6 +24,7 @@ urlpatterns = [
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/mark-approved/$', views.mark_guest_approved_view, name='mark_guest_approved'),
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/pending-requests/$', views.get_pending_requests_view, name='pending_requests'),
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/approve-guest/$', views.approve_guest_view, name='approve_guest'),
+    re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/check-approval/$', views.check_approval_view, name='check_approval'),
     path('all-rooms/', views.all_rooms_view, name='all_rooms'),
 
     # Recording routes

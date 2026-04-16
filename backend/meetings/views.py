@@ -767,6 +767,17 @@ def get_pending_requests_view(request, room_id):
     return JsonResponse({'requests': pending_list})
 
 
+def check_approval_view(request, room_id):
+    """Guest polls this to check if they've been approved"""
+    from django.core.cache import cache
+    user_id = request.session.get('pending_user_id', '')
+    if not user_id:
+        return JsonResponse({'approved': False})
+    approval_key = f'room_approval:{room_id}:{user_id}'
+    is_approved = bool(cache.get(approval_key))
+    return JsonResponse({'approved': is_approved})
+
+
 @require_POST
 def approve_guest_view(request, room_id):
     """Host approves or denies a guest via HTTP (no WebSocket needed)"""

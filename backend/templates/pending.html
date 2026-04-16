@@ -433,34 +433,18 @@
     async function pollApprovalStatus() {
         if (responseHandled) return;
         try {
-            // Try to access the room join URL - if we're approved, it will return 200
-            // If not approved, it will redirect to pending (302)
-            let checkUrl;
-            if (pendingToken && isScheduledMeeting) {
-                checkUrl = '/meeting/join/' + roomId + '/?token=' + pendingToken;
-            } else if (pendingToken) {
-                checkUrl = '/meeting/room/' + roomId + '/join/?token=' + pendingToken;
-            } else {
-                checkUrl = '/meeting/startmeeting/' + roomId + '/';
-            }
-            const resp = await fetch(checkUrl, {
-                method: 'GET',
-                redirect: 'manual',
+            const resp = await fetch('/meeting/room/' + roomId + '/check-approval/', {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
-            // If we get 200, the session-based approval or packet exists
-            // opaqueredirect means redirect (still pending)
-            if (resp.type === 'opaqueredirect' || resp.status === 302) {
-                // Still pending
-                return;
-            }
             if (resp.ok) {
-                // We've been approved! Handle it.
-                console.log('Polling detected approval');
-                handleApprovalResponse(true);
+                const data = await resp.json();
+                if (data.approved) {
+                    console.log('Polling detected approval');
+                    handleApprovalResponse(true);
+                }
             }
         } catch (err) {
-            // Polling errors are non-fatal, just retry next interval
+            // Polling errors are non-fatal
         }
     }
 
