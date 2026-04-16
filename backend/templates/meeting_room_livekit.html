@@ -1128,7 +1128,7 @@
             const wsBase = `${wsProtocol}//${window.location.host}`;
 
             // Room WebSocket — receives join_request from pending guests
-            roomSocket = new WebSocket(`${wsBase}/ws/meeting/${ROOM_ID}/`);
+            roomSocket = new WebSocket(`${wsBase}/ws/room/${ROOM_ID}/`);
             roomSocket.onopen = () => console.log('Room WebSocket connected');
             roomSocket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
@@ -1576,46 +1576,42 @@
 
         async function startClientRecording() {
             try {
-                // Capture all audio+video from the page
-                const streams = [];
+                // Use getDisplayMedia to capture the meeting tab/screen with audio
+                let captureStream;
+                try {
+                    captureStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: { displaySurface: 'browser' },
+                        audio: true  // capture tab audio
+                    });
+                } catch (displayErr) {
+                    // Fallback: capture just local video + all audio
+                    console.warn('getDisplayMedia failed, using fallback:', displayErr.message);
+                    const audioCtx = new AudioContext();
+                    const destination = audioCtx.createMediaStreamDestination();
 
-                // Get local video+audio
-                const localVideo = document.querySelector('#video-local video');
-                if (localVideo && localVideo.srcObject) {
-                    streams.push(localVideo.srcObject);
-                }
-
-                // Get display media (screen) if we want to record the whole meeting view
-                // Instead, use a canvas composite approach or just record local+remote audio
-                const audioCtx = new AudioContext();
-                const destination = audioCtx.createMediaStreamDestination();
-
-                // Mix all audio tracks from video AND audio elements (remote audio is in <audio> tags)
-                document.querySelectorAll('video, audio').forEach(el => {
-                    if (el.srcObject) {
-                        const audioTracks = el.srcObject.getAudioTracks();
-                        if (audioTracks.length > 0) {
-                            try {
-                                const source = audioCtx.createMediaStreamSource(new MediaStream(audioTracks));
-                                source.connect(destination);
-                            } catch (e) {
-                                console.warn('Could not mix audio from element:', e.message);
-                            }
+                    document.querySelectorAll('video, audio').forEach(el => {
+                        if (el.srcObject) {
+                            el.srcObject.getAudioTracks().forEach(track => {
+                                try {
+                                    const source = audioCtx.createMediaStreamSource(new MediaStream([track]));
+                                    source.connect(destination);
+                                } catch (e) {}
+                            });
                         }
-                    }
-                });
+                    });
 
-                // Get local video track
-                let videoTrack = null;
-                if (localVideo && localVideo.srcObject) {
-                    const vt = localVideo.srcObject.getVideoTracks();
-                    if (vt.length > 0) videoTrack = vt[0];
+                    const tracks = [...destination.stream.getTracks()];
+                    const localVideo = document.querySelector('#video-local video');
+                    if (localVideo && localVideo.srcObject) {
+                        localVideo.srcObject.getVideoTracks().forEach(t => tracks.push(t));
+                    }
+                    captureStream = new MediaStream(tracks);
                 }
 
-                // Combine video + mixed audio
-                const tracks = [...destination.stream.getTracks()];
-                if (videoTrack) tracks.push(videoTrack);
-                const combinedStream = new MediaStream(tracks);
+                // Ensure we have at least some tracks
+                if (captureStream.getTracks().length === 0) {
+                    throw new Error('No audio or video tracks available to record');
+                }
 
                 // Try different mimeTypes for browser compatibility
                 let mimeType = 'video/webm;codecs=vp9,opus';
@@ -1626,18 +1622,30 @@
                     mimeType = 'video/webm';
                 }
 
-                console.log('Recording with mimeType:', mimeType);
-                mediaRecorder = new MediaRecorder(combinedStream, { mimeType });
+                console.log('Recording with mimeType:', mimeType, 'tracks:', captureStream.getTracks().length);
+                mediaRecorder = new MediaRecorder(captureStream, { mimeType, videoBitsPerSecond: 2500000 });
 
                 recordedChunks = [];
                 mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) recordedChunks.push(e.data);
+                    if (e.data && e.data.size > 0) {
+                        recordedChunks.push(e.data);
+                        console.log('Recording chunk:', e.data.size, 'bytes');
+                    }
                 };
 
                 mediaRecorder.onstop = async () => {
                     const duration = Math.round((Date.now() - recordingStartTime) / 1000);
                     const blob = new Blob(recordedChunks, { type: mimeType });
+                    console.log('Recording blob size:', blob.size, 'duration:', duration);
                     recordedChunks = [];
+
+                    // Stop all capture tracks
+                    captureStream.getTracks().forEach(t => t.stop());
+
+                    if (blob.size === 0) {
+                        showNotification('Recording is empty — try recording for longer', 'error');
+                        return;
+                    }
 
                     // Upload to server
                     const formData = new FormData();
@@ -1667,8 +1675,6 @@
                         URL.revokeObjectURL(url);
                         showNotification('Recording downloaded locally', 'info');
                     }
-
-                    audioCtx.close().catch(() => {});
                 };
 
                 mediaRecorder.start(1000); // Collect data every second
