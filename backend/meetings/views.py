@@ -397,12 +397,17 @@ def join_personal_room_view(request, room_id):
         # Use the display name they entered
         username = request.session.get(name_key, f"Guest_{user_id[-4:]}")
 
-    # Check if room is locked and user is not moderator
-    if personal_room.is_locked and is_attendee:
-        # Check if user has been approved
+    # All attendees need host approval before joining
+    if is_attendee:
+        # If room is LOCKED — completely blocked, no one can join
+        if personal_room.is_locked:
+            messages.error(request, 'This room is locked. The host is not accepting new participants.')
+            return redirect('home')
+
+        # Room is UNLOCKED — attendee needs host approval
         is_approved = False
 
-        # Check session-based approval (works for both guests and authenticated users)
+        # Check session-based approval
         approved_key = f'approved_for_{room_id}'
         is_approved = request.session.get(approved_key, False)
 
@@ -414,17 +419,16 @@ def join_personal_room_view(request, room_id):
             ).first()
             is_approved = packet is not None
 
-        # Check Redis cache as fallback (survives session race conditions)
+        # Check Redis cache as fallback
         if not is_approved:
             from django.core.cache import cache
             cache_approval_key = f'room_approval:{room_id}:{user_id}'
             if cache.get(cache_approval_key):
                 is_approved = True
-                # Persist to session so future checks are fast
                 request.session[approved_key] = True
 
         if not is_approved:
-            # User needs approval - store room info in session and redirect to pending
+            # User needs approval - redirect to pending/waiting page
             request.session['pending_room_id'] = str(room_id)
             request.session['pending_author_id'] = personal_room.user.id
             request.session['pending_user_id'] = user_id
