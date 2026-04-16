@@ -1022,6 +1022,19 @@
             </button>
             <span class="control-label">Captions</span>
         </div>
+
+        <!-- Lock Room Button (moderator only) -->
+        <div class="control-btn-wrapper">
+            <button id="btn-lock" class="control-btn {% if is_locked %}active{% endif %}" data-tooltip="{% if is_locked %}Unlock Room{% else %}Lock Room{% endif %}">
+                <svg id="lock-icon-locked" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="{% if not is_locked %}display:none{% endif %}">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+                <svg id="lock-icon-unlocked" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="{% if is_locked %}display:none{% endif %}">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
+                </svg>
+            </button>
+            <span class="control-label" id="lock-label">{% if is_locked %}Locked{% else %}Unlocked{% endif %}</span>
+        </div>
         {% endif %}
 
         <!-- Chat Button -->
@@ -2018,6 +2031,32 @@
             document.getElementById('participants-panel').classList.remove('open');
             document.getElementById('btn-participants').classList.remove('active');
         });
+
+        // ==================== LOCK ROOM TOGGLE ====================
+        if (document.getElementById('btn-lock')) {
+            let roomLocked = document.getElementById('btn-lock').classList.contains('active');
+            document.getElementById('btn-lock').addEventListener('click', async () => {
+                try {
+                    const resp = await fetch(`/meeting/room/${ROOM_ID}/toggle-lock/`, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': getCookie('csrftoken') }
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        roomLocked = data.is_locked;
+                        const btn = document.getElementById('btn-lock');
+                        btn.classList.toggle('active', roomLocked);
+                        btn.setAttribute('data-tooltip', roomLocked ? 'Unlock Room' : 'Lock Room');
+                        document.getElementById('lock-icon-locked').style.display = roomLocked ? '' : 'none';
+                        document.getElementById('lock-icon-unlocked').style.display = roomLocked ? 'none' : '';
+                        document.getElementById('lock-label').textContent = roomLocked ? 'Locked' : 'Unlocked';
+                        showNotification(roomLocked ? 'Room locked — new guests need approval' : 'Room unlocked — anyone can join', 'info');
+                    }
+                } catch (e) {
+                    showNotification('Failed to toggle lock', 'error');
+                }
+            });
+        }
 
         // ==================== LAYOUT TOGGLE ====================
         const layouts = ['layout-grid', 'layout-spotlight', 'layout-sidebar'];
