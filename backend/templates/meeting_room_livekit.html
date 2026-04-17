@@ -2063,7 +2063,11 @@
 
         // ==================== SAVE TRANSCRIPT ON LEAVE ====================
         async function saveTranscriptBeforeLeave() {
-            if (captionEntries.length === 0) return;
+            // Only host saves the merged transcript (host has both sides)
+            if (!IS_MODERATOR || captionEntries.length === 0) return;
+
+            // Sort entries by timestamp for proper conversation flow
+            captionEntries.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
 
             try {
                 await fetch(`/meeting/room/${ROOM_ID}/save-caption-transcript/`, {
@@ -2074,6 +2078,7 @@
                     },
                     body: JSON.stringify({ entries: captionEntries }),
                 });
+                console.log('Transcript saved with', captionEntries.length, 'entries');
             } catch (err) {
                 console.error('Failed to save transcript:', err);
             }
@@ -2234,8 +2239,9 @@
 
         window.addEventListener('beforeunload', async (e) => {
             if (mediaRecorder && mediaRecorder.state !== 'inactive') stopClientRecording();
-            if (captionEntries.length > 0) {
-                // Use sendBeacon for reliable delivery on page close
+            // Only host saves transcript (has both sides merged)
+            if (IS_MODERATOR && captionEntries.length > 0) {
+                captionEntries.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
                 const blob = new Blob([JSON.stringify({ entries: captionEntries })], { type: 'application/json' });
                 navigator.sendBeacon(`/meeting/room/${ROOM_ID}/save-caption-transcript/`, blob);
             }
