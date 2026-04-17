@@ -23,6 +23,7 @@ class LiveKitMeetingClient {
         this.onConnectionStateChanged = null;
         this.onRecordingStateChanged = null;
         this.onChatMessage = null;
+        this.onTranscriptEntry = null;
     }
     
     /**
@@ -177,6 +178,9 @@ class LiveKitMeetingClient {
                 const data = JSON.parse(raw);
                 if (data.type === 'chat' && this.onChatMessage) {
                     this.onChatMessage(data.username || participant?.name || 'Unknown', data.message);
+                }
+                if (data.type === 'transcript' && this.onTranscriptEntry) {
+                    this.onTranscriptEntry(data.entry);
                 }
             } catch (e) {
                 console.warn('Failed to parse data message:', e);

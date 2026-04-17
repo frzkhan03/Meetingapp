@@ -1308,6 +1308,13 @@
                 livekitClient.onChatMessage = (sender, message) => {
                     displayChatMessage(sender, message, false);
                 };
+                livekitClient.onTranscriptEntry = (entry) => {
+                    // Receive transcript entry from other participant
+                    if (entry && entry.text) {
+                        captionEntries.push(entry);
+                        console.log('Received transcript from', entry.speaker, ':', entry.text);
+                    }
+                };
 
                 await livekitClient.connect();
                 displayLocalVideo();
@@ -1984,11 +1991,24 @@
                         // Save to caption entries for post-meeting transcript
                         const now = new Date();
                         const timestamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                        captionEntries.push({
+                        const entry = {
                             timestamp: timestamp,
                             speaker: USERNAME,
                             text: transcript.trim(),
-                        });
+                        };
+                        captionEntries.push(entry);
+
+                        // Send transcript entry to host via LiveKit data channel
+                        if (livekitClient && livekitClient.room) {
+                            try {
+                                const encoder = new TextEncoder();
+                                const msg = encoder.encode(JSON.stringify({
+                                    type: 'transcript',
+                                    entry: entry
+                                }));
+                                livekitClient.room.localParticipant.publishData(msg, { reliable: true });
+                            } catch (e) {}
+                        }
                         // Clear after a delay
                         setTimeout(() => {
                             if (captionsText.textContent === finalTranscript) {
