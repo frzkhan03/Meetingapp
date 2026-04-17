@@ -1325,6 +1325,18 @@ def save_caption_transcript_view(request, room_id):
 
         created_by = request.user if request.user.is_authenticated else None
 
+        # If guest, assign to room owner
+        if not created_by:
+            try:
+                personal_room = PersonalRoom.objects.get(room_id=room_id)
+                created_by = personal_room.user
+                if not org:
+                    membership = personal_room.user.memberships.filter(is_active=True).first()
+                    if membership:
+                        org = membership.organization
+            except PersonalRoom.DoesNotExist:
+                pass
+
         transcript = MeetingTranscript.objects.create(
             meeting=meeting,
             room_id=room_id,

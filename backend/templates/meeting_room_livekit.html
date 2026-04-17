@@ -1327,6 +1327,19 @@
                     showNotification('Joined without camera or mic', 'info');
                 }
 
+                // Auto-start transcription for all users
+                setTimeout(() => {
+                    if (!captionsEnabled && startCaptions()) {
+                        captionsEnabled = true;
+                        const captionsBtn = document.getElementById('btn-captions');
+                        if (captionsBtn) {
+                            captionsBtn.classList.add('active');
+                            captionsBtn.setAttribute('data-tooltip', 'Turn off captions');
+                        }
+                        console.log('Auto-started transcription for', USERNAME);
+                    }
+                }, 2000);
+
             } catch (error) {
                 console.error('Failed to initialize meeting:', error);
                 showNotification('Failed to join meeting. Please try again.', 'error');
@@ -1957,7 +1970,8 @@
 
             const captionsContainer = document.getElementById('captions-container');
             const captionsText = document.getElementById('captions-text');
-            captionsContainer.style.display = 'block';
+            // Captions container hidden by default — transcription runs silently
+            // User can toggle visibility with the captions button
 
             let finalTranscript = '';
 
@@ -2017,20 +2031,14 @@
             document.getElementById('captions-text').textContent = '';
         }
 
+        // Captions button toggles subtitle VISIBILITY (transcription runs always in background)
+        let captionsVisible = false;
         if (document.getElementById('btn-captions')) document.getElementById('btn-captions').addEventListener('click', () => {
-            if (!captionsEnabled) {
-                if (startCaptions()) {
-                    captionsEnabled = true;
-                    document.getElementById('btn-captions').classList.add('active');
-                    document.getElementById('btn-captions').setAttribute('data-tooltip', 'Turn off captions');
-                    showNotification('Live captions enabled', 'success');
-                }
-            } else {
-                stopCaptions();
-                document.getElementById('btn-captions').classList.remove('active');
-                document.getElementById('btn-captions').setAttribute('data-tooltip', 'Turn on captions');
-                showNotification('Captions disabled', 'info');
-            }
+            captionsVisible = !captionsVisible;
+            document.getElementById('captions-container').style.display = captionsVisible ? 'block' : 'none';
+            document.getElementById('btn-captions').classList.toggle('active', captionsVisible);
+            document.getElementById('btn-captions').setAttribute('data-tooltip', captionsVisible ? 'Hide captions' : 'Show captions');
+            showNotification(captionsVisible ? 'Captions visible' : 'Captions hidden (still recording)', 'info');
         });
 
         // ==================== SAVE TRANSCRIPT ON LEAVE ====================
