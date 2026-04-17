@@ -963,12 +963,63 @@ def my_recordings_view(request):
                         })
                         break
 
+    # Get transcripts
+    transcript_filters = Q(created_by=request.user)
+    if org:
+        transcript_filters = transcript_filters | Q(organization=org)
+    transcripts = MeetingTranscript.objects.filter(transcript_filters).distinct().order_by('-created_at')[:50]
+
     return render(request, 'my_recordings.html', {
         'recordings': page_obj,
         'page_obj': page_obj,
         'organization': org,
         'screenshots': screenshots,
+        'transcripts': transcripts,
     })
+
+
+@login_required
+@require_POST
+def delete_recording_view(request, recording_id):
+    """Delete a recording"""
+    recording = get_object_or_404(MeetingRecording, id=recording_id)
+    if recording.recorded_by != request.user:
+        return JsonResponse({'error': 'Access denied'}, status=403)
+    # Delete file
+    if recording.file_path and os.path.exists(recording.file_path):
+        os.remove(recording.file_path)
+    recording.delete()
+    messages.success(request, 'Recording deleted.')
+    return redirect('my_recordings')
+
+
+@login_required
+@require_POST
+def delete_screenshot_view(request):
+    """Delete a screenshot file"""
+    filename = request.POST.get('filename', '')
+    if not filename or '..' in filename or '/' in filename:
+        messages.error(request, 'Invalid filename.')
+        return redirect('my_recordings')
+    filepath = os.path.join(settings.MEDIA_ROOT, 'screenshots', filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+        messages.success(request, 'Screenshot deleted.')
+    else:
+        messages.error(request, 'Screenshot not found.')
+    return redirect('my_recordings')
+
+
+@login_required
+@require_POST
+def delete_transcript_view(request, transcript_id):
+    """Delete a transcript"""
+    transcript = get_object_or_404(MeetingTranscript, id=transcript_id)
+    if transcript.created_by != request.user:
+        return JsonResponse({'error': 'Access denied'}, status=403)
+    transcript.delete()
+    messages.success(request, 'Transcript deleted.')
+    return redirect('my_recordings')
 
 
 @login_required

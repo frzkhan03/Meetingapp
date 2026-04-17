@@ -1087,16 +1087,6 @@
             <span class="control-label">Screenshot</span>
         </div>
 
-        <!-- Captions Button (moderator only) -->
-        <div class="control-btn-wrapper">
-            <button id="btn-captions" class="control-btn" data-tooltip="Turn on captions">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
-                </svg>
-            </button>
-            <span class="control-label">Captions</span>
-        </div>
-
         <!-- Lock Room Button (moderator only) -->
         <div class="control-btn-wrapper">
             <button id="btn-lock" class="control-btn {% if is_locked %}active{% endif %}" data-tooltip="{% if is_locked %}Unlock (allow admit requests){% else %}Lock (block all new joins){% endif %}">
@@ -1110,6 +1100,16 @@
             <span class="control-label" id="lock-label">{% if is_locked %}Locked{% else %}Open{% endif %}</span>
         </div>
         {% endif %}
+
+        <!-- Captions Button (all users) -->
+        <div class="control-btn-wrapper">
+            <button id="btn-captions" class="control-btn" data-tooltip="Turn on captions">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                </svg>
+            </button>
+            <span class="control-label">Captions</span>
+        </div>
 
         <!-- Chat Button -->
         <div class="control-btn-wrapper">

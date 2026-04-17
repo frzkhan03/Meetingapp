@@ -32,6 +32,9 @@ urlpatterns = [
     path('save-local-recording/', views.save_local_recording_view, name='save_local_recording'),
     path('my-recordings/', views.my_recordings_view, name='my_recordings'),
     path('recording/<int:recording_id>/download/', views.download_recording_view, name='download_recording'),
+    path('recording/<int:recording_id>/delete/', views.delete_recording_view, name='delete_recording'),
+    path('screenshot/delete/', views.delete_screenshot_view, name='delete_screenshot'),
+    path('transcript/<int:transcript_id>/delete/', views.delete_transcript_view, name='delete_transcript'),
 
     # Screenshot routes
     path('save-screenshot/', views.save_screenshot_view, name='save_screenshot'),
