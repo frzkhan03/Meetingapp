@@ -195,11 +195,15 @@ class MeetingRecording(models.Model):
         null=True,
         related_name='recordings'
     )
-    file_path = models.CharField(max_length=500)
+    file_path = models.CharField(max_length=500, blank=True, default='')
     s3_key = models.CharField(max_length=500, blank=True, default='')
     recording_name = models.CharField(max_length=255, blank=True, default='')
     file_size = models.BigIntegerField(default=0)
     duration = models.IntegerField(default=0)  # in seconds
+    # LiveKit egress tracking (used by livekit_views.start_recording / stop_recording / webhook)
+    livekit_egress_id = models.CharField(max_length=255, blank=True, default='')
+    status = models.CharField(max_length=20, blank=True, default='')
+    file_url = models.URLField(max_length=1000, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

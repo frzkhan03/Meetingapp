@@ -25,17 +25,10 @@ class Migration(migrations.Migration):
             new_name="meetings_me_room_id_a56f14_idx",
             old_name="meetings_me_room_id_transcript_idx",
         ),
-        migrations.RemoveField(
-            model_name="meetingrecording",
-            name="livekit_egress_id",
-        ),
-        migrations.RemoveField(
-            model_name="meetingrecording",
-            name="recording_status",
-        ),
-        migrations.AlterField(
-            model_name="meetingrecording",
-            name="file_path",
-            field=models.CharField(max_length=500),
-        ),
+        # NOTE: The auto-generated RemoveField operations for livekit_egress_id and
+        # recording_status (added in 0016) and the AlterField that reverted file_path
+        # to non-blank were removed because livekit_views.py writes to these fields
+        # at runtime. Removing them caused start_recording / stop_recording / webhook
+        # endpoints to crash. The model now exposes livekit_egress_id, status,
+        # file_url and a nullable file_path (see migration 0019).
     ]
