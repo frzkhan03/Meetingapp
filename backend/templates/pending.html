@@ -290,24 +290,7 @@
             document.getElementById('status-message').innerHTML =
                 '<div class="alert alert-success">Approved! Joining meeting...</div>';
 
-            // Mark as approved in session before redirecting
-            for (let attempt = 0; attempt < 3; attempt++) {
-                try {
-                    const resp = await fetch('/meeting/room/' + roomId + '/mark-approved/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': getCookie('csrftoken')
-                        }
-                    });
-                    if (resp.ok) break;
-                    console.warn('mark-approved returned ' + resp.status + ', retrying...');
-                } catch (err) {
-                    console.error('Error marking approval (attempt ' + (attempt + 1) + '):', err);
-                }
-                await new Promise(r => setTimeout(r, 500));
-            }
-
+            // Redirect directly to meeting — Redis approval is already set
             setTimeout(() => {
                 if (pendingToken && isScheduledMeeting) {
                     window.location.href = '/meeting/join/' + roomId + '/?token=' + pendingToken;
@@ -316,7 +299,7 @@
                 } else {
                     window.location.href = '/meeting/startmeeting/' + roomId + '/';
                 }
-            }, 500);
+            }, 300);
         } else {
             document.getElementById('status-message').innerHTML =
                 '<div class="alert alert-danger">The host has denied your request.</div>';
@@ -327,7 +310,7 @@
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const WS_HEARTBEAT_INTERVAL = 25000;
     const WS_HEARTBEAT_TIMEOUT = 10000;
-    const WS_MAX_RECONNECT = 15;
+    const WS_MAX_RECONNECT = 3;  // Limit reconnects — HTTP polling is the reliable fallback
     let userSocket = null;
     let pingTimer = null;
     let pongTimer = null;
@@ -424,40 +407,27 @@
 
     connectUserSocket();
 
+    // Send alert immediately on page load (don't wait for WebSocket)
+    sendJoinAlert();
+
     // ========== HTTP polling fallback ==========
     // Polls the approval status via HTTP in case WebSocket drops and response is missed.
     // This checks if the session has been marked as approved by the moderator.
     async function pollApprovalStatus() {
         if (responseHandled) return;
         try {
-            // Try to access the room join URL - if we're approved, it will return 200
-            // If not approved, it will redirect to pending (302)
-            let checkUrl;
-            if (pendingToken && isScheduledMeeting) {
-                checkUrl = '/meeting/join/' + roomId + '/?token=' + pendingToken;
-            } else if (pendingToken) {
-                checkUrl = '/meeting/room/' + roomId + '/join/?token=' + pendingToken;
-            } else {
-                checkUrl = '/meeting/startmeeting/' + roomId + '/';
-            }
-            const resp = await fetch(checkUrl, {
-                method: 'GET',
-                redirect: 'manual',
+            const resp = await fetch('/meeting/room/' + roomId + '/check-approval/', {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
-            // If we get 200, the session-based approval or packet exists
-            // opaqueredirect means redirect (still pending)
-            if (resp.type === 'opaqueredirect' || resp.status === 302) {
-                // Still pending
-                return;
-            }
             if (resp.ok) {
-                // We've been approved! Handle it.
-                console.log('Polling detected approval');
-                handleApprovalResponse(true);
+                const data = await resp.json();
+                if (data.approved) {
+                    console.log('Polling detected approval');
+                    handleApprovalResponse(true);
+                }
             }
         } catch (err) {
-            // Polling errors are non-fatal, just retry next interval
+            // Polling errors are non-fatal
         }
     }
 
@@ -468,15 +438,15 @@
         } else {
             clearInterval(alertInterval);
         }
-    }, 15000);
+    }, 5000);
 
-    // Poll for approval every 5 seconds as HTTP fallback
+    // Poll for approval every 3 seconds
     let pollInterval = setInterval(() => {
         if (!responseHandled) {
             pollApprovalStatus();
         } else {
             clearInterval(pollInterval);
         }
-    }, 5000);
+    }, 3000);
 </script>
 {% endblock %}

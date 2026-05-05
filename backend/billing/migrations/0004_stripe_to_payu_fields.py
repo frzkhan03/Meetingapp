@@ -8,6 +8,11 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # ---- Remove all indexes FIRST (SQLite requires this before dropping columns) ----
+        migrations.RemoveIndex(model_name='subscription', name='billing_sub_stripe__97887e_idx'),
+        migrations.RemoveIndex(model_name='subscription', name='billing_sub_stripe__abc269_idx'),
+        migrations.RemoveIndex(model_name='payment', name='billing_pay_stripe__5ad6f9_idx'),
+
         # ---- Plan: remove Stripe fields ----
         migrations.RemoveField(model_name='plan', name='stripe_product_id'),
         migrations.RemoveField(model_name='plan', name='stripe_monthly_price_id'),
@@ -64,11 +69,7 @@ class Migration(migrations.Migration):
         # ---- Payment: remove stripe_payment_intent_id ----
         migrations.RemoveField(model_name='payment', name='stripe_payment_intent_id'),
 
-        # ---- Subscription: update indexes ----
-        # Remove old Stripe indexes
-        migrations.RemoveIndex(model_name='subscription', name='billing_sub_stripe__97887e_idx'),
-        migrations.RemoveIndex(model_name='subscription', name='billing_sub_stripe__abc269_idx'),
-        # Add new PayU indexes
+        # ---- Add new indexes ----
         migrations.AddIndex(
             model_name='subscription',
             index=models.Index(fields=['payu_customer_id'], name='billing_sub_payu_cu_41b0c1_idx'),
@@ -77,9 +78,6 @@ class Migration(migrations.Migration):
             model_name='subscription',
             index=models.Index(fields=['next_billing_date'], name='billing_sub_next_bi_0f9556_idx'),
         ),
-
-        # ---- Payment: update indexes ----
-        migrations.RemoveIndex(model_name='payment', name='billing_pay_stripe__5ad6f9_idx'),
         migrations.AddIndex(
             model_name='payment',
             index=models.Index(fields=['payu_order_id'], name='billing_pay_payu_or_258c47_idx'),

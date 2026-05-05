@@ -8,7 +8,7 @@ from django.conf.urls.static import static
 from meetings.views import home_view, pending_room_view
 
 urlpatterns = [
-    path(settings.ADMIN_URL, admin.site.urls),
+    path(settings.ADMIN_URL_PATH, admin.site.urls),
     path('', home_view, name='home'),
     path('user/', include('users.urls')),
     path('meeting/', include('meetings.urls')),
@@ -17,6 +17,7 @@ urlpatterns = [
     path('pendingroom/', pending_room_view, name='pending_room'),
 ]
 
-# Serve static files during development
+# Serve static and media files during development
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

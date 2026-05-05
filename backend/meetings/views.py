@@ -3,12 +3,15 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
 from django.http import JsonResponse, HttpResponseRedirect
+from django.db.models import Q
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.conf import settings
 from django.core.signing import TimestampSigner
 import json
+import os
+import glob
 import uuid
 from .models import Meeting, UserMeetingPacket, PersonalRoom, MeetingRecording, MeetingTranscript
 from .forms import MeetingForm
@@ -129,7 +132,7 @@ def meeting_details_view(request, room_id):
 
 
 def _get_plan_context(request):
-    """Build plan-related context for room.html template."""
+    """Build plan-related context for meeting room template."""
     plan_limits = getattr(request, 'plan_limits', None)
     return {
         'max_participants': plan_limits.get_participant_limit() if plan_limits else 100,
@@ -138,9 +141,6 @@ def _get_plan_context(request):
         'can_use_waiting_room': plan_limits.can_use_waiting_room() if plan_limits else False,
         'breakout_rooms_allowed': plan_limits.can_use_breakout_rooms() if plan_limits else False,
         'plan_tier': getattr(request, 'plan_tier', 'free'),
-        'turn_server_url': settings.TURN_SERVER_URL,
-        'turn_server_username': settings.TURN_SERVER_USERNAME,
-        'turn_server_credential': settings.TURN_SERVER_CREDENTIAL,
     }
 
 
@@ -160,7 +160,7 @@ def start_meeting_view(request, room_id):
     # Check if user is the author
     if is_moderator:
         # Author can join directly as moderator
-        return render(request, 'room.html', {
+        return render(request, 'meeting_room_livekit.html', {
             'room_id': str(room_id),
             'user_id': str(request.user.id),
             'username': request.user.username,
@@ -207,7 +207,7 @@ def start_meeting_view(request, room_id):
             return redirect('pending_room')
 
     # User is approved or no approval required — join as participant
-    return render(request, 'room.html', {
+    return render(request, 'meeting_room_livekit.html', {
         'room_id': str(room_id),
         'user_id': str(request.user.id),
         'username': request.user.username,
@@ -397,34 +397,29 @@ def join_personal_room_view(request, room_id):
         # Use the display name they entered
         username = request.session.get(name_key, f"Guest_{user_id[-4:]}")
 
-    # Check if room is locked and user is not moderator
-    if personal_room.is_locked and is_attendee:
-        # Check if user has been approved
-        is_approved = False
+    # All attendees ALWAYS need host approval before joining
+    if is_attendee:
+        # If room is LOCKED — completely blocked
+        if personal_room.is_locked:
+            messages.error(request, 'This room is locked. The host is not accepting new participants.')
+            return redirect('home')
 
-        # Check session-based approval (works for both guests and authenticated users)
+        # Check if host approved this guest via Redis (set by approve_guest_view)
+        from django.core.cache import cache
         approved_key = f'approved_for_{room_id}'
-        is_approved = request.session.get(approved_key, False)
+        cache_approval_key = f'room_approval:{room_id}:{user_id}'
+        is_approved = cache.get(cache_approval_key, False)
 
-        # For authenticated users, also check UserMeetingPacket as fallback
-        if not is_approved and request.user.is_authenticated:
-            packet = UserMeetingPacket.objects.filter(
-                room_id=room_id,
-                user__id=request.user.id
-            ).first()
-            is_approved = packet is not None
-
-        # Check Redis cache as fallback (survives session race conditions)
+        # Also check session flag (set by check_approval_view during polling redirect)
         if not is_approved:
-            from django.core.cache import cache
-            cache_approval_key = f'room_approval:{room_id}:{user_id}'
-            if cache.get(cache_approval_key):
-                is_approved = True
-                # Persist to session so future checks are fast
-                request.session[approved_key] = True
+            is_approved = request.session.get(approved_key, False)
+            if is_approved:
+                # Clear it so next visit requires fresh approval
+                request.session.pop(approved_key, None)
 
         if not is_approved:
-            # User needs approval - store room info in session and redirect to pending
+
+            # User needs approval - redirect to pending/waiting page
             request.session['pending_room_id'] = str(room_id)
             request.session['pending_author_id'] = personal_room.user.id
             request.session['pending_user_id'] = user_id
@@ -432,7 +427,7 @@ def join_personal_room_view(request, room_id):
             request.session['pending_token'] = token
             return redirect('pending_room')
 
-    return render(request, 'room.html', {
+    return render(request, 'meeting_room_livekit.html', {
         'room_id': str(room_id),
         'user_id': user_id,
         'username': username,
@@ -546,7 +541,7 @@ def join_meeting_guest_view(request, room_id):
     is_moderator = request.user.is_authenticated and meeting.author == request.user
     org = meeting.organization
 
-    return render(request, 'room.html', {
+    return render(request, 'meeting_room_livekit.html', {
         'room_id': str(room_id),
         'user_id': user_id,
         'username': username,
@@ -609,18 +604,6 @@ def toggle_room_lock_view(request, room_id):
             is_token_moderator = token and token == personal_room.moderator_token
             if not is_owner and not is_token_moderator:
                 return JsonResponse({'error': 'Unauthorized'}, status=403)
-
-            # Check if organization has waiting room feature
-            if is_locked:
-                from billing.plan_limits import get_plan_limits
-                org = personal_room.organization
-                if org:
-                    limits = get_plan_limits(org)
-                    if not limits.can_use_waiting_room():
-                        return JsonResponse({
-                            'error': 'Waiting room feature requires a Business plan',
-                            'upgrade_required': True
-                        }, status=403)
 
             personal_room.is_locked = is_locked
             personal_room.save()
@@ -700,29 +683,38 @@ def send_join_alert_view(request, room_id):
         if not author_id or not user_id:
             return JsonResponse({'error': 'Missing session data'}, status=400)
 
-        channel_layer = get_channel_layer()
-        room_group_name = f'room_{room_id}'
+        # Store pending request in Redis so host can poll it via HTTP
+        from django.core.cache import cache
+        pending_key = f'pending_join:{room_id}'
+        pending_list = cache.get(pending_key, [])
+        # Add if not already in list
+        if not any(p['user_id'] == user_id for p in pending_list):
+            pending_list.append({'user_id': user_id, 'username': alert_username})
+        cache.set(pending_key, pending_list, 300)  # 5 min TTL
 
-        # Send to room group (for moderators in the room)
-        async_to_sync(channel_layer.group_send)(
-            room_group_name,
-            {
-                'type': 'join_request',
-                'user_id': user_id,
-                'username': alert_username,
-            }
-        )
-
-        # Also send to user-specific group (for authenticated moderators)
-        async_to_sync(channel_layer.group_send)(
-            f'user_{author_id}',
-            {
-                'type': 'alert_request',
-                'user_id': user_id,
-                'username': alert_username,
-                'room_id': str(room_id),
-            }
-        )
+        # Also try channel layer (works when WebSocket is connected)
+        try:
+            channel_layer = get_channel_layer()
+            room_group_name = f'room_{room_id}'
+            async_to_sync(channel_layer.group_send)(
+                room_group_name,
+                {
+                    'type': 'join_request',
+                    'user_id': user_id,
+                    'username': alert_username,
+                }
+            )
+            async_to_sync(channel_layer.group_send)(
+                f'user_{author_id}',
+                {
+                    'type': 'alert_request',
+                    'user_id': user_id,
+                    'username': alert_username,
+                    'room_id': str(room_id),
+                }
+            )
+        except Exception:
+            pass  # Channel layer is optional — Redis polling is the primary method
 
         return JsonResponse({'success': True})
     except Exception as e:
@@ -770,6 +762,61 @@ def mark_guest_approved_view(request, room_id):
         import logging
         logging.getLogger(__name__).error('mark_guest_approved error: %s', e, exc_info=True)
         return JsonResponse({'error': 'Failed to process approval.'}, status=400)
+
+
+def get_pending_requests_view(request, room_id):
+    """Get pending join requests for a room (host polls this)"""
+    from django.core.cache import cache
+    pending_key = f'pending_join:{room_id}'
+    pending_list = cache.get(pending_key, [])
+    return JsonResponse({'requests': pending_list})
+
+
+def check_approval_view(request, room_id):
+    """Guest polls this to check if they've been approved"""
+    from django.core.cache import cache
+    user_id = request.session.get('pending_user_id', '')
+    if not user_id:
+        return JsonResponse({'approved': False})
+    approval_key = f'room_approval:{room_id}:{user_id}'
+    is_approved = bool(cache.get(approval_key))
+    if is_approved:
+        # Pre-set session flag so the join view finds it immediately on redirect
+        request.session[f'approved_for_{room_id}'] = True
+    return JsonResponse({'approved': is_approved})
+
+
+@require_POST
+def approve_guest_view(request, room_id):
+    """Host approves or denies a guest via HTTP (no WebSocket needed)"""
+    try:
+        data = json.loads(request.body)
+        user_id = data.get('user_id', '')
+        approved = data.get('approved', False)
+
+        from django.core.cache import cache
+
+        if approved:
+            # Store approval in Redis
+            approval_key = f'room_approval:{room_id}:{user_id}'
+            cache.set(approval_key, True, 3600)
+
+            # Create meeting packet
+            try:
+                from .tasks import create_meeting_packet
+                create_meeting_packet.delay(user_id, room_id)
+            except Exception:
+                pass
+
+        # Remove from pending list
+        pending_key = f'pending_join:{room_id}'
+        pending_list = cache.get(pending_key, [])
+        pending_list = [p for p in pending_list if p['user_id'] != user_id]
+        cache.set(pending_key, pending_list, 300)
+
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
 
 
 @login_required
@@ -871,47 +918,145 @@ def upload_recording_view(request):
 
 @login_required
 def my_recordings_view(request):
-    """View user's recordings"""
-    org = getattr(request, 'organization', None)
-    if not org:
-        messages.warning(request, 'Please select or create an organization first.')
-        return redirect('organization_list')
+    """View user's recordings and screenshots"""
+    from datetime import datetime
 
-    recordings = MeetingRecording.objects.filter(
-        recorded_by=request.user,
-        organization=org,
-    ).order_by('-created_at')
+    org = getattr(request, 'organization', None)
+
+    # Show recordings by this user — with or without org
+    filters = Q(recorded_by=request.user)
+    if org:
+        filters = filters | Q(organization=org, recorded_by=request.user)
+
+    recordings = MeetingRecording.objects.filter(filters).distinct().order_by('-created_at')
 
     paginator = Paginator(recordings, 10)
     page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    # Scan screenshots directory for this user's screenshots
+    screenshots = []
+    screenshots_dir = os.path.join(settings.MEDIA_ROOT, 'screenshots')
+    if os.path.exists(screenshots_dir):
+        username = request.user.username
+        for filepath in sorted(glob.glob(os.path.join(screenshots_dir, '*.png')), reverse=True):
+            filename = os.path.basename(filepath)
+            # Include screenshots by this user or from rooms they own
+            if username.lower() in filename.lower() or not request.user.is_authenticated:
+                stat = os.stat(filepath)
+                screenshots.append({
+                    'filename': filename,
+                    'url': f'/media/screenshots/{filename}',
+                    'size': stat.st_size,
+                    'created_at': datetime.fromtimestamp(stat.st_mtime),
+                })
+
+        # Also include screenshots where room belongs to user
+        if not screenshots:
+            user_rooms = PersonalRoom.objects.filter(user=request.user).values_list('room_id', flat=True)
+            for filepath in sorted(glob.glob(os.path.join(screenshots_dir, '*.png')), reverse=True):
+                filename = os.path.basename(filepath)
+                for rid in user_rooms:
+                    if rid in filename:
+                        stat = os.stat(filepath)
+                        screenshots.append({
+                            'filename': filename,
+                            'url': f'/media/screenshots/{filename}',
+                            'size': stat.st_size,
+                            'created_at': datetime.fromtimestamp(stat.st_mtime),
+                        })
+                        break
+
+    # Get transcripts
+    transcript_filters = Q(created_by=request.user)
+    if org:
+        transcript_filters = transcript_filters | Q(organization=org)
+    transcripts = MeetingTranscript.objects.filter(transcript_filters).distinct().order_by('-created_at')[:50]
 
     return render(request, 'my_recordings.html', {
         'recordings': page_obj,
         'page_obj': page_obj,
         'organization': org,
+        'screenshots': screenshots,
+        'transcripts': transcripts,
     })
 
 
 @login_required
+@require_POST
+def delete_recording_view(request, recording_id):
+    """Delete a recording"""
+    recording = get_object_or_404(MeetingRecording, id=recording_id)
+    if recording.recorded_by != request.user:
+        return JsonResponse({'error': 'Access denied'}, status=403)
+    # Delete file
+    if recording.file_path and os.path.exists(recording.file_path):
+        os.remove(recording.file_path)
+    recording.delete()
+    messages.success(request, 'Recording deleted.')
+    return redirect('my_recordings')
+
+
+@login_required
+@require_POST
+def delete_screenshot_view(request):
+    """Delete a screenshot file"""
+    filename = request.POST.get('filename', '')
+    if not filename or '..' in filename or '/' in filename:
+        messages.error(request, 'Invalid filename.')
+        return redirect('my_recordings')
+    filepath = os.path.join(settings.MEDIA_ROOT, 'screenshots', filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+        messages.success(request, 'Screenshot deleted.')
+    else:
+        messages.error(request, 'Screenshot not found.')
+    return redirect('my_recordings')
+
+
+@login_required
+@require_POST
+def delete_transcript_view(request, transcript_id):
+    """Delete a transcript"""
+    transcript = get_object_or_404(MeetingTranscript, id=transcript_id)
+    if transcript.created_by != request.user:
+        return JsonResponse({'error': 'Access denied'}, status=403)
+    transcript.delete()
+    messages.success(request, 'Transcript deleted.')
+    return redirect('my_recordings')
+
+
+@login_required
 def download_recording_view(request, recording_id):
-    """Generate a pre-signed S3 URL and redirect to download"""
+    """Download a recording — serves local file or generates S3 presigned URL"""
+    import os
+
+    recording = get_object_or_404(MeetingRecording, id=recording_id)
+
+    # Verify ownership
+    if recording.recorded_by != request.user:
+        return JsonResponse({'error': 'Access denied'}, status=403)
+
+    # Verify user still has access to the organization
+    if recording.organization:
+        if not recording.organization.memberships.filter(user=request.user, is_active=True).exists():
+            return JsonResponse({'error': 'Access denied - no longer a member of this organization'}, status=403)
+
+    # Local file — serve directly
+    if recording.file_path and os.path.exists(recording.file_path):
+        from django.http import FileResponse
+        import re
+        safe_name = re.sub(r'[^\w\-.]', '_', recording.recording_name or 'recording.webm')
+        response = FileResponse(open(recording.file_path, 'rb'), content_type='video/webm')
+        response['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+        return response
+
+    # S3 file
+    if not recording.s3_key:
+        return JsonResponse({'error': 'No file associated with this recording'}, status=404)
+
     try:
         import boto3
         from botocore.exceptions import ClientError
-
-        recording = get_object_or_404(MeetingRecording, id=recording_id)
-
-        # Verify ownership
-        if recording.recorded_by != request.user:
-            return JsonResponse({'error': 'Access denied'}, status=403)
-
-        # Verify user still has access to the organization
-        if recording.organization:
-            if not recording.organization.memberships.filter(user=request.user, is_active=True).exists():
-                return JsonResponse({'error': 'Access denied - no longer a member of this organization'}, status=403)
-
-        if not recording.s3_key:
-            return JsonResponse({'error': 'No S3 file associated with this recording'}, status=404)
 
         # Check AWS config
         if not settings.AWS_ACCESS_KEY_ID or not settings.AWS_SECRET_ACCESS_KEY:
@@ -944,6 +1089,149 @@ def download_recording_view(request, recording_id):
         import logging
         logging.getLogger(__name__).error('S3 download failed for recording %s: %s', recording_id, e, exc_info=True)
         return JsonResponse({'error': 'Failed to generate download link. Please try again later.'}, status=500)
+
+
+# ==================== SCREENSHOT VIEWS ====================
+
+@require_POST
+@csrf_exempt
+def save_screenshot_view(request):
+    """Save a meeting screenshot captured from video frame."""
+    import base64
+    import os
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        data = json.loads(request.body)
+        image_data = data.get('image', '')
+        room_id = data.get('room_id', '')
+
+        if not image_data or not room_id:
+            return JsonResponse({'error': 'Missing image data or room_id'}, status=400)
+
+        # Strip data URL prefix
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+
+        image_bytes = base64.b64decode(image_data)
+
+        # Limit size (10 MB max)
+        if len(image_bytes) > 10 * 1024 * 1024:
+            return JsonResponse({'error': 'Screenshot too large'}, status=400)
+
+        # Save to media/screenshots/
+        timestamp = timezone.now().strftime('%Y%m%d-%H%M%S')
+        username = request.user.username if request.user.is_authenticated else 'guest'
+        filename = f'{room_id}_{username}_{timestamp}.png'
+        filepath = os.path.join(settings.MEDIA_ROOT, 'screenshots', filename)
+
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'wb') as f:
+            f.write(image_bytes)
+
+        return JsonResponse({
+            'success': True,
+            'filename': filename,
+            'path': f'/media/screenshots/{filename}',
+        })
+
+    except Exception as e:
+        logger.error('Screenshot save failed: %s', e, exc_info=True)
+        return JsonResponse({'error': 'Failed to save screenshot'}, status=500)
+
+
+# ==================== LOCAL RECORDING VIEWS ====================
+
+@require_POST
+@csrf_exempt
+def save_local_recording_view(request):
+    """Save a client-side MediaRecorder recording to local storage."""
+    import os
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        recording_file = request.FILES.get('recording')
+        room_id = request.POST.get('room_id', '')
+        try:
+            duration = int(request.POST.get('duration', 0))
+            if duration < 0 or duration > 86400:
+                duration = 0
+        except (ValueError, TypeError):
+            duration = 0
+
+        if not recording_file:
+            return JsonResponse({'error': 'No recording file provided'}, status=400)
+
+        # Validate file type
+        allowed_types = ['video/webm', 'video/mp4', 'audio/webm']
+        if recording_file.content_type not in allowed_types:
+            return JsonResponse({'error': 'Invalid file type'}, status=400)
+
+        # Limit file size (500 MB max)
+        if recording_file.size > 500 * 1024 * 1024:
+            return JsonResponse({'error': 'Recording too large. Max 500MB.'}, status=400)
+
+        # Save to media/recordings/
+        timestamp = timezone.now().strftime('%Y%m%d-%H%M%S')
+        username = request.user.username if request.user.is_authenticated else 'guest'
+        short_id = uuid.uuid4().hex[:8]
+        filename = f'{room_id}_{username}_{timestamp}_{short_id}.webm'
+        filepath = os.path.join(settings.MEDIA_ROOT, 'recordings', filename)
+
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'wb') as f:
+            for chunk in recording_file.chunks():
+                f.write(chunk)
+
+        # Create database record — find the room owner for recorded_by
+        org = getattr(request, 'organization', None)
+        meeting = None
+        recorded_by = request.user if request.user.is_authenticated else None
+
+        try:
+            meeting = Meeting.objects.get(room_id=room_id)
+            if not recorded_by:
+                recorded_by = meeting.author
+            if not org:
+                org = meeting.organization
+        except Meeting.DoesNotExist:
+            pass
+
+        # Also check PersonalRoom
+        if not recorded_by or not org:
+            try:
+                personal_room = PersonalRoom.objects.select_related('user').get(room_id=room_id)
+                if not recorded_by:
+                    recorded_by = personal_room.user
+                if not org:
+                    org = personal_room.user.memberships.filter(is_active=True).first()
+                    if org:
+                        org = org.organization
+            except PersonalRoom.DoesNotExist:
+                pass
+
+        recording = MeetingRecording.objects.create(
+            meeting=meeting,
+            organization=org,
+            recorded_by=recorded_by,
+            file_path=filepath,
+            recording_name=filename,
+            file_size=recording_file.size,
+            duration=duration,
+        )
+
+        return JsonResponse({
+            'success': True,
+            'recording_id': recording.id,
+            'filename': filename,
+            'path': f'/media/recordings/{filename}',
+        })
+
+    except Exception as e:
+        logger.error('Recording save failed: %s', e, exc_info=True)
+        return JsonResponse({'error': 'Failed to save recording'}, status=500)
 
 
 # ==================== TRANSCRIPT VIEWS ====================
@@ -1003,6 +1291,88 @@ def save_transcript_view(request, room_id):
         'transcript_id': transcript.id,
         'entry_count': len(entries),
     })
+
+
+@require_POST
+@csrf_exempt
+def save_caption_transcript_view(request, room_id):
+    """Save transcript entries from Web Speech API captions directly."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        data = json.loads(request.body)
+        entries = data.get('entries', [])
+
+        if not entries:
+            return JsonResponse({'error': 'No transcript entries'}, status=400)
+
+        # Validate entries format
+        for entry in entries:
+            if not isinstance(entry, dict) or 'text' not in entry:
+                return JsonResponse({'error': 'Invalid entry format'}, status=400)
+
+        org = getattr(request, 'organization', None)
+        meeting = None
+        try:
+            meeting = Meeting.objects.get(room_id=room_id)
+            if not org:
+                org = meeting.organization
+        except Meeting.DoesNotExist:
+            try:
+                room = PersonalRoom.objects.get(room_id=room_id)
+                if not org:
+                    org = room.organization
+            except PersonalRoom.DoesNotExist:
+                pass
+
+        created_by = request.user if request.user.is_authenticated else None
+
+        # If guest, assign to room owner
+        if not created_by:
+            try:
+                personal_room = PersonalRoom.objects.get(room_id=room_id)
+                created_by = personal_room.user
+                if not org:
+                    membership = personal_room.user.memberships.filter(is_active=True).first()
+                    if membership:
+                        org = membership.organization
+            except PersonalRoom.DoesNotExist:
+                pass
+
+        transcript = MeetingTranscript.objects.create(
+            meeting=meeting,
+            room_id=room_id,
+            organization=org,
+            entries=entries,
+            status='completed',
+            created_by=created_by,
+        )
+
+        # Also save as text file
+        import os
+        timestamp = timezone.now().strftime('%Y%m%d-%H%M%S')
+        txt_filename = f'{room_id}_transcript_{timestamp}.txt'
+        txt_filepath = os.path.join(settings.MEDIA_ROOT, 'transcripts', txt_filename)
+        os.makedirs(os.path.dirname(txt_filepath), exist_ok=True)
+
+        with open(txt_filepath, 'w', encoding='utf-8') as f:
+            for entry in entries:
+                ts = entry.get('timestamp', '')
+                speaker = entry.get('speaker', 'Unknown')
+                text = entry.get('text', '')
+                f.write(f'[{ts}] {speaker}: {text}\n')
+
+        return JsonResponse({
+            'success': True,
+            'transcript_id': transcript.id,
+            'entry_count': len(entries),
+            'file_path': f'/media/transcripts/{txt_filename}',
+        })
+
+    except Exception as e:
+        logger.error('Caption transcript save failed: %s', e, exc_info=True)
+        return JsonResponse({'error': 'Failed to save transcript'}, status=500)
 
 
 @login_required

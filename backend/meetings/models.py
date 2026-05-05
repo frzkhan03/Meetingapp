@@ -39,7 +39,7 @@ class PersonalRoom(models.Model):
     attendee_token = models.CharField(max_length=64, unique=True, editable=False)
     room_name = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
-    is_locked = models.BooleanField(default=True, help_text='When locked, participants need approval to join')
+    is_locked = models.BooleanField(default=False, help_text='When locked, no one can join. When unlocked, guests need host approval.')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

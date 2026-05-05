@@ -25,3 +25,7 @@ bleach>=6.0  # HTML sanitization
 
 # Admin UI
 django-unfold>=0.40  # Modern Tailwind-based admin theme
+
+# LiveKit - Video Meeting Infrastructure
+livekit>=0.11.0  # LiveKit server SDK
+livekit-api>=0.6.0  # LiveKit API client

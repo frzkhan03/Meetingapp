@@ -1,5 +1,6 @@
 from django.urls import path, re_path
 from . import views
+from . import livekit_views
 
 # Meeting code pattern: abc-defg-hij (3 letters - 4 letters - 3 letters)
 # Also accepts old UUID format for backwards compatibility
@@ -21,14 +22,41 @@ urlpatterns = [
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/lock-status/$', views.get_room_lock_status_view, name='room_lock_status'),
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/send-alert/$', views.send_join_alert_view, name='send_join_alert'),
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/mark-approved/$', views.mark_guest_approved_view, name='mark_guest_approved'),
+    re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/pending-requests/$', views.get_pending_requests_view, name='pending_requests'),
+    re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/approve-guest/$', views.approve_guest_view, name='approve_guest'),
+    re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/check-approval/$', views.check_approval_view, name='check_approval'),
     path('all-rooms/', views.all_rooms_view, name='all_rooms'),
 
     # Recording routes
     path('upload-recording/', views.upload_recording_view, name='upload_recording'),
+    path('save-local-recording/', views.save_local_recording_view, name='save_local_recording'),
     path('my-recordings/', views.my_recordings_view, name='my_recordings'),
     path('recording/<int:recording_id>/download/', views.download_recording_view, name='download_recording'),
+    path('recording/<int:recording_id>/delete/', views.delete_recording_view, name='delete_recording'),
+    path('screenshot/delete/', views.delete_screenshot_view, name='delete_screenshot'),
+    path('transcript/<int:transcript_id>/delete/', views.delete_transcript_view, name='delete_transcript'),
+
+    # Screenshot routes
+    path('save-screenshot/', views.save_screenshot_view, name='save_screenshot'),
 
     # Transcript routes
     re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/save-transcript/$', views.save_transcript_view, name='save_transcript'),
+    re_path(rf'^room/(?P<room_id>{MEETING_CODE_PATTERN})/save-caption-transcript/$', views.save_caption_transcript_view, name='save_caption_transcript'),
     path('transcript/<int:transcript_id>/', views.view_transcript_view, name='view_transcript'),
+    
+    # ==================== LIVEKIT API ROUTES ====================
+    # Token generation
+    path('api/livekit/token/', livekit_views.get_livekit_token, name='livekit_token'),
+    
+    # Room management
+    path('api/livekit/room/create/', livekit_views.create_livekit_room, name='livekit_create_room'),
+    re_path(rf'^api/livekit/room/(?P<room_id>{MEETING_CODE_PATTERN})/participants/$', livekit_views.list_participants, name='livekit_participants'),
+    re_path(rf'^api/livekit/room/(?P<room_id>{MEETING_CODE_PATTERN})/remove-participant/$', livekit_views.remove_participant, name='livekit_remove_participant'),
+    
+    # Recording
+    re_path(rf'^api/livekit/room/(?P<room_id>{MEETING_CODE_PATTERN})/start-recording/$', livekit_views.start_recording, name='livekit_start_recording'),
+    re_path(rf'^api/livekit/room/(?P<room_id>{MEETING_CODE_PATTERN})/stop-recording/$', livekit_views.stop_recording, name='livekit_stop_recording'),
+    
+    # Webhooks (for LiveKit callbacks)
+    path('api/livekit/webhook/', livekit_views.livekit_webhook, name='livekit_webhook'),
 ]
