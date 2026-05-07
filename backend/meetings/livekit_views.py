@@ -54,9 +54,26 @@ def get_livekit_token(request):
             if room_access.get('is_host'):
                 is_moderator = True
         else:
-            # Guest user — get identity from session (set by join_meeting_guest_view)
-            user_id = request.session.get(f'guest_id_meeting_{room_id}', f'guest_{room_id[:8]}')
-            username = request.session.get(f'display_name_meeting_{room_id}', 'Guest')
+            # Guest user — get identity from session
+            # Check both personal room and scheduled meeting session keys
+            import uuid as uuid_mod
+            user_id = (
+                request.session.get(f'guest_id_meeting_{room_id}') or
+                request.session.get(f'guest_id_{room_id}')
+            )
+            if not user_id:
+                # Generate a unique guest ID — NEVER use a deterministic fallback
+                # because LiveKit disconnects existing participants with the same identity
+                user_id = f'guest_{uuid_mod.uuid4().hex[:12]}'
+                # Store in both session keys so subsequent token refreshes find it
+                request.session[f'guest_id_meeting_{room_id}'] = user_id
+                request.session[f'guest_id_{room_id}'] = user_id
+
+            username = (
+                request.session.get(f'display_name_meeting_{room_id}') or
+                request.session.get(f'display_name_{room_id}') or
+                'Guest'
+            )
             is_moderator = False
 
         # Generate token

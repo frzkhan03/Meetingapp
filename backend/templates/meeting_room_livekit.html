@@ -1090,10 +1090,10 @@
         <!-- Lock Room Button (moderator only) -->
         <div class="control-btn-wrapper">
             <button id="btn-lock" class="control-btn {% if is_locked %}active{% endif %}" data-tooltip="{% if is_locked %}Unlock (allow admit requests){% else %}Lock (block all new joins){% endif %}">
-                <svg id="lock-icon-locked" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="{% if not is_locked %}display:none{% endif %}">
+                <svg id="lock-icon-locked" fill="none" stroke="currentColor" viewBox="0 0 24 24"{% if not is_locked %} hidden{% endif %}>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                 </svg>
-                <svg id="lock-icon-unlocked" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="{% if is_locked %}display:none{% endif %}">
+                <svg id="lock-icon-unlocked" fill="none" stroke="currentColor" viewBox="0 0 24 24"{% if is_locked %} hidden{% endif %}>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
                 </svg>
             </button>
@@ -1267,25 +1267,32 @@
         }
         
         // Resume AudioContext on user interaction (fixes browser autoplay policy)
-        let audioContextResumed = false;
-        function resumeAudioContext() {
-            if (audioContextResumed) return;
-            // Create and resume a global AudioContext
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            if (ctx.state === 'suspended') {
-                ctx.resume().then(() => {
-                    console.log('AudioContext resumed after user interaction');
+        // Resume audio playback on user interaction (fixes browser autoplay policy)
+        // LiveKit manages its own AudioContext — we must call room.startAudio()
+        // instead of creating a separate AudioContext which has no effect on LiveKit
+        let audioResumed = false;
+        async function resumeAudioPlayback() {
+            if (audioResumed) return;
+            try {
+                // LiveKit's startAudio() resumes its internal AudioContext AND
+                // calls play() on all attached <audio> elements
+                if (livekitClient && livekitClient.room) {
+                    await livekitClient.room.startAudio();
+                    console.log('LiveKit audio resumed after user interaction');
+                }
+                // Also force-play any audio elements that might have been blocked
+                document.querySelectorAll('audio').forEach(el => {
+                    el.play().catch(() => {});
                 });
+                audioResumed = true;
+            } catch (e) {
+                console.warn('Audio resume attempt:', e.message);
+                // Don't mark as resumed — try again on next interaction
             }
-            audioContextResumed = true;
-            // Also try to play all existing audio elements
-            document.querySelectorAll('audio').forEach(el => {
-                el.play().catch(() => {});
-            });
         }
-        // Listen for ANY user interaction to resume audio
+        // Listen for ANY user interaction to resume audio (keep trying until it works)
         ['click', 'touchstart', 'keydown'].forEach(evt => {
-            document.addEventListener(evt, resumeAudioContext, { once: false });
+            document.addEventListener(evt, resumeAudioPlayback, { once: false });
         });
 
         // Initialize meeting
@@ -1320,6 +1327,37 @@
                 displayLocalVideo();
                 updateConnectionStatus('connected', 'Connected');
                 startMeetingTimer();
+
+                // CRITICAL: Attach tracks from participants who were already in the room
+                // When a guest joins late, the moderator's tracks are already published.
+                // TrackSubscribed events may have fired during connect() before our handlers
+                // were fully ready, so we manually iterate and attach any missed tracks.
+                if (livekitClient.room && livekitClient.room.remoteParticipants) {
+                    for (const [, participant] of livekitClient.room.remoteParticipants) {
+                        // Trigger participant joined notification
+                        handleParticipantJoined(participant);
+
+                        // Attach all already-subscribed tracks
+                        for (const [, publication] of participant.trackPublications) {
+                            if (publication.isSubscribed && publication.track) {
+                                console.log('Attaching existing track:', publication.track.kind,
+                                    'from', participant.identity);
+                                handleTrackSubscribed(publication.track, publication, participant);
+                            }
+                        }
+                    }
+                }
+
+                // Resume audio after a short delay (gives browser time to set up)
+                setTimeout(async () => {
+                    if (livekitClient && livekitClient.room) {
+                        try {
+                            await livekitClient.room.startAudio();
+                        } catch (e) {
+                            console.warn('Initial audio resume:', e.message);
+                        }
+                    }
+                }, 500);
 
                 // Report what devices we got
                 const hasVideo = livekitClient.localTracks.some(t => t.kind === 'video');
@@ -1401,9 +1439,13 @@
             if (livekitClient.localScreenTrack) {
                 const element = livekitClient.localScreenTrack.attach();
                 element.style.objectFit = 'contain';
+                // Always replace existing video or placeholder with the new track element
                 const existingVid = container.querySelector('video');
+                const existingPlaceholder = container.querySelector('div[style*="font-size:48px"], div[style*="font-size: 48px"]');
                 if (existingVid) {
                     existingVid.replaceWith(element);
+                } else if (existingPlaceholder) {
+                    existingPlaceholder.replaceWith(element);
                 } else {
                     container.prepend(element);
                 }
@@ -1438,6 +1480,8 @@
             const isScreenShare = publication.source === 'screen_share' ||
                                   publication.source === LivekitClient.Track.Source.ScreenShare;
 
+
+
             if (track.kind === 'audio' && !isScreenShare) {
                 // Remove old audio element if exists
                 const oldAudio = document.getElementById(`audio-${participant.sid}`);
@@ -1471,6 +1515,7 @@
                 setTimeout(tryPlay, 1000);
                 return;
             }
+    
 
             if (track.kind === 'video' || isScreenShare) {
                 const containerId = isScreenShare ? `screen-${participant.sid}` : `video-${participant.sid}`;

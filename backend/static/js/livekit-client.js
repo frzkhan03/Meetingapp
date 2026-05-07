@@ -20,6 +20,8 @@ class LiveKitMeetingClient {
         this.onParticipantLeft = null;
         this.onTrackSubscribed = null;
         this.onTrackUnsubscribed = null;
+        this.onTrackMuted = null;
+        this.onTrackUnmuted = null;
         this.onConnectionStateChanged = null;
         this.onRecordingStateChanged = null;
         this.onChatMessage = null;
@@ -134,13 +136,31 @@ class LiveKitMeetingClient {
             }
         });
         
-        // Track unsubscribed
+      // Track unsubscribed
         this.room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
             console.log('Track unsubscribed:', track.kind);
             if (this.onTrackUnsubscribed) {
                 this.onTrackUnsubscribed(track, publication, participant);
             }
         });
+
+        // Track muted (remote participant muted their camera/mic)
+        this.room.on(LivekitClient.RoomEvent.TrackMuted, (publication, participant) => {
+            console.log('Track muted:', publication.kind, 'by', participant.identity);
+            if (this.onTrackMuted) {
+                this.onTrackMuted(publication, participant);
+            }
+        });
+
+        // Track unmuted (remote participant unmuted their camera/mic)
+        this.room.on(LivekitClient.RoomEvent.TrackUnmuted, (publication, participant) => {
+            console.log('Track unmuted:', publication.kind, 'by', participant.identity);
+            if (this.onTrackUnmuted) {
+                this.onTrackUnmuted(publication, participant);
+            }
+        });
+        
+        // Connection state changes
         
         // Connection state changes
         this.room.on(LivekitClient.RoomEvent.ConnectionStateChanged, (state) => {
