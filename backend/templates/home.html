@@ -5,7 +5,7 @@
 
 {% block extra_css %}
 {% if not user.is_authenticated %}
-<link rel="stylesheet" href="{% static 'css/billing.css' %}">
+<link rel="stylesheet" href="{% static 'css/billing.css' %}?v={% now 'U' %}">
 {% endif %}
 {% endblock %}
 

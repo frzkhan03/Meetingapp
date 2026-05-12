@@ -5,7 +5,7 @@
 {% block title %}Pricing - PyTalk{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/billing.css' %}">
+<link rel="stylesheet" href="{% static 'css/billing.css' %}?v={% now 'U' %}">
 {% endblock %}
 
 {% block content %}

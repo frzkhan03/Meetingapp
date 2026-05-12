@@ -4,7 +4,7 @@
 {% block title %}Invoices - {{ organization.name }} - PyTalk{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/billing.css' %}">
+<link rel="stylesheet" href="{% static 'css/billing.css' %}?v={% now 'U' %}">
 <style>
     .invoice-card {
         background: var(--bg-card);

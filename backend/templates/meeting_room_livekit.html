@@ -10,7 +10,7 @@
     <script src="https://unpkg.com/livekit-client@2.18.1/dist/livekit-client.umd.js"></script>
     
     <!-- Custom LiveKit Client -->
-    <script src="{% static 'js/livekit-client.js' %}?v=5"></script>
+    <script src="{% static 'js/livekit-client.js' %}?v={% now 'U' %}"></script>
     
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
