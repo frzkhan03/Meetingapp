@@ -1764,38 +1764,93 @@
         }
 
         let recordingAudioCtx = null;
+        let recordingDestination = null;
+        let recordingAudioSources = new Map();
+        let recordingTrackHandlers = null;
+        let recordingMimeType = null;
 
         async function startClientRecording() {
             try {
-                // Use getDisplayMedia — user picks "This Tab" to record the full meeting
-                const captureStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { displaySurface: 'browser', width: 1920, height: 1080 },
-                    audio: true,
-                    preferCurrentTab: true
-                });
-
-                // Check we have tracks
-                const vTracks = captureStream.getVideoTracks();
-                const aTracks = captureStream.getAudioTracks();
-                console.log('Recording: video tracks=' + vTracks.length + ' audio tracks=' + aTracks.length);
-
-                if (vTracks.length === 0 && aTracks.length === 0) {
-                    throw new Error('No tracks captured. Make sure to select "This Tab" and check "Share audio".');
+                if (!livekitClient || !livekitClient.room) {
+                    throw new Error('Not connected to the meeting yet');
                 }
 
-                // Detect when user clicks browser "Stop sharing"
-                vTracks.forEach(t => {
-                    t.onended = () => {
-                        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                            stopClientRecording();
+                const localVideoLK = livekitClient.localTracks.find(t => t.kind === 'video');
+                const localVideoMST = localVideoLK && localVideoLK.mediaStreamTrack;
+                if (!localVideoMST) {
+                    throw new Error('Local camera not available — turn on your camera before recording');
+                }
+
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                recordingAudioCtx = new AudioCtx();
+                if (recordingAudioCtx.state === 'suspended') {
+                    try { await recordingAudioCtx.resume(); } catch (e) {}
+                }
+                recordingDestination = recordingAudioCtx.createMediaStreamDestination();
+                recordingAudioSources = new Map();
+
+                const addAudioTrack = (key, mst) => {
+                    if (!mst || recordingAudioSources.has(key)) return;
+                    try {
+                        const src = recordingAudioCtx.createMediaStreamSource(new MediaStream([mst]));
+                        src.connect(recordingDestination);
+                        recordingAudioSources.set(key, src);
+                    } catch (e) {
+                        console.warn('Failed to add audio track to recording mix:', e);
+                    }
+                };
+
+                const removeAudioTrack = (key) => {
+                    const src = recordingAudioSources.get(key);
+                    if (src) {
+                        try { src.disconnect(); } catch (e) {}
+                        recordingAudioSources.delete(key);
+                    }
+                };
+
+                const localAudioLK = livekitClient.localTracks.find(t => t.kind === 'audio');
+                if (localAudioLK && localAudioLK.mediaStreamTrack) {
+                    addAudioTrack('local', localAudioLK.mediaStreamTrack);
+                }
+
+                if (livekitClient.room.remoteParticipants) {
+                    for (const [, participant] of livekitClient.room.remoteParticipants) {
+                        const pubs = participant.audioTrackPublications || participant.trackPublications;
+                        if (pubs && pubs.forEach) {
+                            pubs.forEach((pub) => {
+                                const track = pub.track || pub.audioTrack;
+                                if (!track || track.kind !== 'audio') return;
+                                const mst = track.mediaStreamTrack;
+                                const key = `remote-${participant.identity}-${pub.trackSid || pub.sid || track.sid || ''}`;
+                                addAudioTrack(key, mst);
+                            });
                         }
-                    };
-                });
+                    }
+                }
+
+                recordingTrackHandlers = {
+                    onSubscribed: (track, publication, participant) => {
+                        if (!track || track.kind !== 'audio') return;
+                        const key = `remote-${participant.identity}-${publication.trackSid || publication.sid || track.sid || ''}`;
+                        addAudioTrack(key, track.mediaStreamTrack);
+                    },
+                    onUnsubscribed: (track, publication, participant) => {
+                        if (!track || track.kind !== 'audio') return;
+                        const key = `remote-${participant.identity}-${publication.trackSid || publication.sid || track.sid || ''}`;
+                        removeAudioTrack(key);
+                    }
+                };
+                livekitClient.room.on(LivekitClient.RoomEvent.TrackSubscribed, recordingTrackHandlers.onSubscribed);
+                livekitClient.room.on(LivekitClient.RoomEvent.TrackUnsubscribed, recordingTrackHandlers.onUnsubscribed);
+
+                const mixedAudioTracks = recordingDestination.stream.getAudioTracks();
+                const captureStream = new MediaStream([localVideoMST, ...mixedAudioTracks]);
 
                 let mimeType = 'video/webm;codecs=vp8,opus';
-                if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
-                    mimeType = 'video/webm;codecs=vp9,opus';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm';
                 }
+                recordingMimeType = mimeType;
 
                 mediaRecorder = new MediaRecorder(captureStream, {
                     mimeType,
@@ -1809,45 +1864,46 @@
                     }
                 };
 
-                mediaRecorder.onstop = async () => {
-                    const duration = Math.round((Date.now() - recordingStartTime) / 1000);
-                    captureStream.getTracks().forEach(t => t.stop());
-
-                    const blob = new Blob(recordedChunks, { type: mimeType });
-                    console.log('Recording stopped. Size:', blob.size, 'bytes. Duration:', duration, 's');
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: recordingMimeType });
+                    console.log('Recording stopped. Size:', blob.size, 'bytes');
                     recordedChunks = [];
 
+                    if (recordingTrackHandlers && livekitClient && livekitClient.room) {
+                        try { livekitClient.room.off(LivekitClient.RoomEvent.TrackSubscribed, recordingTrackHandlers.onSubscribed); } catch (e) {}
+                        try { livekitClient.room.off(LivekitClient.RoomEvent.TrackUnsubscribed, recordingTrackHandlers.onUnsubscribed); } catch (e) {}
+                        recordingTrackHandlers = null;
+                    }
+                    if (recordingAudioSources) {
+                        recordingAudioSources.forEach((src) => { try { src.disconnect(); } catch (e) {} });
+                        recordingAudioSources.clear();
+                    }
+                    if (recordingAudioCtx) {
+                        try { recordingAudioCtx.close(); } catch (e) {}
+                        recordingAudioCtx = null;
+                    }
+                    recordingDestination = null;
+
                     if (blob.size < 1000) {
-                        showNotification('Recording too small — make sure to share "This Tab" with audio', 'error');
+                        showNotification('Recording too small — no data captured', 'error');
                         return;
                     }
 
-                    const formData = new FormData();
-                    formData.append('recording', blob, `recording-${ROOM_ID}.webm`);
-                    formData.append('room_id', ROOM_ID);
-                    formData.append('duration', duration);
-
-                    // Download to user's system
+                    const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `PyTalk-${ROOM_ID}-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.webm`;
+                    a.download = `recording-${ROOM_ID}-${timestamp}.webm`;
+                    document.body.appendChild(a);
                     a.click();
+                    document.body.removeChild(a);
                     URL.revokeObjectURL(url);
                     showNotification('Recording downloaded (' + (blob.size / 1048576).toFixed(1) + ' MB)', 'success');
-
-                    // Also save to server in background
-                    fetch('/meeting/save-local-recording/', {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': getCookie('csrftoken') },
-                        body: formData,
-                    }).catch(() => {});
                 };
 
                 mediaRecorder.start(1000);
                 recordingStartTime = Date.now();
 
-                // Show recording indicator
                 recordingIndicator = document.createElement('div');
                 recordingIndicator.className = 'recording-indicator';
                 recordingIndicator.innerHTML = '<span class="rec-dot"></span><span id="rec-timer">REC 00:00</span>';
@@ -1867,6 +1923,21 @@
             } catch (err) {
                 console.error('Failed to start recording:', err);
                 showNotification('Failed to start recording: ' + err.message, 'error');
+
+                if (recordingTrackHandlers && livekitClient && livekitClient.room) {
+                    try { livekitClient.room.off(LivekitClient.RoomEvent.TrackSubscribed, recordingTrackHandlers.onSubscribed); } catch (e) {}
+                    try { livekitClient.room.off(LivekitClient.RoomEvent.TrackUnsubscribed, recordingTrackHandlers.onUnsubscribed); } catch (e) {}
+                    recordingTrackHandlers = null;
+                }
+                if (recordingAudioSources) {
+                    recordingAudioSources.forEach((src) => { try { src.disconnect(); } catch (e) {} });
+                    recordingAudioSources.clear();
+                }
+                if (recordingAudioCtx) {
+                    try { recordingAudioCtx.close(); } catch (e) {}
+                    recordingAudioCtx = null;
+                }
+                recordingDestination = null;
             }
         }
 
@@ -1883,7 +1954,7 @@
                 recordingTimerInterval = null;
             }
             document.getElementById('btn-record').classList.remove('recording');
-            showNotification('Recording stopped, saving...', 'info');
+            showNotification('Recording stopped, preparing download...', 'info');
         }
 
         if (document.getElementById('btn-record')) {
