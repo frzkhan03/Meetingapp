@@ -189,122 +189,60 @@
             left: 0;
             right: 0;
             bottom: 110px;
-            z-index: 1;
+            display: block;
             overflow: hidden;
+            z-index: 1;
             background: #000;
         }
 
-        /* Remote camera tiles — first one fills entire grid area (full-screen background) */
-        #video-grid > .video-container:not(#video-local):not(.screen-share) {
+        /* Remote participant — always fullscreen, fills entire grid area */
+        #video-grid .video-container:not(#video-local) {
             position: absolute;
             top: 0;
             left: 0;
-            right: 0;
-            bottom: 0;
             width: 100%;
             height: 100%;
-            aspect-ratio: auto;
-            min-height: 0;
-            max-height: none;
             border-radius: 0;
             border: none;
             z-index: 1;
-            box-shadow: none;
         }
 
-        #video-grid > .video-container:not(#video-local):not(.screen-share) video {
+        #video-grid .video-container:not(#video-local) video {
             width: 100%;
             height: 100%;
             object-fit: cover;
             background: #000;
         }
 
-        /* 2nd, 3rd, ... remote cameras — small PiP tiles stacked above the local PiP */
-        #video-grid > .video-container:not(#video-local):not(.screen-share)
-            ~ .video-container:not(#video-local):not(.screen-share) {
-            position: fixed;
-            top: auto;
-            left: auto;
-            right: 24px;
-            bottom: 351px; /* local bottom (130) + local height (213) + gap (8) */
-            width: 160px;
-            height: 213px;
-            border-radius: 16px;
-            border: 2px solid var(--primary);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-            z-index: 50;
-            overflow: hidden;
+        /* When 2+ remote participants — stack them vertically each taking half */
+        #video-grid .video-container:not(#video-local):nth-child(2) {
+            height: 50%;
+            top: 0;
+        }
+        #video-grid .video-container:not(#video-local):nth-child(3) {
+            height: 50%;
+            top: 50%;
         }
 
-        /* 3rd remote PiP (4 participants total) — stacked one tile higher */
-        #video-grid > .video-container:not(#video-local):not(.screen-share)
-            ~ .video-container:not(#video-local):not(.screen-share)
-            ~ .video-container:not(#video-local):not(.screen-share) {
-            bottom: 572px; /* 351 + 213 + 8 */
-        }
-
-        /* Local "You" video — always a PiP in the bottom-right corner */
-        #video-grid > #video-local {
+        /* Local video (You) — fixed PiP bottom-right, always on top */
+        #video-grid #video-local {
             position: fixed;
             bottom: 130px;
             right: 24px;
             width: 160px;
             height: 213px;
-            z-index: 51;
-            border-radius: 16px;
+            z-index: 50;
+            border-radius: 12px;
             border: 2px solid var(--primary);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-            aspect-ratio: auto;
-            min-height: 0;
-            max-height: none;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
             overflow: hidden;
-            background: #000;
+            background: #1e293b;
         }
 
-        #video-grid > #video-local video {
+        #video-grid #video-local video {
             width: 100%;
             height: 100%;
             object-fit: cover;
-        }
-
-        /* Screen share — absolute fill, on top of remote camera */
-        #video-grid > .video-container.screen-share {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            width: 100%;
-            height: 100%;
-            aspect-ratio: auto;
-            min-height: 0;
-            max-height: none;
-            border-radius: 0;
-            border: none;
-            z-index: 5;
-        }
-
-        /* Hide overlay label on the local PiP (it's just "You", saves space) */
-        #video-grid > #video-local .participant-overlay {
-            display: none;
-        }
-
-        /* Tighter overlay on secondary remote PiP tiles */
-        #video-grid > .video-container:not(#video-local):not(.screen-share)
-            ~ .video-container:not(#video-local):not(.screen-share) .participant-overlay {
-            padding: 6px 10px;
-        }
-
-        #video-grid > .video-container:not(#video-local):not(.screen-share)
-            ~ .video-container:not(#video-local):not(.screen-share) .participant-name {
-            font-size: 11px;
-        }
-
-        /* Disable hover-lift on PiP tiles so they don't jump around */
-        #video-grid > #video-local:hover,
-        #video-grid > .video-container:not(#video-local):not(.screen-share):hover,
-        #video-grid > .video-container.screen-share:hover {
-            transform: none;
         }
         
         /* Custom Scrollbar */
@@ -1027,27 +965,11 @@
                 bottom: 90px;
             }
 
-            /* Local PiP smaller on mobile */
-            #video-grid > #video-local {
-                width: 120px;
-                height: 160px;
+            #video-grid #video-local {
+                width: 100px;
+                height: 133px;
                 bottom: 100px;
                 right: 12px;
-            }
-
-            /* Secondary remote PiP — match mobile dimensions and stack above local */
-            #video-grid > .video-container:not(#video-local):not(.screen-share)
-                ~ .video-container:not(#video-local):not(.screen-share) {
-                width: 120px;
-                height: 160px;
-                right: 12px;
-                bottom: 266px; /* 100 + 160 + 6 */
-            }
-
-            #video-grid > .video-container:not(#video-local):not(.screen-share)
-                ~ .video-container:not(#video-local):not(.screen-share)
-                ~ .video-container:not(#video-local):not(.screen-share) {
-                bottom: 432px; /* 266 + 160 + 6 */
             }
 
             #controls-bar {
