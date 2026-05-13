@@ -11,7 +11,10 @@
     
     <!-- Custom LiveKit Client -->
     <script src="{% static 'js/livekit-client.js' %}?v={% now 'U' %}"></script>
-    
+
+    <!-- WebM duration fixer (for seekable recordings) -->
+    <script src="https://cdn.jsdelivr.net/npm/fix-webm-duration@1.0.6/fix-webm-duration.js"></script>
+
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
@@ -179,59 +182,129 @@
             font-variant-numeric: tabular-nums;
         }
         
-        /* Video Grid Container */
+        /* Video Grid Container — phone-call-style positioning context */
         #video-grid {
             position: fixed;
             top: 70px;
             left: 0;
             right: 0;
             bottom: 110px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 16px;
-            padding: 16px;
-            overflow-y: auto;
             z-index: 1;
-            align-items: stretch;
-            justify-content: center;
-        }
-
-        /* Remote participants take full space — tall for body verification */
-        #video-grid .video-container {
-            flex: 1 1 100%;
-            max-height: calc(100vh - 200px);
-            min-height: 300px;
-        }
-
-        #video-grid .video-container video {
-            object-fit: contain;
+            overflow: hidden;
             background: #000;
         }
 
-        /* Local video (You) — small PiP overlay in bottom-right */
-        #video-grid #video-local {
+        /* Remote camera tiles — first one fills entire grid area (full-screen background) */
+        #video-grid > .video-container:not(#video-local):not(.screen-share) {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+            aspect-ratio: auto;
+            min-height: 0;
+            max-height: none;
+            border-radius: 0;
+            border: none;
+            z-index: 1;
+            box-shadow: none;
+        }
+
+        #video-grid > .video-container:not(#video-local):not(.screen-share) video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #000;
+        }
+
+        /* 2nd, 3rd, ... remote cameras — small PiP tiles stacked above the local PiP */
+        #video-grid > .video-container:not(#video-local):not(.screen-share)
+            ~ .video-container:not(#video-local):not(.screen-share) {
+            position: fixed;
+            top: auto;
+            left: auto;
+            right: 24px;
+            bottom: 351px; /* local bottom (130) + local height (213) + gap (8) */
+            width: 160px;
+            height: 213px;
+            border-radius: 16px;
+            border: 2px solid var(--primary);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            z-index: 50;
+            overflow: hidden;
+        }
+
+        /* 3rd remote PiP (4 participants total) — stacked one tile higher */
+        #video-grid > .video-container:not(#video-local):not(.screen-share)
+            ~ .video-container:not(#video-local):not(.screen-share)
+            ~ .video-container:not(#video-local):not(.screen-share) {
+            bottom: 572px; /* 351 + 213 + 8 */
+        }
+
+        /* Local "You" video — always a PiP in the bottom-right corner */
+        #video-grid > #video-local {
             position: fixed;
             bottom: 130px;
             right: 24px;
-            width: 180px;
-            height: 240px;
-            z-index: 50;
-            flex: none;
-            border-radius: 12px;
+            width: 160px;
+            height: 213px;
+            z-index: 51;
+            border-radius: 16px;
             border: 2px solid var(--primary);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
             aspect-ratio: auto;
-            min-height: auto;
+            min-height: 0;
+            max-height: none;
+            overflow: hidden;
+            background: #000;
         }
 
-        #video-grid #video-local video {
+        #video-grid > #video-local video {
+            width: 100%;
+            height: 100%;
             object-fit: cover;
         }
 
-        /* When multiple remote participants, split evenly */
-        #video-grid .video-container:not(#video-local) {
-            flex: 1 1 calc(50% - 16px);
-            min-width: 280px;
+        /* Screen share — absolute fill, on top of remote camera */
+        #video-grid > .video-container.screen-share {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+            aspect-ratio: auto;
+            min-height: 0;
+            max-height: none;
+            border-radius: 0;
+            border: none;
+            z-index: 5;
+        }
+
+        /* Hide overlay label on the local PiP (it's just "You", saves space) */
+        #video-grid > #video-local .participant-overlay {
+            display: none;
+        }
+
+        /* Tighter overlay on secondary remote PiP tiles */
+        #video-grid > .video-container:not(#video-local):not(.screen-share)
+            ~ .video-container:not(#video-local):not(.screen-share) .participant-overlay {
+            padding: 6px 10px;
+        }
+
+        #video-grid > .video-container:not(#video-local):not(.screen-share)
+            ~ .video-container:not(#video-local):not(.screen-share) .participant-name {
+            font-size: 11px;
+        }
+
+        /* Disable hover-lift on PiP tiles so they don't jump around */
+        #video-grid > #video-local:hover,
+        #video-grid > .video-container:not(#video-local):not(.screen-share):hover,
+        #video-grid > .video-container.screen-share:hover {
+            transform: none;
         }
         
         /* Custom Scrollbar */
@@ -952,22 +1025,29 @@
             #video-grid {
                 top: 56px;
                 bottom: 90px;
-                gap: 8px;
-                padding: 8px;
-            }
-
-            /* Remote video fills screen on mobile */
-            #video-grid .video-container:not(#video-local) {
-                min-width: 100%;
-                min-height: calc(100vh - 160px);
             }
 
             /* Local PiP smaller on mobile */
-            #video-grid #video-local {
+            #video-grid > #video-local {
                 width: 120px;
                 height: 160px;
                 bottom: 100px;
                 right: 12px;
+            }
+
+            /* Secondary remote PiP — match mobile dimensions and stack above local */
+            #video-grid > .video-container:not(#video-local):not(.screen-share)
+                ~ .video-container:not(#video-local):not(.screen-share) {
+                width: 120px;
+                height: 160px;
+                right: 12px;
+                bottom: 266px; /* 100 + 160 + 6 */
+            }
+
+            #video-grid > .video-container:not(#video-local):not(.screen-share)
+                ~ .video-container:not(#video-local):not(.screen-share)
+                ~ .video-container:not(#video-local):not(.screen-share) {
+                bottom: 432px; /* 266 + 160 + 6 */
             }
 
             #controls-bar {
@@ -1112,22 +1192,24 @@
         </div>
 
         <!-- Chat Button -->
-        <div class="control-btn-wrapper">
+        <div class="control-btn-wrapper" style="position:relative;">
             <button id="btn-chat" class="control-btn primary" data-tooltip="Open chat">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
                 </svg>
+                <span id="chat-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#ef4444;color:white;border-radius:50%;min-width:18px;height:18px;padding:0 5px;font-size:11px;font-weight:700;align-items:center;justify-content:center;box-sizing:border-box;pointer-events:none;"></span>
             </button>
             <span class="control-label">Chat</span>
         </div>
 
         {% if is_moderator %}
         <!-- Participants Button (moderator only) -->
-        <div class="control-btn-wrapper">
+        <div class="control-btn-wrapper" style="position:relative;">
             <button id="btn-participants" class="control-btn" data-tooltip="Participants">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
                 </svg>
+                <span id="participants-badge" style="display:flex;position:absolute;top:-4px;right:-4px;background:#10b981;color:white;border-radius:50%;min-width:18px;height:18px;padding:0 5px;font-size:11px;font-weight:700;align-items:center;justify-content:center;box-sizing:border-box;pointer-events:none;">1</span>
             </button>
             <span class="control-label">People</span>
         </div>
@@ -1621,6 +1703,8 @@
         function updateParticipantCount() {
             const count = livekitClient ? livekitClient.getParticipants().length + 1 : 1;
             document.getElementById('count').textContent = count;
+            const pBadge = document.getElementById('participants-badge');
+            if (pBadge) pBadge.textContent = count;
         }
         
         function updateConnectionStatus(state, text) {
@@ -1865,8 +1949,9 @@
                 };
 
                 mediaRecorder.onstop = () => {
-                    const blob = new Blob(recordedChunks, { type: recordingMimeType });
-                    console.log('Recording stopped. Size:', blob.size, 'bytes');
+                    const duration = Date.now() - recordingStartTime;
+                    const rawBlob = new Blob(recordedChunks, { type: recordingMimeType });
+                    console.log('Recording stopped. Size:', rawBlob.size, 'bytes');
                     recordedChunks = [];
 
                     if (recordingTrackHandlers && livekitClient && livekitClient.room) {
@@ -1884,21 +1969,24 @@
                     }
                     recordingDestination = null;
 
-                    if (blob.size < 1000) {
+                    if (rawBlob.size < 1000) {
                         showNotification('Recording too small — no data captured', 'error');
                         return;
                     }
 
-                    const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `recording-${ROOM_ID}-${timestamp}.webm`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    showNotification('Recording downloaded (' + (blob.size / 1048576).toFixed(1) + ' MB)', 'success');
+                    // Fix WebM duration metadata so seeking works
+                    ysFixWebmDuration(rawBlob, duration, function(fixedBlob) {
+                        const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+                        const url = URL.createObjectURL(fixedBlob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `recording-${ROOM_ID}-${timestamp}.webm`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        showNotification('Recording downloaded (' + (fixedBlob.size / 1048576).toFixed(1) + ' MB)', 'success');
+                    });
                 };
 
                 mediaRecorder.start(1000);
@@ -1977,6 +2065,10 @@
             }
             document.getElementById('chat-panel').classList.toggle('open', chatOpen);
             document.getElementById('btn-chat').classList.toggle('active', chatOpen);
+            if (chatOpen) {
+                chatUnreadCount = 0;
+                updateChatBadge();
+            }
         });
         
         document.getElementById('chat-close').addEventListener('click', () => {
@@ -2194,6 +2286,19 @@
             }
         }
 
+        let chatUnreadCount = 0;
+
+        function updateChatBadge() {
+            const badge = document.getElementById('chat-badge');
+            if (!badge) return;
+            if (chatUnreadCount > 0) {
+                badge.textContent = chatUnreadCount > 99 ? '99+' : chatUnreadCount;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
         function displayChatMessage(sender, message, isOwn) {
             const chatMessages = document.getElementById('chat-messages');
             const messageEl = document.createElement('div');
@@ -2207,6 +2312,11 @@
             `;
             chatMessages.appendChild(messageEl);
             chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            if (!isOwn && !chatOpen) {
+                chatUnreadCount++;
+                updateChatBadge();
+            }
         }
         
         // ==================== PARTICIPANTS PANEL ====================

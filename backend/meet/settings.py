@@ -106,6 +106,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'django.middleware.cache.UpdateCacheMiddleware',
     'meet.middleware.SecurityHeadersMiddleware',  # Custom security headers
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Static files in production
@@ -121,7 +122,12 @@ MIDDLEWARE = [
     'billing.middleware.SubscriptionMiddleware',  # Plan limits injection
     'meet.middleware.SecurityLoggingMiddleware',  # Security logging
     'compliance.middleware.AuditTrailMiddleware',  # SOC 2 audit trail
+    'django.middleware.cache.FetchFromCacheMiddleware',
 ]
+
+CACHE_MIDDLEWARE_SECONDS = 0
+CACHE_MIDDLEWARE_ALIAS = 'default'
+CACHE_MIDDLEWARE_KEY_PREFIX = ''
 
 ROOT_URLCONF = 'meet.urls'
 

@@ -196,7 +196,7 @@ def remove_participant(request, room_id):
     """
     try:
         data = json.loads(request.body)
-        participant_identity = data.get('participant_identity')
+        participant_identity = data.get('participant_identity') or data.get('identity')
         
         if not participant_identity:
             return JsonResponse({'error': 'participant_identity is required'}, status=400)
