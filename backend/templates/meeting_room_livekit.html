@@ -192,7 +192,7 @@
             display: block;
             overflow: hidden;
             z-index: 1;
-            background: #000;
+            background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
         }
 
         /* Remote participant — always fullscreen, fills entire grid area */
@@ -1215,9 +1215,13 @@
         // ==================== ADMISSION VIA HTTP POLLING (works without WebSocket) ====================
         let pendingRequests = new Set();
 
-        function showAdmissionRequest(userId, username) {
+        function showAdmissionRequest(userId, username, isLocked) {
             if (pendingRequests.has(userId)) return; // Already showing
             pendingRequests.add(userId);
+
+            const subText = isLocked
+                ? '🔒 Room is locked — unlock the room to admit'
+                : 'Waiting for your approval';
 
             const toast = document.createElement('div');
             toast.className = 'notification-toast show';
@@ -1226,7 +1230,7 @@
             toast.innerHTML = `
                 <div style="flex:1;">
                     <div style="font-weight:600;margin-bottom:4px;">${username || 'Guest'} wants to join</div>
-                    <div style="font-size:12px;color:var(--text-muted);">Waiting for your approval</div>
+                    <div style="font-size:12px;color:var(--text-muted);">${subText}</div>
                 </div>
                 <button onclick="respondAdmission('${userId}', true, this.parentElement)" style="padding:8px 16px;background:var(--success);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Admit</button>
                 <button onclick="respondAdmission('${userId}', false, this.parentElement)" style="padding:8px 16px;background:var(--danger);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Deny</button>
@@ -1263,7 +1267,7 @@
                     if (resp.ok) {
                         const data = await resp.json();
                         if (data.requests && data.requests.length > 0) {
-                            data.requests.forEach(r => showAdmissionRequest(r.user_id, r.username));
+                            data.requests.forEach(r => showAdmissionRequest(r.user_id, r.username, data.is_locked));
                         }
                     }
                 } catch (e) {}
@@ -1410,6 +1414,22 @@
                 else container.prepend(placeholder);
             }
             document.getElementById('video-grid').appendChild(container);
+            const isDesktop = window.matchMedia('(min-width: 769px)').matches;
+            if (IS_MODERATOR) {
+                // Moderator view: own video is small PiP overlapping the centered guest video's corner
+                if (isDesktop) {
+                    container.style.cssText = 'position:fixed !important; top:auto !important; left:auto !important; transform:none !important; bottom:110px !important; right:calc((100vw - min(40vw, 420px)) / 2 - 30px) !important; width:140px !important; height:180px !important; z-index:50 !important; border-radius:15px !important; border:5px solid #6366f1 !important; overflow:hidden !important; flex:none !important;';
+                } else {
+                    container.style.cssText = 'position:fixed !important; top:auto !important; left:auto !important; transform:none !important; bottom:110px !important; right:12px !important; width:100px !important; height:133px !important; z-index:50 !important; border-radius:12px !important; border:5px solid #6366f1 !important; overflow:hidden !important; flex:none !important;';
+                }
+            } else {
+                // Guest view: own video is the BIG centered video (phone-shape on desktop, full on mobile)
+                if (isDesktop) {
+                    container.style.cssText = 'position:absolute !important; top:0 !important; left:50% !important; transform:translateX(-50%) !important; width:min(40vw, 420px) !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important;';
+                } else {
+                    container.style.cssText = 'position:absolute !important; top:0 !important; left:0 !important; width:100% !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important;';
+                }
+            }
         }
 
         function displayLocalScreenShare() {
@@ -1474,7 +1494,10 @@
             const videoContainer = document.getElementById(`video-${participant.sid}`);
             if (videoContainer) {
                 videoContainer.style.opacity = '0';
-                setTimeout(() => videoContainer.remove(), 300);
+                setTimeout(() => {
+                    videoContainer.remove();
+                    if (IS_MODERATOR) relayoutRemoteCameras();
+                }, 300);
             }
             updateParticipantCount();
             showNotification(`${participant.name} left`, 'info');
@@ -1516,7 +1539,7 @@
                 };
                 tryPlay();
                 // Also retry after a short delay
-                setTimeout(tryPlay, 1000);
+                setTimeout(tryPlay, 3000);
                 return;
             }
     
@@ -1555,11 +1578,34 @@
                     }
 
                     document.getElementById('video-grid').appendChild(container);
+
+                    if (!isScreenShare) {
+                        const isDesktop = window.matchMedia('(min-width: 769px)').matches;
+                        if (IS_MODERATOR) {
+                            // Moderator view: layout for ALL remote camera tiles is computed by
+                            // relayoutRemoteCameras() — called below, after this container is appended.
+                            // Just set a placeholder cssText so styles aren't undefined while relayout runs.
+                            if (isDesktop) {
+                                container.style.cssText = 'position:absolute !important; top:0 !important; left:50% !important; transform:translateX(-50%) !important; width:min(40vw, 420px) !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important;';
+                            } else {
+                                container.style.cssText = 'position:absolute !important; top:0 !important; left:0 !important; width:100% !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important;';
+                            }
+                        } else {
+                            // Guest view: remote (moderator) is small PiP overlapping the corner of guest's own big video
+                            if (isDesktop) {
+                                container.style.cssText = 'position:fixed !important; top:auto !important; left:auto !important; transform:none !important; bottom:110px !important; right:calc((100vw - min(40vw, 420px)) / 2 - 30px) !important; width:140px !important; height:180px !important; z-index:50 !important; border-radius:15px !important; border:5px solid #6366f1 !important; overflow:hidden !important; flex:none !important;';
+                            } else {
+                                container.style.cssText = 'position:fixed !important; top:auto !important; left:auto !important; transform:none !important; bottom:110px !important; right:12px !important; width:100px !important; height:133px !important; z-index:50 !important; border-radius:12px !important; border:5px solid #6366f1 !important; overflow:hidden !important; flex:none !important;';
+                            }
+                        }
+                    }
                 }
 
                 const element = track.attach();
                 if (isScreenShare) {
                     element.style.objectFit = 'contain';
+                } else {
+                    element.style.cssText = 'width:100% !important; height:100% !important; object-fit:cover !important; background:transparent !important;';
                 }
                 const existingVid = container.querySelector('video');
                 if (existingVid) {
@@ -1567,6 +1613,40 @@
                 } else {
                     container.prepend(element);
                 }
+
+                // For moderator view: re-layout all remote camera tiles so multiple guests are visible
+                if (!isScreenShare && IS_MODERATOR) {
+                    relayoutRemoteCameras();
+                }
+            }
+        }
+
+        // Re-layout all remote camera tiles based on count (moderator view).
+        // 1 tile = centered phone-shape (current behaviour). 2+ tiles = stacked side-by-side.
+        function relayoutRemoteCameras() {
+            if (!IS_MODERATOR) return;
+            const remotes = Array.from(document.querySelectorAll('#video-grid .video-container:not(#video-local):not(.screen-share)'));
+            const count = remotes.length;
+            if (count === 0) return;
+
+            const isDesktop = window.matchMedia('(min-width: 769px)').matches;
+
+            if (isDesktop) {
+                const maxTileWidth = 420;
+                const desiredTotal = count * maxTileWidth;
+                const actualTotal = Math.min(desiredTotal, window.innerWidth - 40);
+                const tileWidth = actualTotal / count;
+                const startLeft = (window.innerWidth - actualTotal) / 2;
+                remotes.forEach((container, i) => {
+                    const left = startLeft + tileWidth * i;
+                    container.style.cssText = `position:absolute !important; top:0 !important; left:${left}px !important; transform:none !important; width:${tileWidth}px !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important;`;
+                });
+            } else {
+                // Mobile: stack vertically, equal share of height
+                const tileHeightPct = 100 / count;
+                remotes.forEach((container, i) => {
+                    container.style.cssText = `position:absolute !important; top:${tileHeightPct * i}% !important; left:0 !important; transform:none !important; width:100% !important; height:${tileHeightPct}% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important;`;
+                });
             }
         }
 
@@ -1775,18 +1855,35 @@
         let recordingTrackHandlers = null;
         let recordingMimeType = null;
 
+        let recordingDisplayStream = null;
+        let recordingMicStream = null;
+
         async function startClientRecording() {
             try {
-                if (!livekitClient || !livekitClient.room) {
-                    throw new Error('Not connected to the meeting yet');
+                // Capture the whole tab/window/screen — picks up both moderator and guest videos
+                recordingDisplayStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { frameRate: 30 },
+                    audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 },
+                    preferCurrentTab: true
+                });
+
+                const displayVideoTrack = recordingDisplayStream.getVideoTracks()[0];
+                if (!displayVideoTrack) {
+                    throw new Error('No video track captured from screen');
                 }
 
-                const localVideoLK = livekitClient.localTracks.find(t => t.kind === 'video');
-                const localVideoMST = localVideoLK && localVideoLK.mediaStreamTrack;
-                if (!localVideoMST) {
-                    throw new Error('Local camera not available — turn on your camera before recording');
+                // Try to also capture the mic so the moderator's voice is recorded
+                // even if the OS doesn't share system audio
+                try {
+                    recordingMicStream = await navigator.mediaDevices.getUserMedia({
+                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+                    });
+                } catch (e) {
+                    console.warn('Mic capture for recording failed:', e.message);
+                    recordingMicStream = null;
                 }
 
+                // Mix display audio + mic audio into one track
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 recordingAudioCtx = new AudioCtx();
                 if (recordingAudioCtx.state === 'suspended') {
@@ -1806,51 +1903,20 @@
                     }
                 };
 
-                const removeAudioTrack = (key) => {
-                    const src = recordingAudioSources.get(key);
-                    if (src) {
-                        try { src.disconnect(); } catch (e) {}
-                        recordingAudioSources.delete(key);
-                    }
-                };
-
-                const localAudioLK = livekitClient.localTracks.find(t => t.kind === 'audio');
-                if (localAudioLK && localAudioLK.mediaStreamTrack) {
-                    addAudioTrack('local', localAudioLK.mediaStreamTrack);
+                recordingDisplayStream.getAudioTracks().forEach((t, i) => addAudioTrack(`display-${i}`, t));
+                if (recordingMicStream) {
+                    recordingMicStream.getAudioTracks().forEach((t, i) => addAudioTrack(`mic-${i}`, t));
                 }
-
-                if (livekitClient.room.remoteParticipants) {
-                    for (const [, participant] of livekitClient.room.remoteParticipants) {
-                        const pubs = participant.audioTrackPublications || participant.trackPublications;
-                        if (pubs && pubs.forEach) {
-                            pubs.forEach((pub) => {
-                                const track = pub.track || pub.audioTrack;
-                                if (!track || track.kind !== 'audio') return;
-                                const mst = track.mediaStreamTrack;
-                                const key = `remote-${participant.identity}-${pub.trackSid || pub.sid || track.sid || ''}`;
-                                addAudioTrack(key, mst);
-                            });
-                        }
-                    }
-                }
-
-                recordingTrackHandlers = {
-                    onSubscribed: (track, publication, participant) => {
-                        if (!track || track.kind !== 'audio') return;
-                        const key = `remote-${participant.identity}-${publication.trackSid || publication.sid || track.sid || ''}`;
-                        addAudioTrack(key, track.mediaStreamTrack);
-                    },
-                    onUnsubscribed: (track, publication, participant) => {
-                        if (!track || track.kind !== 'audio') return;
-                        const key = `remote-${participant.identity}-${publication.trackSid || publication.sid || track.sid || ''}`;
-                        removeAudioTrack(key);
-                    }
-                };
-                livekitClient.room.on(LivekitClient.RoomEvent.TrackSubscribed, recordingTrackHandlers.onSubscribed);
-                livekitClient.room.on(LivekitClient.RoomEvent.TrackUnsubscribed, recordingTrackHandlers.onUnsubscribed);
 
                 const mixedAudioTracks = recordingDestination.stream.getAudioTracks();
-                const captureStream = new MediaStream([localVideoMST, ...mixedAudioTracks]);
+                const captureStream = new MediaStream([displayVideoTrack, ...mixedAudioTracks]);
+
+                // Stop recording cleanly when the user clicks browser's "Stop sharing"
+                displayVideoTrack.onended = () => {
+                    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                        stopClientRecording();
+                    }
+                };
 
                 let mimeType = 'video/webm;codecs=vp8,opus';
                 if (!MediaRecorder.isTypeSupported(mimeType)) {
@@ -1876,10 +1942,13 @@
                     console.log('Recording stopped. Size:', rawBlob.size, 'bytes');
                     recordedChunks = [];
 
-                    if (recordingTrackHandlers && livekitClient && livekitClient.room) {
-                        try { livekitClient.room.off(LivekitClient.RoomEvent.TrackSubscribed, recordingTrackHandlers.onSubscribed); } catch (e) {}
-                        try { livekitClient.room.off(LivekitClient.RoomEvent.TrackUnsubscribed, recordingTrackHandlers.onUnsubscribed); } catch (e) {}
-                        recordingTrackHandlers = null;
+                    if (recordingDisplayStream) {
+                        try { recordingDisplayStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+                        recordingDisplayStream = null;
+                    }
+                    if (recordingMicStream) {
+                        try { recordingMicStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+                        recordingMicStream = null;
                     }
                     if (recordingAudioSources) {
                         recordingAudioSources.forEach((src) => { try { src.disconnect(); } catch (e) {} });
@@ -1928,16 +1997,19 @@
                 }, 1000);
 
                 document.getElementById('btn-record').classList.add('recording');
-                showNotification('Recording started', 'success');
+                showNotification('Recording started — capturing the whole screen', 'success');
 
             } catch (err) {
                 console.error('Failed to start recording:', err);
                 showNotification('Failed to start recording: ' + err.message, 'error');
 
-                if (recordingTrackHandlers && livekitClient && livekitClient.room) {
-                    try { livekitClient.room.off(LivekitClient.RoomEvent.TrackSubscribed, recordingTrackHandlers.onSubscribed); } catch (e) {}
-                    try { livekitClient.room.off(LivekitClient.RoomEvent.TrackUnsubscribed, recordingTrackHandlers.onUnsubscribed); } catch (e) {}
-                    recordingTrackHandlers = null;
+                if (recordingDisplayStream) {
+                    try { recordingDisplayStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+                    recordingDisplayStream = null;
+                }
+                if (recordingMicStream) {
+                    try { recordingMicStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+                    recordingMicStream = null;
                 }
                 if (recordingAudioSources) {
                     recordingAudioSources.forEach((src) => { try { src.disconnect(); } catch (e) {} });

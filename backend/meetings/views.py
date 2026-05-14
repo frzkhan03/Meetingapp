@@ -399,12 +399,9 @@ def join_personal_room_view(request, room_id):
 
     # All attendees ALWAYS need host approval before joining
     if is_attendee:
-        # If room is LOCKED — completely blocked
-        if personal_room.is_locked:
-            messages.error(request, 'This room is locked. The host is not accepting new participants.')
-            return redirect('home')
-
-        # Check if host approved this guest via Redis (set by approve_guest_view)
+        # Check approval first — approved guests pass through even if room is locked.
+        # Locked rooms now also route to the pending flow (instead of an immediate block)
+        # so the moderator sees a join-request notification and can choose to unlock + admit.
         from django.core.cache import cache
         approved_key = f'approved_for_{room_id}'
         cache_approval_key = f'room_approval:{room_id}:{user_id}'
@@ -418,13 +415,13 @@ def join_personal_room_view(request, room_id):
                 request.session.pop(approved_key, None)
 
         if not is_approved:
-
             # User needs approval - redirect to pending/waiting page
             request.session['pending_room_id'] = str(room_id)
             request.session['pending_author_id'] = personal_room.user.id
             request.session['pending_user_id'] = user_id
             request.session['pending_username'] = username
             request.session['pending_token'] = token
+            request.session['pending_room_locked'] = personal_room.is_locked
             return redirect('pending_room')
 
     return render(request, 'meeting_room_livekit.html', {
@@ -769,7 +766,18 @@ def get_pending_requests_view(request, room_id):
     from django.core.cache import cache
     pending_key = f'pending_join:{room_id}'
     pending_list = cache.get(pending_key, [])
-    return JsonResponse({'requests': pending_list})
+
+    # Include lock state so the moderator's UI can prompt them to unlock
+    is_locked = False
+    personal_room = PersonalRoom.objects.filter(room_id=room_id).only('is_locked').first()
+    if personal_room:
+        is_locked = personal_room.is_locked
+    else:
+        meeting = Meeting.objects.filter(room_id=room_id).only('require_approval').first()
+        if meeting:
+            is_locked = meeting.require_approval
+
+    return JsonResponse({'requests': pending_list, 'is_locked': is_locked})
 
 
 def check_approval_view(request, room_id):

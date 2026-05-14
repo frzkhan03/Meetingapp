@@ -126,22 +126,32 @@ class LiveKitService:
     def remove_participant(self, room_id, participant_identity):
         """
         Remove a participant from a room (moderator action)
-        
+
         Args:
             room_id (str): Room identifier
             participant_identity (str): User ID to remove
         """
-        try:
-            room_service = api.RoomService()
-            room_service.remove_participant(
-                api.RoomParticipantIdentity(
-                    room=room_id,
-                    identity=participant_identity
+        from asgiref.sync import async_to_sync
+
+        # The server API uses HTTPS; the configured LIVEKIT_URL is the wss:// signaling URL
+        api_url = self.url.replace('wss://', 'https://').replace('ws://', 'http://')
+
+        async def _remove():
+            lkapi = api.LiveKitAPI(api_url, self.api_key, self.api_secret)
+            try:
+                await lkapi.room.remove_participant(
+                    api.RoomParticipantIdentity(
+                        room=room_id,
+                        identity=participant_identity
+                    )
                 )
-            )
-            
+            finally:
+                await lkapi.aclose()
+
+        try:
+            async_to_sync(_remove)()
             logger.info(f"Removed participant {participant_identity} from room {room_id}")
-            
+
         except Exception as e:
             logger.error(f"Failed to remove participant: {str(e)}")
             raise
