@@ -357,13 +357,18 @@
             backdrop-filter: blur(20px);
             border-top: 1px solid var(--glass-border);
             display: flex;
-            justify-content: center;
+            justify-content: safe center;
             align-items: center;
             gap: 16px;
             padding: 0 24px;
             z-index: 100;
             box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
         }
+        #controls-bar::-webkit-scrollbar { height: 4px; }
+        #controls-bar::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 2px; }
         
         /* BEAUTIFUL CONTROL BUTTONS */
         .control-btn {
@@ -510,6 +515,7 @@
             flex-direction: column;
             align-items: center;
             gap: 8px;
+            flex-shrink: 0;
         }
         
         .control-label {
@@ -949,6 +955,17 @@
             aspect-ratio: 16/9;
         }
 
+        /* Mid-width screens (smaller laptops, narrowed windows): scale controls down so all buttons fit */
+        @media (max-width: 1100px) and (min-width: 769px) {
+            #controls-bar { gap: 10px; padding: 0 12px; }
+            .control-btn { width: 52px; height: 52px; }
+            .control-btn svg { width: 22px; height: 22px; }
+            .control-btn.leave { width: 58px; height: 58px; }
+            .control-btn.leave svg { width: 26px; height: 26px; }
+            .control-label { font-size: 10px; }
+            .control-btn-wrapper { gap: 6px; }
+        }
+
         /* Responsive Design — Mobile */
         @media (max-width: 768px) {
             #top-bar {
@@ -1275,27 +1292,23 @@
         }
         
         // Resume AudioContext on user interaction (fixes browser autoplay policy)
-        // Resume audio playback on user interaction (fixes browser autoplay policy)
+        // Resume audio playback on user interaction (fixes browser autoplay policy).
         // LiveKit manages its own AudioContext — we must call room.startAudio()
-        // instead of creating a separate AudioContext which has no effect on LiveKit
-        let audioResumed = false;
+        // instead of creating a separate AudioContext which has no effect on LiveKit.
+        // We deliberately do NOT memoise success — every user gesture retries playback on
+        // any paused <audio> elements. This handles the case where the page is loaded
+        // via pasted URL (no initial user activation) and the remote audio track arrives
+        // AFTER the first click. Cheap to run; safely idempotent.
         async function resumeAudioPlayback() {
-            if (audioResumed) return;
             try {
-                // LiveKit's startAudio() resumes its internal AudioContext AND
-                // calls play() on all attached <audio> elements
                 if (livekitClient && livekitClient.room) {
                     await livekitClient.room.startAudio();
-                    console.log('LiveKit audio resumed after user interaction');
                 }
-                // Also force-play any audio elements that might have been blocked
                 document.querySelectorAll('audio').forEach(el => {
-                    el.play().catch(() => {});
+                    if (el.paused) el.play().catch(() => {});
                 });
-                audioResumed = true;
             } catch (e) {
                 console.warn('Audio resume attempt:', e.message);
-                // Don't mark as resumed — try again on next interaction
             }
         }
         // Listen for ANY user interaction to resume audio (keep trying until it works)
@@ -1525,16 +1538,25 @@
                 audioEl.setAttribute('playsinline', '');
                 document.body.appendChild(audioEl);
 
-                // Aggressive play — retry on failure
+                // Aggressive play — retry on failure. The retry listener stays attached
+                // (not once:true) so subsequent clicks keep retrying until playback succeeds.
+                // This is critical when the page is opened by pasting a URL — no initial
+                // user activation, so the first auto-play attempt is blocked.
+                const retryOnGesture = () => {
+                    if (audioEl.paused) audioEl.play().catch(() => {});
+                };
                 const tryPlay = () => {
                     audioEl.play().then(() => {
                         console.log('Audio playing for:', participant.identity);
+                        document.removeEventListener('click', retryOnGesture);
+                        document.removeEventListener('touchstart', retryOnGesture);
+                        document.removeEventListener('keydown', retryOnGesture);
                     }).catch(e => {
                         console.warn('Audio play blocked for', participant.identity, ':', e.message);
-                        // Retry on next user interaction
-                        document.addEventListener('click', () => {
-                            audioEl.play().catch(() => {});
-                        }, { once: true });
+                        // Persistent retry — fires on every gesture until playback works
+                        document.addEventListener('click', retryOnGesture);
+                        document.addEventListener('touchstart', retryOnGesture);
+                        document.addEventListener('keydown', retryOnGesture);
                     });
                 };
                 tryPlay();
@@ -1604,7 +1626,14 @@
                 const element = track.attach();
                 if (isScreenShare) {
                     element.style.objectFit = 'contain';
+                } else if (IS_MODERATOR) {
+                    // Moderator viewing remote (customer): use `contain` so the customer's
+                    // full body (head to toe) is visible for verification screenshots,
+                    // even when their phone-portrait video doesn't match the container aspect.
+                    element.style.cssText = 'width:100% !important; height:100% !important; object-fit:contain !important; background:transparent !important;';
                 } else {
+                    // Guest viewing remote (moderator): use `cover` so the moderator's
+                    // landscape webcam fills the small PiP cleanly without letterbox.
                     element.style.cssText = 'width:100% !important; height:100% !important; object-fit:cover !important; background:transparent !important;';
                 }
                 const existingVid = container.querySelector('video');
@@ -2462,7 +2491,45 @@
             if (livekitClient) await livekitClient.disconnect();
             if (timerInterval) clearInterval(timerInterval);
         });
-        
+
+        // Re-apply video tile layouts on window resize so the centered video and PiP stay
+        // properly positioned (relayoutRemoteCameras uses pixel values; local and guest-PiP
+        // cssText needs re-evaluation when crossing the 768px breakpoint).
+        const LOCAL_PIP_DESKTOP_CSS = 'position:fixed !important; top:auto !important; left:auto !important; transform:none !important; bottom:110px !important; right:calc((100vw - min(40vw, 420px)) / 2 - 30px) !important; width:140px !important; height:180px !important; z-index:50 !important; border-radius:15px !important; border:5px solid #6366f1 !important; overflow:hidden !important; flex:none !important;';
+        const LOCAL_PIP_MOBILE_CSS = 'position:fixed !important; top:auto !important; left:auto !important; transform:none !important; bottom:110px !important; right:12px !important; width:100px !important; height:133px !important; z-index:50 !important; border-radius:12px !important; border:5px solid #6366f1 !important; overflow:hidden !important; flex:none !important;';
+        const BIG_DESKTOP_CSS = 'position:absolute !important; top:0 !important; left:50% !important; transform:translateX(-50%) !important; width:min(40vw, 420px) !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important;';
+        const BIG_MOBILE_CSS = 'position:absolute !important; top:0 !important; left:0 !important; transform:none !important; width:100% !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important;';
+
+        let _resizeTimer = null;
+        window.addEventListener('resize', () => {
+            clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(() => {
+                const isDesktop = window.matchMedia('(min-width: 769px)').matches;
+
+                // Re-apply local container styles based on role + current viewport
+                const localContainer = document.getElementById('video-local');
+                if (localContainer) {
+                    if (IS_MODERATOR) {
+                        localContainer.style.cssText = isDesktop ? LOCAL_PIP_DESKTOP_CSS : LOCAL_PIP_MOBILE_CSS;
+                    } else {
+                        localContainer.style.cssText = isDesktop ? BIG_DESKTOP_CSS : BIG_MOBILE_CSS;
+                    }
+                }
+
+                // Re-apply remote container styles
+                if (IS_MODERATOR) {
+                    // Moderator: redistribute remote tiles for current viewport width
+                    relayoutRemoteCameras();
+                } else {
+                    // Guest: remote (moderator) is always a PiP
+                    const remotes = document.querySelectorAll('#video-grid .video-container:not(#video-local):not(.screen-share)');
+                    remotes.forEach(container => {
+                        container.style.cssText = isDesktop ? LOCAL_PIP_DESKTOP_CSS : LOCAL_PIP_MOBILE_CSS;
+                    });
+                }
+            }, 150);
+        });
+
         initializeMeeting();
     </script>
 </body>
