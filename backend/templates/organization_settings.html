@@ -604,6 +604,15 @@
                                             <ul class="dropdown-menu dropdown-menu-end">
                                                 {% if membership.moderator_link %}
                                                 <li>
+                                                    <a class="dropdown-item" href="{{ membership.moderator_link }}" target="_blank">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                            <polygon points="23 7 16 12 23 17 23 7"/>
+                                                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                                                        </svg>
+                                                        Open Member's Room
+                                                    </a>
+                                                </li>
+                                                <li>
                                                     <a class="dropdown-item" href="#" onclick="copyMemberLink('{{ membership.moderator_link }}', this); return false;">
                                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>

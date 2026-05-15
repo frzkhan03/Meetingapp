@@ -359,6 +359,9 @@ def organization_settings_view(request, org_id):
 
     for m in page_obj:
         room = rooms_by_user.get(m.user_id)
+        if not room and m.is_active:
+            # Lazily create room for members added before this fix
+            room, _ = PersonalRoom.objects.get_or_create(user=m.user, organization=org)
         if room:
             m.moderator_link = f"{base_url}{room.get_moderator_link()}"
             m.attendee_link = f"{base_url}{room.get_attendee_link()}"
@@ -421,7 +424,8 @@ def organization_add_member_view(request, org_id):
                     organization=org,
                     role=role
                 )
-                # Create personal room and update profile in background
+                # Create personal room immediately (synchronous, not Celery)
+                PersonalRoom.objects.get_or_create(user=existing_user, organization=org)
                 setup_user_in_org.delay(existing_user.id, str(org.id))
                 messages.success(request, f'{username} has been added to the organization.')
             return redirect('organization_settings', org_id=org.id)
@@ -445,7 +449,8 @@ def organization_add_member_view(request, org_id):
             user=user, organization=org, role=role
         )
 
-        # Create personal room in background
+        # Create personal room immediately (synchronous, not Celery)
+        PersonalRoom.objects.get_or_create(user=user, organization=org)
         setup_user_in_org.delay(user.id, str(org.id))
 
         # Send temporary password via email to the new user

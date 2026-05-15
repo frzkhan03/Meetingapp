@@ -321,6 +321,7 @@ def my_room_view(request):
     })
 
 
+@ensure_csrf_cookie
 def join_personal_room_view(request, room_id):
     """Join a personal room via token link"""
     import uuid
@@ -440,6 +441,7 @@ def join_personal_room_view(request, room_id):
     })
 
 
+@ensure_csrf_cookie
 def join_meeting_guest_view(request, room_id):
     """Allow anyone (including unregistered users) to join a scheduled meeting via token link"""
     import uuid
