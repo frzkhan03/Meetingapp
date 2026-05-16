@@ -1661,7 +1661,7 @@
             const isDesktop = window.matchMedia('(min-width: 769px)').matches;
 
             if (isDesktop) {
-                const maxTileWidth = 420;
+                const maxTileWidth = 520;
                 const desiredTotal = count * maxTileWidth;
                 const actualTotal = Math.min(desiredTotal, window.innerWidth - 40);
                 const tileWidth = actualTotal / count;
@@ -2131,14 +2131,30 @@
                     return;
                 }
 
-                // Capture the first active video (or local video)
-                let targetVideo = videos[0];
-                for (const v of videos) {
-                    if (v.srcObject && v.srcObject.getVideoTracks().length > 0) {
-                        targetVideo = v;
-                        break;
+                // Moderator: capture remote (guest) video only, never own camera
+                // Guest: capture own video (self-verification view)
+                let targetVideo = null;
+                if (IS_MODERATOR) {
+                    // Find a video in a non-local container that has an active track
+                    const remoteContainers = document.querySelectorAll('#video-grid .video-container:not(#video-local):not(.screen-share)');
+                    for (const c of remoteContainers) {
+                        const v = c.querySelector('video');
+                        if (v && v.srcObject && v.srcObject.getVideoTracks().length > 0) {
+                            targetVideo = v;
+                            break;
+                        }
                     }
                 }
+                if (!targetVideo) {
+                    // Fallback: first video with an active track
+                    for (const v of videos) {
+                        if (v.srcObject && v.srcObject.getVideoTracks().length > 0) {
+                            targetVideo = v;
+                            break;
+                        }
+                    }
+                }
+                if (!targetVideo) targetVideo = videos[0];
 
                 const canvas = document.createElement('canvas');
                 canvas.width = targetVideo.videoWidth || 1280;
