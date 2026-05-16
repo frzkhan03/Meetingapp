@@ -188,6 +188,15 @@ class LiveKitMeetingClient {
             console.log('Disconnected:', reason);
         });
         
+        // Audio playback blocked by browser autoplay policy
+        this.room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, () => {
+            if (!this.room.canPlaybackAudio) {
+                window.dispatchEvent(new CustomEvent('livekit-audio-blocked'));
+            } else {
+                window.dispatchEvent(new CustomEvent('livekit-audio-ok'));
+            }
+        });
+
         // Data received (for chat, etc.)
         this.room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
             const decoder = new TextDecoder();

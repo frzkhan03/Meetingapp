@@ -1202,6 +1202,11 @@
     </div>
 
     <!-- Reconnecting Overlay -->
+    <!-- Audio blocked banner — shown when browser autoplay policy mutes audio -->
+    <div id="audio-blocked-banner" style="display:none; position:fixed; top:0; left:0; right:0; z-index:9999; background:#e11d48; color:#fff; text-align:center; padding:12px 16px; font-size:15px; font-weight:600; cursor:pointer; letter-spacing:0.01em;" onclick="enableAudioNow()">
+        🔇 Audio is muted by your browser — tap here to enable sound
+    </div>
+
     <div id="reconnecting-overlay">
         <div class="reconnect-content">
             <div class="reconnect-spinner"></div>
@@ -1316,6 +1321,18 @@
             document.addEventListener(evt, resumeAudioPlayback, { once: false });
         });
 
+        // Audio blocked banner — shown/hidden by LiveKit AudioPlaybackStatusChanged event
+        async function enableAudioNow() {
+            await resumeAudioPlayback();
+            document.getElementById('audio-blocked-banner').style.display = 'none';
+        }
+        window.addEventListener('livekit-audio-blocked', () => {
+            document.getElementById('audio-blocked-banner').style.display = 'block';
+        });
+        window.addEventListener('livekit-audio-ok', () => {
+            document.getElementById('audio-blocked-banner').style.display = 'none';
+        });
+
         // Initialize meeting
         async function initializeMeeting() {
             // Check if mediaDevices is available (requires HTTPS or localhost)
@@ -1374,8 +1391,13 @@
                     if (livekitClient && livekitClient.room) {
                         try {
                             await livekitClient.room.startAudio();
+                            // If canPlaybackAudio is still false, show banner immediately
+                            if (!livekitClient.room.canPlaybackAudio) {
+                                document.getElementById('audio-blocked-banner').style.display = 'block';
+                            }
                         } catch (e) {
                             console.warn('Initial audio resume:', e.message);
+                            document.getElementById('audio-blocked-banner').style.display = 'block';
                         }
                     }
                 }, 500);
@@ -1661,7 +1683,7 @@
             const isDesktop = window.matchMedia('(min-width: 769px)').matches;
 
             if (isDesktop) {
-                const maxTileWidth = 520;
+                const maxTileWidth = 550;
                 const desiredTotal = count * maxTileWidth;
                 const actualTotal = Math.min(desiredTotal, window.innerWidth - 40);
                 const tileWidth = actualTotal / count;
