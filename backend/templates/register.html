@@ -210,6 +210,22 @@
                     })();
                     </script>
                     {% endif %}
+                    {% if registration_key_required %}
+                    <div class="mb-3">
+                        <label for="registration_key" class="form-label">
+                            Registration Key
+                            <span style="color:var(--danger,#ef4444);">*</span>
+                        </label>
+                        <input type="password" class="form-control" id="registration_key" name="registration_key"
+                               placeholder="Enter your registration key" autocomplete="off" required>
+                        {% if registration_key_error %}
+                        <small class="text-danger">{{ registration_key_error }}</small>
+                        {% endif %}
+                        <div class="form-text" style="color:var(--text-muted);font-size:0.8rem;margin-top:0.375rem;">
+                            Contact your administrator to get the registration key.
+                        </div>
+                    </div>
+                    {% endif %}
                     <div class="d-grid mb-4">
                         <button type="submit" class="btn btn-primary btn-lg">Create Account</button>
                     </div>

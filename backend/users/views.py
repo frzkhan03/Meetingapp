@@ -41,6 +41,22 @@ def register_view(request):
     subdomain_error = None
 
     if request.method == 'POST':
+        # Registration key check — reject immediately if key is wrong
+        required_key = settings.REGISTRATION_KEY
+        if required_key:
+            submitted_key = request.POST.get('registration_key', '').strip()
+            if submitted_key != required_key:
+                form = RegisterForm(request.POST)
+                return render(request, 'register.html', {
+                    'form': form,
+                    'registration_key_error': 'Invalid registration key. Please contact your administrator.',
+                    'organization_name_value': request.POST.get('organization_name', ''),
+                    'subdomain_value': request.POST.get('subdomain', ''),
+                    'selected_plan': request.POST.get('selected_plan', ''),
+                    'selected_cycle': request.POST.get('selected_cycle', 'monthly'),
+                    'registration_key_required': True,
+                })
+
         form = RegisterForm(request.POST)
         org_name = request.POST.get('organization_name', '').strip()
         subdomain = request.POST.get('subdomain', '').strip().lower()
@@ -146,6 +162,7 @@ def register_view(request):
         'subdomain_error': subdomain_error,
         'organization_name_value': request.POST.get('organization_name', '') if request.method == 'POST' else '',
         'subdomain_value': request.POST.get('subdomain', '') if request.method == 'POST' else '',
+        'registration_key_required': bool(settings.REGISTRATION_KEY),
     })
 
 

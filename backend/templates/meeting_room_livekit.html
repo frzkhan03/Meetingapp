@@ -1348,6 +1348,8 @@
                 livekitClient.onParticipantLeft = handleParticipantLeft;
                 livekitClient.onTrackSubscribed = handleTrackSubscribed;
                 livekitClient.onTrackUnsubscribed = handleTrackUnsubscribed;
+                livekitClient.onTrackMuted = handleTrackMuted;
+                livekitClient.onTrackUnmuted = handleTrackUnmuted;
                 livekitClient.onConnectionStateChanged = handleConnectionStateChanged;
                 livekitClient.onRecordingStateChanged = handleRecordingStateChanged;
                 livekitClient.onChatMessage = (sender, message) => {
@@ -1537,6 +1539,35 @@
             updateParticipantCount();
             showNotification(`${participant.name} left`, 'info');
         }
+
+        function handleTrackMuted(publication, participant) {
+            if (publication.kind !== 'video') return;
+            const container = document.getElementById(`video-${participant.sid}`);
+            if (!container) return;
+            // Show camera-off overlay so moderator knows guest turned camera off
+            let overlay = container.querySelector('.cam-off-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.className = 'cam-off-overlay';
+                overlay.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(15,23,42,0.85);z-index:10;gap:12px;';
+                overlay.innerHTML = `
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5">
+                        <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34"/>
+                        <line x1="1" y1="1" x2="23" y2="23" stroke="#ef4444"/>
+                    </svg>
+                    <span style="color:#94a3b8;font-size:14px;font-weight:600;letter-spacing:0.05em;">Camera Off</span>`;
+                container.appendChild(overlay);
+            }
+            overlay.style.display = 'flex';
+        }
+
+        function handleTrackUnmuted(publication, participant) {
+            if (publication.kind !== 'video') return;
+            const container = document.getElementById(`video-${participant.sid}`);
+            if (!container) return;
+            const overlay = container.querySelector('.cam-off-overlay');
+            if (overlay) overlay.style.display = 'none';
+        }
         
         function handleTrackSubscribed(track, publication, participant) {
             const isScreenShare = publication.source === 'screen_share' ||
@@ -1649,10 +1680,10 @@
                 if (isScreenShare) {
                     element.style.objectFit = 'contain';
                 } else if (IS_MODERATOR) {
-                    // Moderator viewing remote (customer): use `contain` so the customer's
-                    // full body (head to toe) is visible for verification screenshots,
-                    // even when their phone-portrait video doesn't match the container aspect.
-                    element.style.cssText = 'width:100% !important; height:100% !important; object-fit:contain !important; background:transparent !important;';
+                    // Moderator viewing remote (customer): scale up so portrait phone video
+                    // fills more of the container. 1.35 = ~35% zoom, slight top/bottom crop.
+                    // Increase the scale value to zoom in more, decrease to show more bars.
+                    element.style.cssText = 'width:100% !important; height:100% !important; object-fit:contain !important; background:transparent !important; transform:scale(1.35) !important;';
                 } else {
                     // Guest viewing remote (moderator): use `cover` so the moderator's
                     // landscape webcam fills the small PiP cleanly without letterbox.
@@ -1683,15 +1714,31 @@
             const isDesktop = window.matchMedia('(min-width: 769px)').matches;
 
             if (isDesktop) {
-                const maxTileWidth = 550;
+                const videoGridHeight = document.getElementById('video-grid').offsetHeight;
+                // Use whichever is larger: portrait phone ratio OR 40% of screen width.
+                // This keeps the tile wide in full screen without changing minimized view.
+                const maxTileWidth = Math.max(
+                    Math.round(videoGridHeight * 0.56),
+                    Math.round(window.innerWidth * 0.40)
+                );
                 const desiredTotal = count * maxTileWidth;
                 const actualTotal = Math.min(desiredTotal, window.innerWidth - 40);
                 const tileWidth = actualTotal / count;
                 const startLeft = (window.innerWidth - actualTotal) / 2;
                 remotes.forEach((container, i) => {
                     const left = startLeft + tileWidth * i;
-                    container.style.cssText = `position:absolute !important; top:0 !important; left:${left}px !important; transform:none !important; width:${tileWidth}px !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important;`;
+                    container.style.cssText = `position:absolute !important; top:0 !important; left:${left}px !important; transform:none !important; width:${tileWidth}px !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important; overflow:hidden !important;`;
                 });
+
+                // Fix PiP position to always overlap the guest tile's right corner,
+                // using the actual computed tileWidth instead of a hardcoded guess.
+                if (IS_MODERATOR) {
+                    const localContainer = document.getElementById('video-local');
+                    if (localContainer) {
+                        const pipRight = Math.max(Math.round((window.innerWidth - tileWidth) / 2) - 30, 12);
+                        localContainer.style.right = pipRight + 'px';
+                    }
+                }
             } else {
                 // Mobile: stack vertically, equal share of height
                 const tileHeightPct = 100 / count;

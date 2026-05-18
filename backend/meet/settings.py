@@ -440,6 +440,10 @@ LIVEKIT_API_KEY = os.getenv('LIVEKIT_API_KEY', '')
 LIVEKIT_API_SECRET = os.getenv('LIVEKIT_API_SECRET', '')
 LIVEKIT_URL = os.getenv('LIVEKIT_URL', '')  # wss://your-project.livekit.cloud
 
+# Registration key — anyone who wants to sign up must enter this key.
+# Set in .env as REGISTRATION_KEY=your-secret. Leave blank to disable the check.
+REGISTRATION_KEY = os.getenv('REGISTRATION_KEY', '')
+
 # Validate LiveKit config in production
 if PRODUCTION:
     if not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET or not LIVEKIT_URL:
