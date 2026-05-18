@@ -1013,7 +1013,7 @@
         }
     </style>
 </head>
-<body data-room-id="{{ room_id }}" data-username="{{ username }}" data-is-moderator="{% if is_moderator %}true{% else %}false{% endif %}">
+<body data-room-id="{{ room_id }}" data-username="{{ username }}" data-is-moderator="{% if is_moderator %}true{% else %}false{% endif %}" data-moderator-proof="{{ moderator_proof }}">
     <!-- Top Header Bar -->
     <div id="top-bar">
         <div id="meeting-title">
@@ -1220,6 +1220,7 @@
         const ROOM_ID = document.body.dataset.roomId;
         const USERNAME = document.body.dataset.username;
         const IS_MODERATOR = document.body.dataset.isModerator === 'true';
+        const MODERATOR_PROOF = document.body.dataset.moderatorProof || '';
         // LiveKit client instance
         let livekitClient = null;
         
@@ -1236,10 +1237,40 @@
 
         // ==================== ADMISSION VIA HTTP POLLING (works without WebSocket) ====================
         let pendingRequests = new Set();
+        const admissionAlerts = new Map(); // userId → interval ID for voice alerts
+
+        function stopAdmissionAlert(userId) {
+            if (admissionAlerts.has(userId)) {
+                clearInterval(admissionAlerts.get(userId));
+                admissionAlerts.delete(userId);
+            }
+            pendingRequests.delete(userId);
+            window.speechSynthesis && window.speechSynthesis.cancel();
+            const toast = document.getElementById(`admit-${userId}`);
+            if (toast) toast.remove();
+        }
+
+        function speakJoinRequest(username) {
+            if (!window.speechSynthesis) return;
+            window.speechSynthesis.cancel();
+            const msg = new SpeechSynthesisUtterance(`${username} wants to join`);
+            msg.lang   = 'en-IN';  // Indian English accent
+            msg.rate   = 0.88;     // slightly slow — clearer
+            msg.pitch  = 0.95;     // natural, soft
+            msg.volume = 0.75;     // not too loud
+            window.speechSynthesis.speak(msg);
+        }
 
         function showAdmissionRequest(userId, username, isLocked) {
             if (pendingRequests.has(userId)) return; // Already showing
             pendingRequests.add(userId);
+
+            // Speak immediately, then every 10 seconds until admitted/denied
+            speakJoinRequest(username || 'Guest');
+            const intervalId = setInterval(() => {
+                if (pendingRequests.has(userId)) speakJoinRequest(username || 'Guest');
+            }, 10000);
+            admissionAlerts.set(userId, intervalId);
 
             const subText = isLocked
                 ? '🔒 Room is locked — unlock the room to admit'
@@ -1258,10 +1289,15 @@
                 <button onclick="respondAdmission('${userId}', false, this.parentElement)" style="padding:8px 16px;background:var(--danger);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Deny</button>
             `;
             document.body.appendChild(toast);
-            setTimeout(() => { if (toast.parentElement) { toast.remove(); pendingRequests.delete(userId); } }, 120000);
+            setTimeout(() => {
+                if (toast.parentElement) { toast.remove(); }
+                stopAdmissionAlert(userId);
+            }, 120000);
         }
 
         async function respondAdmission(userId, approved, toastEl) {
+            stopAdmissionAlert(userId);
+
             try {
                 await fetch(`/meeting/room/${ROOM_ID}/approve-guest/`, {
                     method: 'POST',
@@ -1288,6 +1324,11 @@
                     });
                     if (resp.ok) {
                         const data = await resp.json();
+                        const activeIds = new Set((data.requests || []).map(r => r.user_id));
+                        // Stop alerts for requests no longer pending (guest joined or timed out)
+                        for (const uid of admissionAlerts.keys()) {
+                            if (!activeIds.has(uid)) stopAdmissionAlert(uid);
+                        }
                         if (data.requests && data.requests.length > 0) {
                             data.requests.forEach(r => showAdmissionRequest(r.user_id, r.username, data.is_locked));
                         }
@@ -1523,6 +1564,8 @@
         }
         
         function handleParticipantJoined(participant) {
+            // Stop any beep alert for this participant — they've actually joined
+            stopAdmissionAlert(participant.identity);
             updateParticipantCount();
             showNotification(`${participant.name} joined`, 'info');
         }
@@ -1970,16 +2013,15 @@
                     throw new Error('No video track captured from screen');
                 }
 
-                // Try to also capture the mic so the moderator's voice is recorded
-                // even if the OS doesn't share system audio
-                try {
-                    recordingMicStream = await navigator.mediaDevices.getUserMedia({
-                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-                    });
-                } catch (e) {
-                    console.warn('Mic capture for recording failed:', e.message);
-                    recordingMicStream = null;
-                }
+                // Use LiveKit's own local audio track for recording mic input.
+                // This respects mute state — when moderator mutes, track.enabled=false,
+                // so recording goes silent automatically. No separate getUserMedia needed.
+                const lkAudioTrack = livekitClient && livekitClient.localTracks
+                    ? livekitClient.localTracks.find(t => t.kind === 'audio')
+                    : null;
+                recordingMicStream = (lkAudioTrack && lkAudioTrack.mediaStreamTrack)
+                    ? new MediaStream([lkAudioTrack.mediaStreamTrack])
+                    : null;
 
                 // Mix display audio + mic audio into one track
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -2477,7 +2519,7 @@
         async function removeParticipant(identity) {
             if (!confirm(`Remove ${identity} from the meeting?`)) return;
             try {
-                await livekitClient.removeParticipant(identity);
+                await livekitClient.removeParticipant(identity, MODERATOR_PROOF);
                 showNotification(`Removed ${identity}`, 'success');
                 updateParticipantsList();
             } catch (err) {

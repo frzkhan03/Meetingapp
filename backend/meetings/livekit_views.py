@@ -183,28 +183,40 @@ def list_participants(request, room_id):
         return JsonResponse({'error': 'Failed to list participants'}, status=500)
 
 
-@login_required
 @require_http_methods(["POST"])
 def remove_participant(request, room_id):
     """
     Remove a participant from the room (moderator only)
-    
+
     POST /api/livekit/room/<room_id>/remove-participant/
     Body: {
-        "participant_identity": "12345"
+        "participant_identity": "12345",
+        "moderator_proof": "<signed token>"  // required if not logged in
     }
     """
     try:
         data = json.loads(request.body)
         participant_identity = data.get('participant_identity') or data.get('identity')
-        
+
         if not participant_identity:
             return JsonResponse({'error': 'participant_identity is required'}, status=400)
-        
-        # Verify user is moderator
-        room_access = check_room_access(request.user, room_id)
-        if not room_access['allowed'] or not (room_access.get('is_host') or room_access.get('is_moderator')):
-            return JsonResponse({'error': 'Only moderators can remove participants'}, status=403)
+
+        # Verify moderator: logged-in users use check_room_access;
+        # unauthenticated moderators (joined via link) use signed moderator_proof token.
+        if request.user.is_authenticated:
+            room_access = check_room_access(request.user, room_id)
+            if not room_access['allowed'] or not (room_access.get('is_host') or room_access.get('is_moderator')):
+                return JsonResponse({'error': 'Only moderators can remove participants'}, status=403)
+        else:
+            from django.core.signing import TimestampSigner, BadSignature
+            signer = TimestampSigner(salt='moderator-proof')
+            proof = data.get('moderator_proof', '')
+            try:
+                signed_room = signer.unsign(proof, max_age=86400)
+                if signed_room != str(room_id):
+                    raise BadSignature()
+            except Exception:
+                return JsonResponse({'error': 'Invalid moderator proof'}, status=403)
         
         # Remove participant
         livekit = get_livekit_service()

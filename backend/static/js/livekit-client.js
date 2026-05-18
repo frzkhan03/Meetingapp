@@ -523,7 +523,7 @@ class LiveKitMeetingClient {
     /**
      * Remove a participant from the room (moderator only)
      */
-    async removeParticipant(participantIdentity) {
+    async removeParticipant(participantIdentity, moderatorProof = '') {
         try {
             const response = await fetch(`/meeting/api/livekit/room/${this.roomId}/remove-participant/`, {
                 method: 'POST',
@@ -531,7 +531,7 @@ class LiveKitMeetingClient {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': this.getCookie('csrftoken')
                 },
-                body: JSON.stringify({ identity: participantIdentity })
+                body: JSON.stringify({ identity: participantIdentity, moderator_proof: moderatorProof })
             });
             if (!response.ok) throw new Error('Failed to remove participant');
             return await response.json();
