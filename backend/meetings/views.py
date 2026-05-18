@@ -24,6 +24,16 @@ def _sign_moderator_proof(room_id):
     return _moderator_signer.sign(room_id)
 
 
+def _verify_moderator_proof(proof, room_id):
+    """Return True if the signed proof is valid for this room (max 24h old)."""
+    try:
+        from django.core.signing import BadSignature
+        signed_room = _moderator_signer.unsign(proof, max_age=86400)
+        return signed_room == str(room_id)
+    except Exception:
+        return False
+
+
 def home_view(request):
     context = {}
     if request.user.is_authenticated:
@@ -765,6 +775,15 @@ def mark_guest_approved_view(request, room_id):
 
 def get_pending_requests_view(request, room_id):
     """Get pending join requests for a room (host polls this)"""
+    # Verify caller is a legitimate moderator for this room
+    proof = request.GET.get('proof', '') or request.headers.get('X-Moderator-Proof', '')
+    if request.user.is_authenticated:
+        room_access = check_room_access(request.user, room_id)
+        if not room_access['allowed']:
+            return JsonResponse({'requests': [], 'is_locked': False})
+    elif not _verify_moderator_proof(proof, room_id):
+        return JsonResponse({'requests': [], 'is_locked': False})
+
     from django.core.cache import cache
     pending_key = f'pending_join:{room_id}'
     pending_list = cache.get(pending_key, [])
@@ -803,6 +822,16 @@ def approve_guest_view(request, room_id):
         data = json.loads(request.body)
         user_id = data.get('user_id', '')
         approved = data.get('approved', False)
+
+        # Verify caller is a legitimate moderator for this room
+        if request.user.is_authenticated:
+            room_access = check_room_access(request.user, room_id)
+            if not room_access['allowed']:
+                return JsonResponse({'error': 'Access denied'}, status=403)
+        else:
+            proof = data.get('moderator_proof', '')
+            if not _verify_moderator_proof(proof, room_id):
+                return JsonResponse({'error': 'Access denied'}, status=403)
 
         from django.core.cache import cache
 

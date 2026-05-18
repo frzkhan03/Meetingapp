@@ -1305,7 +1305,7 @@
                         'Content-Type': 'application/json',
                         'X-CSRFToken': getCookie('csrftoken')
                     },
-                    body: JSON.stringify({ user_id: userId, approved: approved })
+                    body: JSON.stringify({ user_id: userId, approved: approved, moderator_proof: MODERATOR_PROOF })
                 });
             } catch (e) {
                 console.error('Approve/deny failed:', e);
@@ -1319,7 +1319,7 @@
         if (IS_MODERATOR) {
             setInterval(async () => {
                 try {
-                    const resp = await fetch(`/meeting/room/${ROOM_ID}/pending-requests/`, {
+                    const resp = await fetch(`/meeting/room/${ROOM_ID}/pending-requests/?proof=${encodeURIComponent(MODERATOR_PROOF)}`, {
                         headers: { 'X-CSRFToken': getCookie('csrftoken') }
                     });
                     if (resp.ok) {
