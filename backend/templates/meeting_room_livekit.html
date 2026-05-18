@@ -1434,7 +1434,11 @@
                     if (livekitClient && livekitClient.room) {
                         try {
                             await livekitClient.room.startAudio();
-                            // If canPlaybackAudio is still false, show banner immediately
+                            // After unlocking AudioContext, retry any audio elements that
+                            // arrived before startAudio() and are still paused.
+                            document.querySelectorAll('audio').forEach(el => {
+                                if (el.paused) el.play().catch(() => {});
+                            });
                             if (!livekitClient.room.canPlaybackAudio) {
                                 document.getElementById('audio-blocked-banner').style.display = 'block';
                             }
@@ -1634,30 +1638,52 @@
                 audioEl.setAttribute('playsinline', '');
                 document.body.appendChild(audioEl);
 
-                // Aggressive play — retry on failure. The retry listener stays attached
-                // (not once:true) so subsequent clicks keep retrying until playback succeeds.
-                // This is critical when the page is opened by pasting a URL — no initial
-                // user activation, so the first auto-play attempt is blocked.
+                // Play the audio element. If blocked by autoplay policy, retry on
+                // every user gesture until it succeeds. Listeners are always removed
+                // on success (or when this audio element is replaced on rejoin) to
+                // prevent stale listener accumulation across multiple sessions.
+                let retryAttached = false;
                 const retryOnGesture = () => {
-                    if (audioEl.paused) audioEl.play().catch(() => {});
+                    audioEl.play().then(() => {
+                        document.removeEventListener('click', retryOnGesture);
+                        document.removeEventListener('touchstart', retryOnGesture);
+                        document.removeEventListener('keydown', retryOnGesture);
+                        retryAttached = false;
+                    }).catch(() => {});
                 };
+                const attachRetry = () => {
+                    if (!retryAttached) {
+                        document.addEventListener('click', retryOnGesture);
+                        document.addEventListener('touchstart', retryOnGesture);
+                        document.addEventListener('keydown', retryOnGesture);
+                        retryAttached = true;
+                    }
+                };
+                // Clean up listeners if this element is later removed (rejoin scenario)
+                const observer = new MutationObserver(() => {
+                    if (!document.body.contains(audioEl)) {
+                        document.removeEventListener('click', retryOnGesture);
+                        document.removeEventListener('touchstart', retryOnGesture);
+                        document.removeEventListener('keydown', retryOnGesture);
+                        observer.disconnect();
+                    }
+                });
+                observer.observe(document.body, { childList: true, subtree: false });
+
                 const tryPlay = () => {
                     audioEl.play().then(() => {
                         console.log('Audio playing for:', participant.identity);
                         document.removeEventListener('click', retryOnGesture);
                         document.removeEventListener('touchstart', retryOnGesture);
                         document.removeEventListener('keydown', retryOnGesture);
+                        retryAttached = false;
                     }).catch(e => {
                         console.warn('Audio play blocked for', participant.identity, ':', e.message);
-                        // Persistent retry — fires on every gesture until playback works
-                        document.addEventListener('click', retryOnGesture);
-                        document.addEventListener('touchstart', retryOnGesture);
-                        document.addEventListener('keydown', retryOnGesture);
+                        attachRetry();
                     });
                 };
                 tryPlay();
-                // Also retry after a short delay
-                setTimeout(tryPlay, 3000);
+                setTimeout(tryPlay, 2000);
                 return;
             }
     
