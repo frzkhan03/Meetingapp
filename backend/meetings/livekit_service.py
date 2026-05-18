@@ -71,54 +71,69 @@ class LiveKitService:
             logger.error(f"Failed to generate LiveKit token: {str(e)}")
             raise
     
+    def _api_url(self):
+        """Convert wss:// signaling URL to https:// REST API URL."""
+        return self.url.replace('wss://', 'https://').replace('ws://', 'http://')
+
     def create_room(self, room_id, empty_timeout=300, max_participants=100):
         """
         Create a LiveKit room with specific settings
-        
+
         Args:
             room_id (str): Unique room identifier
             empty_timeout (int): Seconds before empty room is closed (default: 5 min)
             max_participants (int): Maximum allowed participants
-            
+
         Returns:
             Room object
         """
-        try:
-            room_service = api.RoomService()
-            
-            room = room_service.create_room(
-                api.CreateRoomRequest(
-                    name=room_id,
-                    empty_timeout=empty_timeout,
-                    max_participants=max_participants,
+        from asgiref.sync import async_to_sync
+
+        async def _create():
+            lkapi = api.LiveKitAPI(self._api_url(), self.api_key, self.api_secret)
+            try:
+                return await lkapi.room.create_room(
+                    api.CreateRoomRequest(
+                        name=room_id,
+                        empty_timeout=empty_timeout,
+                        max_participants=max_participants,
+                    )
                 )
-            )
-            
+            finally:
+                await lkapi.aclose()
+
+        try:
+            room = async_to_sync(_create)()
             logger.info(f"Created LiveKit room: {room_id}")
             return room
-            
         except Exception as e:
             logger.error(f"Failed to create room {room_id}: {str(e)}")
             raise
-    
+
     def list_participants(self, room_id):
         """
         Get list of current participants in a room
-        
+
         Args:
             room_id (str): Room identifier
-            
+
         Returns:
             list: List of participant objects
         """
+        from asgiref.sync import async_to_sync
+
+        async def _list():
+            lkapi = api.LiveKitAPI(self._api_url(), self.api_key, self.api_secret)
+            try:
+                resp = await lkapi.room.list_participants(
+                    api.ListParticipantsRequest(room=room_id)
+                )
+                return resp.participants
+            finally:
+                await lkapi.aclose()
+
         try:
-            room_service = api.RoomService()
-            participants = room_service.list_participants(
-                api.ListParticipantsRequest(room=room_id)
-            )
-            
-            return participants.participants
-            
+            return async_to_sync(_list)()
         except Exception as e:
             logger.error(f"Failed to list participants for room {room_id}: {str(e)}")
             return []
@@ -159,25 +174,31 @@ class LiveKitService:
     def mute_participant(self, room_id, participant_identity, track_type='audio'):
         """
         Mute a participant's audio or video (moderator action)
-        
+
         Args:
             room_id (str): Room identifier
             participant_identity (str): User ID to mute
             track_type (str): 'audio' or 'video'
         """
-        try:
-            room_service = api.RoomService()
-            room_service.mute_published_track(
-                api.MuteRoomTrackRequest(
-                    room=room_id,
-                    identity=participant_identity,
-                    track_sid='',  # Empty means mute all tracks of this type
-                    muted=True
+        from asgiref.sync import async_to_sync
+
+        async def _mute():
+            lkapi = api.LiveKitAPI(self._api_url(), self.api_key, self.api_secret)
+            try:
+                await lkapi.room.mute_published_track(
+                    api.MuteRoomTrackRequest(
+                        room=room_id,
+                        identity=participant_identity,
+                        track_sid='',
+                        muted=True,
+                    )
                 )
-            )
-            
+            finally:
+                await lkapi.aclose()
+
+        try:
+            async_to_sync(_mute)()
             logger.info(f"Muted {track_type} for {participant_identity} in room {room_id}")
-            
         except Exception as e:
             logger.error(f"Failed to mute participant: {str(e)}")
             raise
@@ -193,45 +214,45 @@ class LiveKitService:
         Returns:
             EgressInfo object with recording details
         """
-        try:
-            egress_service = api.EgressService()
-            
-            # Use room_id as filename if not provided
-            timestamp = int(time.time())
-            filename = output_filename or f"recordings/{room_id}_{timestamp}.mp4"
-            
-            # Get AWS credentials from Django settings
-            aws_access_key = settings.AWS_ACCESS_KEY_ID
-            aws_secret_key = settings.AWS_SECRET_ACCESS_KEY
-            aws_bucket = settings.AWS_S3_BUCKET_NAME
-            aws_region = settings.AWS_S3_REGION
-            
-            # Configure S3 output with direct credentials
-            egress = egress_service.start_room_composite_egress(
-                api.RoomCompositeEgressRequest(
-                    room_name=room_id,
-                    layout="grid",  # Grid layout for all participants
-                    audio_only=False,
-                    video_only=False,
-                    file_outputs=[
-                        api.EncodedFileOutput(
-                            file_type=api.EncodedFileType.MP4,
-                            filepath=filename,
-                            # Direct S3 upload configuration
-                            s3=api.S3Upload(
-                                access_key=aws_access_key,
-                                secret=aws_secret_key,
-                                region=aws_region,
-                                bucket=aws_bucket,
+        from asgiref.sync import async_to_sync
+
+        timestamp = int(time.time())
+        filename = output_filename or f"recordings/{room_id}_{timestamp}.mp4"
+        aws_access_key = settings.AWS_ACCESS_KEY_ID
+        aws_secret_key = settings.AWS_SECRET_ACCESS_KEY
+        aws_bucket = settings.AWS_S3_BUCKET_NAME
+        aws_region = settings.AWS_S3_REGION
+
+        async def _start():
+            lkapi = api.LiveKitAPI(self._api_url(), self.api_key, self.api_secret)
+            try:
+                return await lkapi.egress.start_room_composite_egress(
+                    api.RoomCompositeEgressRequest(
+                        room_name=room_id,
+                        layout="grid",
+                        audio_only=False,
+                        video_only=False,
+                        file_outputs=[
+                            api.EncodedFileOutput(
+                                file_type=api.EncodedFileType.MP4,
+                                filepath=filename,
+                                s3=api.S3Upload(
+                                    access_key=aws_access_key,
+                                    secret=aws_secret_key,
+                                    region=aws_region,
+                                    bucket=aws_bucket,
+                                )
                             )
-                        )
-                    ]
+                        ]
+                    )
                 )
-            )
-            
+            finally:
+                await lkapi.aclose()
+
+        try:
+            egress = async_to_sync(_start)()
             logger.info(f"Started recording for room {room_id}, egress_id: {egress.egress_id}, S3: s3://{aws_bucket}/{filename}")
             return egress
-            
         except Exception as e:
             logger.error(f"Failed to start recording for room {room_id}: {str(e)}")
             raise
@@ -243,12 +264,20 @@ class LiveKitService:
         Args:
             egress_id (str): Egress/recording identifier
         """
+        from asgiref.sync import async_to_sync
+
+        async def _stop():
+            lkapi = api.LiveKitAPI(self._api_url(), self.api_key, self.api_secret)
+            try:
+                await lkapi.egress.stop_egress(
+                    api.StopEgressRequest(egress_id=egress_id)
+                )
+            finally:
+                await lkapi.aclose()
+
         try:
-            egress_service = api.EgressService()
-            egress_service.stop_egress(egress_id)
-            
+            async_to_sync(_stop)()
             logger.info(f"Stopped recording: {egress_id}")
-            
         except Exception as e:
             logger.error(f"Failed to stop recording {egress_id}: {str(e)}")
             raise
@@ -263,14 +292,19 @@ class LiveKitService:
         Returns:
             EgressInfo object
         """
+        from asgiref.sync import async_to_sync
+
+        async def _info():
+            lkapi = api.LiveKitAPI(self._api_url(), self.api_key, self.api_secret)
+            try:
+                return await lkapi.egress.list_egress(
+                    api.ListEgressRequest(egress_id=egress_id)
+                )
+            finally:
+                await lkapi.aclose()
+
         try:
-            egress_service = api.EgressService()
-            egress = egress_service.list_egress(
-                api.ListEgressRequest(room_name='', egress_id=egress_id)
-            )
-            
-            return egress
-            
+            return async_to_sync(_info)()
         except Exception as e:
             logger.error(f"Failed to get recording info for {egress_id}: {str(e)}")
             raise
@@ -282,12 +316,20 @@ class LiveKitService:
         Args:
             room_id (str): Room identifier
         """
+        from asgiref.sync import async_to_sync
+
+        async def _delete():
+            lkapi = api.LiveKitAPI(self._api_url(), self.api_key, self.api_secret)
+            try:
+                await lkapi.room.delete_room(
+                    api.DeleteRoomRequest(room=room_id)
+                )
+            finally:
+                await lkapi.aclose()
+
         try:
-            room_service = api.RoomService()
-            room_service.delete_room(api.DeleteRoomRequest(room=room_id))
-            
+            async_to_sync(_delete)()
             logger.info(f"Deleted LiveKit room: {room_id}")
-            
         except Exception as e:
             logger.error(f"Failed to delete room {room_id}: {str(e)}")
             raise
@@ -301,16 +343,23 @@ class LiveKitService:
             data (bytes): Message data to send
             destination_identities (list): Specific participants to send to (None = broadcast)
         """
-        try:
-            room_service = api.RoomService()
-            room_service.send_data(
-                api.SendDataRequest(
-                    room=room_id,
-                    data=data,
-                    destination_identities=destination_identities or []
+        from asgiref.sync import async_to_sync
+
+        async def _send():
+            lkapi = api.LiveKitAPI(self._api_url(), self.api_key, self.api_secret)
+            try:
+                await lkapi.room.send_data(
+                    api.SendDataRequest(
+                        room=room_id,
+                        data=data,
+                        destination_identities=destination_identities or [],
+                    )
                 )
-            )
-            
+            finally:
+                await lkapi.aclose()
+
+        try:
+            async_to_sync(_send)()
         except Exception as e:
             logger.error(f"Failed to send data message: {str(e)}")
             raise
