@@ -334,15 +334,27 @@ def stop_recording(request, room_id):
 def livekit_webhook(request):
     """
     Webhook endpoint for LiveKit events (recording completed, etc.)
-    
+
     POST /api/livekit/webhook/
-    
+
     Configure this URL in LiveKit dashboard under Settings > Webhooks
     """
     try:
-        # Verify webhook signature (important for security)
-        # TODO: Implement signature verification
-        
+        # Verify LiveKit webhook signature — rejects forged requests
+        try:
+            from livekit.api import WebhookReceiver, TokenVerifier
+            auth_token = request.headers.get('Authorization', '')
+            receiver = WebhookReceiver(
+                TokenVerifier(
+                    api_key=settings.LIVEKIT_API_KEY,
+                    api_secret=settings.LIVEKIT_API_SECRET,
+                )
+            )
+            receiver.receive(request.body.decode('utf-8'), auth_token)
+        except Exception as sig_err:
+            logger.warning(f"LiveKit webhook signature invalid: {sig_err}")
+            return JsonResponse({'error': 'Invalid webhook signature'}, status=401)
+
         data = json.loads(request.body)
         event_type = data.get('event')
         
