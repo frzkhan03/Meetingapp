@@ -54,7 +54,7 @@ else:
 SESSION_COOKIE_SECURE = PRODUCTION  # Only send cookies over HTTPS in production
 SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access to session cookie
 SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
-SESSION_COOKIE_AGE = 3600  # 1 hour session timeout
+SESSION_COOKIE_AGE = 43200  # 12 hours — covers a full agent working day
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_SAVE_EVERY_REQUEST = False  # Only save when modified (was True — caused DB write on every request)
 

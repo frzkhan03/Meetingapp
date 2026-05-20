@@ -338,6 +338,13 @@ def join_personal_room_view(request, room_id):
 
     token = request.GET.get('token', '') or request.POST.get('token', '')
 
+    # Strip trailing junk if CRM appended its own query params naively,
+    # turning ?token=ABC into ?token=ABC?user_ref=123 (extra ? in token).
+    # Real tokens are url-safe base64 — only [A-Za-z0-9_-], never ? or &.
+    for sep in ('?', '&', '#', ' '):
+        if sep in token:
+            token = token.split(sep)[0]
+
     if not token:
         messages.error(request, 'Invalid room link. Token is required.')
         return redirect('home')
@@ -457,6 +464,12 @@ def join_meeting_guest_view(request, room_id):
     import uuid
 
     token = request.GET.get('token', '') or request.POST.get('token', '')
+
+    # Strip trailing junk if CRM appended its own query params naively.
+    # Real tokens are url-safe base64 — only [A-Za-z0-9_-], never ? or &.
+    for sep in ('?', '&', '#', ' '):
+        if sep in token:
+            token = token.split(sep)[0]
 
     if not token:
         messages.error(request, 'Invalid meeting link. Token is required.')
