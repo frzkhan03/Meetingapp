@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.core.paginator import Paginator
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.views.decorators.cache import never_cache
 from django.conf import settings
 from django.core.signing import TimestampSigner
 import json
@@ -32,6 +33,29 @@ def _verify_moderator_proof(proof, room_id):
         return signed_room == str(room_id)
     except Exception:
         return False
+
+
+def _user_can_access_room(user, room_id):
+    """Return True if the authenticated user owns/has access to this room.
+    Inline version to avoid circular import with livekit_views.check_room_access."""
+    if not user or not user.is_authenticated:
+        return False
+    pr = PersonalRoom.objects.filter(room_id=room_id).select_related('organization').first()
+    if pr:
+        if pr.user_id == user.id:
+            return True
+        if pr.organization and pr.organization.memberships.filter(user=user, is_active=True).exists():
+            return True
+        return False
+    m = Meeting.objects.filter(room_id=room_id).select_related('organization').first()
+    if m:
+        if m.author_id == user.id:
+            return True
+        if m.users.filter(id=user.id).exists():
+            return True
+        if m.organization and m.organization.memberships.filter(user=user, is_active=True).exists():
+            return True
+    return False
 
 
 def home_view(request):
@@ -154,6 +178,7 @@ def _get_plan_context(request):
     }
 
 
+@never_cache
 @login_required
 def start_meeting_view(request, room_id):
     meeting = get_object_or_404(Meeting.objects.select_related('organization', 'author'), room_id=room_id)
@@ -331,6 +356,7 @@ def my_room_view(request):
     })
 
 
+@never_cache
 @ensure_csrf_cookie
 def join_personal_room_view(request, room_id):
     """Join a personal room via token link"""
@@ -424,6 +450,10 @@ def join_personal_room_view(request, room_id):
         approved_key = f'approved_for_{room_id}'
         cache_approval_key = f'room_approval:{room_id}:{user_id}'
         is_approved = cache.get(cache_approval_key, False)
+        if is_approved:
+            # Single-use: consume the approval so next join requires fresh moderator OK.
+            # If the guest leaves and rejoins, they must request admission again.
+            cache.delete(cache_approval_key)
 
         # Also check session flag (set by check_approval_view during polling redirect)
         if not is_approved:
@@ -442,6 +472,11 @@ def join_personal_room_view(request, room_id):
             request.session['pending_room_locked'] = personal_room.is_locked
             return redirect('pending_room')
 
+        # Consume the approval — single-use. If the guest leaves and tries to
+        # rejoin, they will need fresh admission from the moderator.
+        cache.delete(cache_approval_key)
+        request.session.pop(approved_key, None)
+
     return render(request, 'meeting_room_livekit.html', {
         'room_id': str(room_id),
         'user_id': user_id,
@@ -458,6 +493,7 @@ def join_personal_room_view(request, room_id):
     })
 
 
+@never_cache
 @ensure_csrf_cookie
 def join_meeting_guest_view(request, room_id):
     """Allow anyone (including unregistered users) to join a scheduled meeting via token link"""
@@ -791,8 +827,7 @@ def get_pending_requests_view(request, room_id):
     # Verify caller is a legitimate moderator for this room
     proof = request.GET.get('proof', '') or request.headers.get('X-Moderator-Proof', '')
     if request.user.is_authenticated:
-        room_access = check_room_access(request.user, room_id)
-        if not room_access['allowed']:
+        if not _user_can_access_room(request.user, room_id):
             return JsonResponse({'requests': [], 'is_locked': False})
     elif not _verify_moderator_proof(proof, room_id):
         return JsonResponse({'requests': [], 'is_locked': False})
@@ -838,8 +873,7 @@ def approve_guest_view(request, room_id):
 
         # Verify caller is a legitimate moderator for this room
         if request.user.is_authenticated:
-            room_access = check_room_access(request.user, room_id)
-            if not room_access['allowed']:
+            if not _user_can_access_room(request.user, room_id):
                 return JsonResponse({'error': 'Access denied'}, status=403)
         else:
             proof = data.get('moderator_proof', '')

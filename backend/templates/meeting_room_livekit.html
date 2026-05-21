@@ -832,15 +832,17 @@
             100% { opacity: 0; }
         }
 
-        /* Recording indicator */
+        /* Recording indicator — top-right corner so it doesn't block the guest's
+           video face/ID being captured in the screen recording. */
         .recording-indicator {
             position: fixed;
-            top: 80px;
-            left: 50%;
-            transform: translateX(-50%);
+            top: 12px;
+            right: 16px;
+            left: auto;
+            transform: none;
             background: rgba(239, 68, 68, 0.9);
             color: white;
-            padding: 6px 16px;
+            padding: 6px 14px;
             border-radius: 20px;
             font-size: 13px;
             font-weight: 600;
@@ -849,6 +851,7 @@
             gap: 8px;
             z-index: 100;
             backdrop-filter: blur(8px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
         }
         .recording-indicator .rec-dot {
             width: 10px;
@@ -1261,15 +1264,26 @@
             window.speechSynthesis.speak(msg);
         }
 
+        function hasGuestInMeeting() {
+            // True if any remote (guest) is currently connected to the LiveKit room.
+            return !!(livekitClient && livekitClient.room && livekitClient.room.remoteParticipants && livekitClient.room.remoteParticipants.size > 0);
+        }
+
         function showAdmissionRequest(userId, username, isLocked) {
             if (pendingRequests.has(userId)) return; // Already showing
             pendingRequests.add(userId);
 
-            // Speak immediately, then every 10 seconds until admitted/denied
-            speakJoinRequest(username || 'Guest');
-            const intervalId = setInterval(() => {
-                if (pendingRequests.has(userId)) speakJoinRequest(username || 'Guest');
-            }, 10000);
+            // Speak only if no guest is currently in the meeting (don't interrupt
+            // an ongoing verification call). Re-checked on each interval tick so
+            // beep resumes if the active guest leaves before this one is handled.
+            const tryBeep = () => {
+                if (!pendingRequests.has(userId)) return;
+                if (!hasGuestInMeeting()) {
+                    speakJoinRequest(username || 'Guest');
+                }
+            };
+            tryBeep();
+            const intervalId = setInterval(tryBeep, 10000);
             admissionAlerts.set(userId, intervalId);
 
             const subText = isLocked
@@ -1479,6 +1493,62 @@
             }, 1000);
         }
         
+        // Tracks whether moderator dragged PiP — if yes, auto-relayout skips repositioning it
+        window._pipDragged = false;
+
+        function enablePiPDrag(container) {
+            if (container._dragWired) return; // already wired
+            container._dragWired = true;
+            let isDragging = false;
+            let offsetX = 0, offsetY = 0;
+            container.style.cursor = 'grab';
+            container.style.userSelect = 'none';
+
+            const onStart = (clientX, clientY, e) => {
+                isDragging = true;
+                const rect = container.getBoundingClientRect();
+                offsetX = clientX - rect.left;
+                offsetY = clientY - rect.top;
+                container.style.cursor = 'grabbing';
+                window._pipDragged = true;
+                // Switch to top/left positioning (drop the right/bottom anchors)
+                container.style.setProperty('left', rect.left + 'px', 'important');
+                container.style.setProperty('top', rect.top + 'px', 'important');
+                container.style.setProperty('right', 'auto', 'important');
+                container.style.setProperty('bottom', 'auto', 'important');
+                if (e && e.preventDefault) e.preventDefault();
+            };
+
+            const onMove = (clientX, clientY) => {
+                if (!isDragging) return;
+                let left = clientX - offsetX;
+                let top = clientY - offsetY;
+                const maxLeft = window.innerWidth - container.offsetWidth;
+                const maxTop = window.innerHeight - container.offsetHeight;
+                left = Math.max(0, Math.min(left, maxLeft));
+                top = Math.max(0, Math.min(top, maxTop));
+                container.style.setProperty('left', left + 'px', 'important');
+                container.style.setProperty('top', top + 'px', 'important');
+            };
+
+            const onEnd = () => {
+                if (!isDragging) return;
+                isDragging = false;
+                container.style.cursor = 'grab';
+            };
+
+            container.addEventListener('mousedown', (e) => onStart(e.clientX, e.clientY, e));
+            document.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
+            document.addEventListener('mouseup', onEnd);
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches.length) onStart(e.touches[0].clientX, e.touches[0].clientY, e);
+            }, { passive: false });
+            document.addEventListener('touchmove', (e) => {
+                if (e.touches.length) onMove(e.touches[0].clientX, e.touches[0].clientY);
+            }, { passive: true });
+            document.addEventListener('touchend', onEnd);
+        }
+
         function displayLocalVideo() {
             const container = createVideoContainer('local', USERNAME + ' (You)', true);
             const videoTrack = livekitClient.localTracks.find(t => t.kind === 'video');
@@ -1504,6 +1574,8 @@
                 } else {
                     container.style.cssText = 'position:fixed !important; top:auto !important; left:auto !important; transform:none !important; bottom:110px !important; right:12px !important; width:100px !important; height:133px !important; z-index:50 !important; border-radius:12px !important; border:5px solid #6366f1 !important; overflow:hidden !important; flex:none !important;';
                 }
+                // Make PiP draggable so moderator can move it out of the way
+                enablePiPDrag(container);
             } else {
                 // Guest view: own video is the BIG centered video (phone-shape on desktop, full on mobile)
                 if (isDesktop) {
@@ -1772,8 +1844,10 @@
             }
         }
 
-        // Re-layout all remote camera tiles based on count (moderator view).
-        // 1 tile = centered phone-shape (current behaviour). 2+ tiles = stacked side-by-side.
+        // Layout mode: false=auto (phone-shape for 1-2, grid for 3+), true=force grid like Google Meet
+        let gridMode = false;
+
+        // Re-layout all remote camera tiles based on count and mode (moderator view).
         function relayoutRemoteCameras() {
             if (!IS_MODERATOR) return;
             const remotes = Array.from(document.querySelectorAll('#video-grid .video-container:not(#video-local):not(.screen-share)'));
@@ -1782,38 +1856,70 @@
 
             const isDesktop = window.matchMedia('(min-width: 769px)').matches;
 
-            if (isDesktop) {
-                const videoGridHeight = document.getElementById('video-grid').offsetHeight;
-                // Use whichever is larger: portrait phone ratio OR 40% of screen width.
-                // This keeps the tile wide in full screen without changing minimized view.
-                const maxTileWidth = Math.max(
-                    Math.round(videoGridHeight * 0.56),
-                    Math.round(window.innerWidth * 0.40)
-                );
-                const desiredTotal = count * maxTileWidth;
-                const actualTotal = Math.min(desiredTotal, window.innerWidth - 40);
-                const tileWidth = actualTotal / count;
-                const startLeft = (window.innerWidth - actualTotal) / 2;
-                remotes.forEach((container, i) => {
-                    const left = startLeft + tileWidth * i;
-                    container.style.cssText = `position:absolute !important; top:0 !important; left:${left}px !important; transform:none !important; width:${tileWidth}px !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important; overflow:hidden !important;`;
-                });
-
-                // Fix PiP position to always overlap the guest tile's right corner,
-                // using the actual computed tileWidth instead of a hardcoded guess.
-                if (IS_MODERATOR) {
-                    const localContainer = document.getElementById('video-local');
-                    if (localContainer) {
-                        const pipRight = Math.max(Math.round((window.innerWidth - tileWidth) / 2) - 30, 12);
-                        localContainer.style.right = pipRight + 'px';
-                    }
-                }
-            } else {
+            if (!isDesktop) {
                 // Mobile: stack vertically, equal share of height
                 const tileHeightPct = 100 / count;
                 remotes.forEach((container, i) => {
                     container.style.cssText = `position:absolute !important; top:${tileHeightPct * i}% !important; left:0 !important; transform:none !important; width:100% !important; height:${tileHeightPct}% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important;`;
                 });
+                return;
+            }
+
+            const videoGridHeight = document.getElementById('video-grid').offsetHeight;
+            const screenW = window.innerWidth;
+            const useGrid = gridMode || count >= 3;
+
+            if (!useGrid) {
+                // Phone-shape layout for 1 or 2 guests (unchanged behaviour)
+                const maxTileWidth = Math.max(
+                    Math.round(videoGridHeight * 0.56),
+                    Math.round(screenW * 0.40)
+                );
+                const desiredTotal = count * maxTileWidth;
+                const actualTotal = Math.min(desiredTotal, screenW - 40);
+                const tileWidth = actualTotal / count;
+                const startLeft = (screenW - actualTotal) / 2;
+                remotes.forEach((container, i) => {
+                    const left = startLeft + tileWidth * i;
+                    container.style.cssText = `position:absolute !important; top:0 !important; left:${left}px !important; transform:none !important; width:${tileWidth}px !important; height:100% !important; border-radius:0 !important; border:none !important; z-index:1 !important; background:transparent !important; overflow:hidden !important;`;
+                });
+
+                // PiP overlap right edge of centered tile (unless moderator dragged it)
+                if (!window._pipDragged) {
+                    const localContainer = document.getElementById('video-local');
+                    if (localContainer) {
+                        const pipRight = Math.max(Math.round((screenW - tileWidth) / 2) - 30, 12);
+                        localContainer.style.right = pipRight + 'px';
+                    }
+                }
+                return;
+            }
+
+            // GRID LAYOUT — Google Meet style. Cols × rows chosen to best fit count.
+            const gap = 8;
+            const cols = Math.ceil(Math.sqrt(count));
+            const rows = Math.ceil(count / cols);
+            const availW = screenW - 20;
+            const availH = videoGridHeight - 10;
+            const tileW = Math.floor((availW - gap * (cols - 1)) / cols);
+            const tileH = Math.floor((availH - gap * (rows - 1)) / rows);
+            const totalGridW = cols * tileW + (cols - 1) * gap;
+            const startLeft = Math.max(10, Math.floor((screenW - totalGridW) / 2));
+
+            remotes.forEach((container, i) => {
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                const left = startLeft + col * (tileW + gap);
+                const top = row * (tileH + gap);
+                container.style.cssText = `position:absolute !important; top:${top}px !important; left:${left}px !important; transform:none !important; width:${tileW}px !important; height:${tileH}px !important; border-radius:8px !important; border:none !important; z-index:1 !important; background:rgba(0,0,0,0.2) !important; overflow:hidden !important;`;
+            });
+
+            // In grid mode, push PiP to safe bottom-right corner (unless dragged)
+            if (!window._pipDragged) {
+                const localContainer = document.getElementById('video-local');
+                if (localContainer) {
+                    localContainer.style.right = '12px';
+                }
             }
         }
 
@@ -1915,6 +2021,10 @@
             const btn = document.getElementById('btn-audio');
             btn.classList.toggle('active', !audioEnabled);
             btn.setAttribute('data-tooltip', audioEnabled ? 'Mute' : 'Unmute');
+            // Also kill mic in active recording mix (forces silence in recorded file)
+            if (recordingMicGain) {
+                recordingMicGain.gain.value = audioEnabled ? 1 : 0;
+            }
         });
         
         if (document.getElementById('btn-screen')) {
@@ -2021,6 +2131,7 @@
         let recordingAudioSources = new Map();
         let recordingTrackHandlers = null;
         let recordingMimeType = null;
+        let recordingMicGain = null; // GainNode — set to 0 to force-mute mic in recording
 
         let recordingDisplayStream = null;
         let recordingMicStream = null;
@@ -2058,20 +2169,37 @@
                 recordingDestination = recordingAudioCtx.createMediaStreamDestination();
                 recordingAudioSources = new Map();
 
-                const addAudioTrack = (key, mst) => {
+                // Display audio (guest's voice playing in tab) → direct to destination
+                const addDisplayTrack = (key, mst) => {
                     if (!mst || recordingAudioSources.has(key)) return;
                     try {
                         const src = recordingAudioCtx.createMediaStreamSource(new MediaStream([mst]));
                         src.connect(recordingDestination);
                         recordingAudioSources.set(key, src);
                     } catch (e) {
-                        console.warn('Failed to add audio track to recording mix:', e);
+                        console.warn('Failed to add display audio to recording mix:', e);
                     }
                 };
+                recordingDisplayStream.getAudioTracks().forEach((t, i) => addDisplayTrack(`display-${i}`, t));
 
-                recordingDisplayStream.getAudioTracks().forEach((t, i) => addAudioTrack(`display-${i}`, t));
+                // Mic audio (agent's voice) → through GainNode → destination
+                // GainNode lets us force-silence the mic in the recording when agent mutes,
+                // regardless of LiveKit track state. Belt-and-suspenders for reliable mute.
+                recordingMicGain = recordingAudioCtx.createGain();
+                recordingMicGain.gain.value = audioEnabled ? 1 : 0;
+                recordingMicGain.connect(recordingDestination);
                 if (recordingMicStream) {
-                    recordingMicStream.getAudioTracks().forEach((t, i) => addAudioTrack(`mic-${i}`, t));
+                    recordingMicStream.getAudioTracks().forEach((t, i) => {
+                        const key = `mic-${i}`;
+                        if (recordingAudioSources.has(key)) return;
+                        try {
+                            const src = recordingAudioCtx.createMediaStreamSource(new MediaStream([t]));
+                            src.connect(recordingMicGain);
+                            recordingAudioSources.set(key, src);
+                        } catch (e) {
+                            console.warn('Failed to add mic to recording mix:', e);
+                        }
+                    });
                 }
 
                 const mixedAudioTracks = recordingDestination.stream.getAudioTracks();
@@ -2115,6 +2243,10 @@
                     if (recordingMicStream) {
                         try { recordingMicStream.getTracks().forEach(t => t.stop()); } catch (e) {}
                         recordingMicStream = null;
+                    }
+                    if (recordingMicGain) {
+                        try { recordingMicGain.disconnect(); } catch (e) {}
+                        recordingMicGain = null;
                     }
                     if (recordingAudioSources) {
                         recordingAudioSources.forEach((src) => { try { src.disconnect(); } catch (e) {} });
@@ -2609,22 +2741,14 @@
             });
         }
 
-        // ==================== LAYOUT TOGGLE ====================
-        const layouts = ['layout-grid', 'layout-spotlight', 'layout-sidebar'];
-        let currentLayout = 0;
-
+        // ==================== LAYOUT TOGGLE (Auto / Grid) ====================
         document.getElementById('btn-layout').addEventListener('click', () => {
-            const grid = document.getElementById('video-grid');
-            // Remove current layout class
-            grid.classList.remove(...layouts);
-            // Move to next layout
-            currentLayout = (currentLayout + 1) % layouts.length;
-            if (currentLayout > 0) {
-                grid.classList.add(layouts[currentLayout]);
-            }
-            const names = ['Grid', 'Spotlight', 'Sidebar'];
-            showNotification(`Layout: ${names[currentLayout]}`, 'info');
-            document.getElementById('btn-layout').setAttribute('data-tooltip', `Layout: ${names[currentLayout]}`);
+            gridMode = !gridMode;
+            const btn = document.getElementById('btn-layout');
+            btn.classList.toggle('active', gridMode);
+            btn.setAttribute('data-tooltip', gridMode ? 'Grid view (click for Auto)' : 'Auto layout (click for Grid)');
+            showNotification(gridMode ? 'Grid view ON' : 'Auto layout ON', 'info');
+            if (IS_MODERATOR) relayoutRemoteCameras();
         });
 
         // Update participants list when people join/leave
@@ -2663,7 +2787,19 @@
                 const localContainer = document.getElementById('video-local');
                 if (localContainer) {
                     if (IS_MODERATOR) {
-                        localContainer.style.cssText = isDesktop ? LOCAL_PIP_DESKTOP_CSS : LOCAL_PIP_MOBILE_CSS;
+                        if (window._pipDragged) {
+                            // Keep the dragged position — just clamp if it's now outside the viewport
+                            const rect = localContainer.getBoundingClientRect();
+                            const maxLeft = window.innerWidth - localContainer.offsetWidth;
+                            const maxTop = window.innerHeight - localContainer.offsetHeight;
+                            const clampedLeft = Math.max(0, Math.min(rect.left, maxLeft));
+                            const clampedTop = Math.max(0, Math.min(rect.top, maxTop));
+                            localContainer.style.setProperty('left', clampedLeft + 'px', 'important');
+                            localContainer.style.setProperty('top', clampedTop + 'px', 'important');
+                        } else {
+                            localContainer.style.cssText = isDesktop ? LOCAL_PIP_DESKTOP_CSS : LOCAL_PIP_MOBILE_CSS;
+                            enablePiPDrag(localContainer);
+                        }
                     } else {
                         localContainer.style.cssText = isDesktop ? BIG_DESKTOP_CSS : BIG_MOBILE_CSS;
                     }
